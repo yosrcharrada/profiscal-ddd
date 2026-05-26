@@ -1,0 +1,1102 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FiscalPRO — Plateforme Fiscale Tunisienne</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════ */
+:root{
+  --black:   #000;  --gold:   #FFD000;  --white: #fff;
+  --off:     #F5F5F5; --border:#DDD;   --muted: #666;
+  --text:    #111;  --red:    #C62828; --green: #1B5E20;
+  --purple:  #4527A0; --teal:  #00695C;
+  --shadow:  0 2px 12px rgba(0,0,0,.13);
+  --r:       6px;   --nav-h: 64px; --sidebar-w: 250px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px;scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--off);color:var(--text);min-height:100vh}
+button{cursor:pointer;border:none;outline:none;font-family:inherit}
+input,textarea,select{font-family:inherit;outline:none}
+a{text-decoration:none;color:inherit}
+
+/* ── Navbar ── */
+.navbar{
+  position:fixed;top:0;left:0;right:0;z-index:1000;
+  height:var(--nav-h);background:var(--black);
+  border-bottom:4px solid var(--gold);
+  display:flex;align-items:center;padding:0 20px;gap:0;
+  box-shadow:0 4px 12px rgba(0,0,0,.3);
+}
+.nav-brand{
+  font-family:'Playfair Display',serif;font-size:16px;font-weight:700;
+  color:var(--white);letter-spacing:2px;white-space:nowrap;
+  padding-right:20px;border-right:2px solid var(--gold);
+  text-transform:uppercase;display:flex;align-items:center;gap:10px;
+}
+.nav-brand img{height:44px;width:auto;object-fit:contain}
+.nav-links{display:flex;align-items:center;gap:2px;padding-left:16px;flex:1}
+.nav-link{
+  color:rgba(255,255,255,.75);font-size:12.5px;font-weight:600;
+  padding:6px 14px;border-radius:4px;transition:.15s;white-space:nowrap;
+  text-transform:uppercase;letter-spacing:.5px;
+}
+.nav-link:hover,.nav-link.active{background:var(--gold);color:var(--black)}
+.nav-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+.nav-badge{
+  font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;
+  background:var(--gold);color:var(--black);letter-spacing:.5px;text-transform:uppercase;
+}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#4CAF50;
+  border:2px solid rgba(255,255,255,.4);display:inline-block}
+.status-dot.red{background:#ef5350}
+
+/* ── Layout ── */
+.shell{display:flex;padding-top:var(--nav-h);min-height:100vh}
+.sidebar{
+  width:var(--sidebar-w);flex-shrink:0;background:var(--white);
+  border-right:1px solid var(--border);position:fixed;
+  top:var(--nav-h);bottom:0;left:0;overflow-y:auto;padding:0;
+}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:#ddd;border-radius:4px}
+.sb-section{padding:14px 14px 8px}
+.sb-title{
+  font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:10px;padding-bottom:6px;
+  border-bottom:1px solid var(--border);
+}
+.stat-card{
+  background:var(--off);border:1px solid var(--border);
+  border-radius:var(--r);padding:10px 12px;margin-bottom:8px;
+}
+.stat-card-label{font-size:11px;color:var(--muted);margin-bottom:2px}
+.stat-card-val{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:500;color:var(--black)}
+.doc-type-bar{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--r);margin-bottom:3px}
+.doc-type-bar:hover{background:var(--off)}
+.doc-type-icon{font-size:14px;width:22px;text-align:center}
+.doc-type-label{font-size:12px;flex:1;font-weight:500}
+.doc-type-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
+.sb-chip-list{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.sb-chip{
+  font-size:11px;padding:3px 9px;border-radius:20px;
+  background:var(--off);border:1px solid var(--border);
+  color:var(--text);cursor:pointer;transition:.12s;font-weight:500;
+}
+.sb-chip:hover{background:var(--gold);color:var(--black);border-color:var(--gold);font-weight:700}
+.sb-select{
+  width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--r);
+  font-size:12px;color:var(--text);background:var(--off);
+  appearance:none;cursor:pointer;margin-bottom:10px;
+}
+.sb-filter-label{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px;display:block}
+
+.main-content{margin-left:var(--sidebar-w);flex:1;padding:24px 28px;min-height:calc(100vh - var(--nav-h))}
+
+/* ── Tab bar ── */
+.tab-bar{
+  display:flex;gap:0;margin-bottom:22px;
+  border:1px solid var(--border);border-radius:8px;
+  background:var(--white);padding:4px;width:fit-content;
+  box-shadow:var(--shadow);
+}
+.tab-btn{
+  padding:8px 22px;border-radius:5px;font-size:13px;font-weight:700;
+  color:var(--muted);background:transparent;transition:.15s;letter-spacing:.3px;
+  display:flex;align-items:center;gap:7px;text-transform:uppercase;
+}
+.tab-btn.active{background:var(--black);color:var(--gold);box-shadow:0 3px 10px rgba(0,0,0,.3)}
+.tab-btn:hover:not(.active){background:var(--off);color:var(--text)}
+
+/* ═══════════════════════════════════════════════
+   SEARCH PANEL
+═══════════════════════════════════════════════ */
+.search-box{
+  background:var(--white);border:1px solid var(--border);border-radius:8px;
+  padding:20px;margin-bottom:18px;box-shadow:var(--shadow);
+}
+.search-row{display:flex;gap:10px;align-items:center}
+.search-input{
+  flex:1;padding:11px 16px;border:2px solid var(--border);border-radius:var(--r);
+  font-size:14px;color:var(--text);background:var(--off);transition:.15s;
+}
+.search-input:focus{border-color:var(--gold);background:var(--white);box-shadow:0 0 0 3px rgba(255,208,0,.15)}
+.search-input::placeholder{color:var(--muted)}
+.btn-primary{
+  padding:10px 22px;background:var(--gold);color:var(--black);
+  font-size:13px;font-weight:700;border-radius:var(--r);
+  letter-spacing:.5px;transition:.15s;white-space:nowrap;
+  box-shadow:0 3px 12px rgba(255,208,0,.4);text-transform:uppercase;
+}
+.btn-primary:hover{box-shadow:0 5px 18px rgba(255,208,0,.5);transform:translateY(-2px)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.search-hint{font-size:11px;color:var(--muted);margin-top:7px}
+.year-row{display:flex;align-items:center;gap:10px;margin-top:10px}
+.year-label{font-size:12px;color:var(--muted);white-space:nowrap}
+.year-input{width:75px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--off)}
+.metrics-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.metric-pill{background:var(--white);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:12px}
+.metric-pill b{color:var(--black)}
+.result-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:15px 18px;margin-bottom:10px;transition:.15s;border-left:4px solid transparent}
+.result-card.top{border-left-color:var(--gold);border-left-width:6px;background:rgba(255,208,0,.04)}
+.result-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.card-row{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:7px}
+.card-rank{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-right:8px;flex-shrink:0}
+.card-title{font-size:14px;font-weight:700;color:var(--black);flex:1;line-height:1.4}
+.card-score-badge{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;background:var(--gold);color:var(--black);padding:4px 10px;border-radius:10px;white-space:nowrap;margin-left:12px}
+.tags-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:2px;text-transform:uppercase;letter-spacing:.5px}
+.tag-loi{background:#DBEAFE;color:#1E40AF}
+.tag-note{background:#DCFCE7;color:#166534}
+.tag-article{background:#FEF3C7;color:#92400E}
+.tag-section{background:#F3E8FF;color:#6B21A8}
+.tag-table{background:#F0FDF4;color:#15803D}
+.tag-other{background:#F1F5F9;color:#475569}
+.snippet{font-size:13px;color:#374151;line-height:1.75;border-top:1px solid #F0F4F8;padding-top:8px}
+.snippet em{background:#FEF08A;color:var(--black);font-style:normal;padding:1px 2px;border-radius:2px}
+.score-track{background:#E5E7EB;border-radius:3px;height:3px;margin-top:8px}
+.score-fill{background:linear-gradient(90deg,var(--gold),#FFC700);border-radius:3px;height:3px}
+.card-meta{font-size:11px;color:var(--muted);margin-top:7px}
+/* ── Consultation history cards ──────────────────── */
+.consult-card{
+  background:var(--white);border:1px solid var(--gold);
+  border-radius:var(--r);padding:16px 18px;margin-bottom:12px;
+  border-left:5px solid var(--gold);
+  box-shadow:0 2px 8px rgba(255,208,0,.15);
+}
+.consult-client{
+  font-family:'Playfair Display',serif;font-size:16px;
+  font-weight:700;color:var(--black);margin-bottom:4px;
+}
+.consult-meta{
+  font-size:11px;color:var(--muted);margin-bottom:10px;
+  display:flex;gap:12px;flex-wrap:wrap;
+}
+.consult-sommaire{
+  font-size:13px;color:var(--text);line-height:1.6;
+  border-left:3px solid var(--gold);padding-left:10px;
+  margin-bottom:8px;white-space:pre-wrap;
+}
+.consult-expand-btn{
+  font-size:11px;color:var(--muted);background:none;
+  border:1px solid var(--border);border-radius:4px;
+  padding:3px 10px;cursor:pointer;margin-top:4px;
+}
+.consult-analyses{
+  display:none;font-size:12px;color:var(--text);margin-top:10px;
+  max-height:500px;overflow-y:auto;white-space:pre-wrap;
+  background:var(--off);border-radius:4px;padding:12px;line-height:1.7;
+}
+.section-divider{text-align:center;padding:14px 0 10px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;border-top:1px dashed var(--border);margin:4px 0}
+.show-more-btn{width:100%;padding:10px;background:var(--off);border:1px solid var(--border);border-radius:var(--r);font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;transition:.15s;margin-bottom:12px}
+.show-more-btn:hover{background:var(--border);color:var(--text)}
+
+/* ═══════════════════════════════════════════════
+   CONSULTATION PANEL
+═══════════════════════════════════════════════ */
+.cons-layout{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+
+.cons-form-card{
+  background:var(--white);border:1px solid var(--border);border-radius:8px;
+  box-shadow:var(--shadow);overflow:hidden;
+}
+.cons-form-header{
+  background:var(--black);padding:16px 22px;display:flex;align-items:center;gap:12px;
+  border-bottom:4px solid var(--gold);
+}
+.cons-form-title{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px}
+.cons-form-sub{font-size:11px;color:rgba(255,255,255,.65);margin-top:2px}
+.cons-form-body{padding:22px}
+
+.form-group{margin-bottom:18px}
+.form-label{font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;display:block;text-transform:uppercase;letter-spacing:.5px}
+.form-label span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0}
+.form-input{
+  width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:var(--r);
+  font-size:13px;color:var(--text);background:var(--off);transition:.15s;
+}
+.form-input:focus{border-color:var(--gold);background:var(--white);box-shadow:0 0 0 3px rgba(255,208,0,.12)}
+.form-textarea{
+  width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:var(--r);
+  font-size:13px;color:var(--text);background:var(--off);resize:vertical;
+  transition:.15s;line-height:1.6;
+}
+.form-textarea:focus{border-color:var(--gold);background:var(--white);box-shadow:0 0 0 3px rgba(255,208,0,.12)}
+.form-textarea::placeholder,.form-input::placeholder{color:var(--muted)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+/* Document chips */
+.doc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.doc-chip{
+  display:flex;align-items:center;gap:6px;
+  background:var(--off);border:1px solid var(--border);border-radius:20px;
+  padding:4px 10px 4px 12px;font-size:12px;font-weight:500;
+}
+.doc-chip-remove{
+  background:none;border:none;color:var(--muted);font-size:14px;
+  cursor:pointer;padding:0;line-height:1;
+}
+.doc-chip-remove:hover{color:var(--red)}
+.doc-add-row{display:flex;gap:8px}
+.doc-add-input{
+  flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r);
+  font-size:13px;background:var(--off);
+}
+.doc-add-input:focus{border-color:var(--gold);background:var(--white)}
+.btn-ghost{
+  padding:8px 14px;background:var(--off);border:1px solid var(--border);
+  border-radius:var(--r);font-size:12px;font-weight:600;color:var(--text);
+  cursor:pointer;transition:.12s;
+}
+.btn-ghost:hover{background:var(--gold);color:var(--black);border-color:var(--gold)}
+
+.btn-generate{
+  width:100%;padding:14px;background:var(--gold);color:var(--black);
+  font-size:14px;font-weight:800;border-radius:var(--r);
+  letter-spacing:.5px;transition:.15s;text-transform:uppercase;
+  box-shadow:0 4px 14px rgba(255,208,0,.45);margin-top:6px;
+}
+.btn-generate:hover:not(:disabled){box-shadow:0 6px 20px rgba(255,208,0,.6);transform:translateY(-2px)}
+.btn-generate:disabled{opacity:.55;cursor:not-allowed;transform:none}
+
+/* ── Progress panel ── */
+.progress-card{
+  background:var(--white);border:1px solid var(--border);border-radius:8px;
+  box-shadow:var(--shadow);overflow:hidden;
+}
+.progress-header{
+  background:var(--off);border-bottom:1px solid var(--border);
+  padding:12px 16px;font-size:12px;font-weight:700;color:var(--text);letter-spacing:.3px;
+}
+.progress-body{padding:16px}
+.progress-step{
+  display:flex;align-items:center;gap:10px;padding:9px 0;
+  border-bottom:1px solid var(--off);font-size:13px;color:var(--muted);
+}
+.progress-step:last-child{border-bottom:none}
+.progress-step.done{color:var(--green);font-weight:600}
+.progress-step.active{color:var(--black);font-weight:700}
+.step-icon{font-size:16px;width:22px;text-align:center;flex-shrink:0}
+.step-spinner{
+  display:inline-block;width:16px;height:16px;border-radius:50%;
+  border:2px solid var(--gold);border-top-color:transparent;
+  animation:spin .8s linear infinite;flex-shrink:0;
+}
+@@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Download button */
+.btn-download{
+  width:100%;margin-top:14px;padding:12px;
+  background:var(--green);color:var(--white);font-size:13px;font-weight:700;
+  border-radius:var(--r);display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 3px 12px rgba(27,94,32,.35);transition:.15s;text-transform:uppercase;
+  letter-spacing:.5px;
+}
+.btn-download:hover{box-shadow:0 5px 18px rgba(27,94,32,.5);transform:translateY(-1px)}
+
+/* Sidebar guide for consultation */
+.guide-card{background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);overflow:hidden}
+.guide-header{background:var(--black);padding:12px 16px;font-size:12px;font-weight:700;color:var(--gold);letter-spacing:.3px}
+.guide-body{padding:14px}
+.guide-section{margin-bottom:14px}
+.guide-section-title{font-size:11px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.guide-item{font-size:12px;color:var(--muted);padding:4px 0;border-bottom:1px solid var(--off);line-height:1.4}
+.guide-item:last-child{border-bottom:none}
+
+/* ═══════════════════════════════════════════════
+   STATS PANEL
+═══════════════════════════════════════════════ */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px}
+.stats-conn{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;margin-top:4px}
+
+/* ═══════════════════════════════════════════════
+   SHARED
+═══════════════════════════════════════════════ */
+.empty-state{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty-icon{font-size:48px;margin-bottom:14px}
+.empty-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--black);margin-bottom:8px;font-weight:700}
+.empty-sub{font-size:13px;line-height:1.6}
+.skeleton{background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:4px}
+@@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:10px 16px;border-radius:6px;font-size:13px;font-weight:700;background:var(--black);color:var(--gold);box-shadow:0 4px 16px rgba(0,0,0,.4);animation:slideIn .25s ease;max-width:320px;text-transform:uppercase;letter-spacing:.3px}
+.toast.error{background:var(--red);color:var(--white)}
+.toast.success{background:#2E7D32;color:var(--white)}
+.toast.info{background:#1565C0;color:var(--white)}
+@@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+.footer{text-align:center;color:var(--muted);font-size:11px;padding:20px;border-top:1px solid var(--border);margin-top:40px}
+@@media(max-width:900px){
+  .sidebar{display:none}
+  .main-content{margin-left:0}
+  .cons-layout{grid-template-columns:1fr}
+  .form-row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════ NAVBAR ══════════ -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <img src="/ey-logo-black.jpg" alt="EY Logo"/>
+    <span><span style="color:var(--gold)">Fiscal</span><span style="color:#fff">PRO</span></span>
+  </div>
+  <div class="nav-links">
+    <a class="nav-link active" href="#" onclick="showTab('search');return false">Recherche</a>
+    <a class="nav-link" href="#" onclick="showTab('consultation');return false">Consultation IA</a>
+    <a class="nav-link" href="#" onclick="showTab('stats');return false">Statistiques</a>
+  </div>
+  <div class="nav-right">
+    <span class="status-dot" id="esStatusDot" title="Elasticsearch"></span>
+    <span class="status-dot" id="neo4jStatusDot" title="Neo4j"></span>
+    <span class="nav-badge">🇹🇳 ProFiscal</span>
+  </div>
+</nav>
+
+<!-- ══════════ LAYOUT ══════════ -->
+<div class="shell">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+
+    <!-- Knowledge-base stats -->
+    <div class="sb-section">
+      <div class="sb-title">Base de Connaissances</div>
+      <div class="stat-card"><div class="stat-card-label">Chunks ES</div><div class="stat-card-val" id="sbEsCount">—</div></div>
+      <div class="stat-card"><div class="stat-card-label">Chunks Neo4j</div><div class="stat-card-val" id="sbNeoCount">—</div></div>
+      <div class="stat-card"><div class="stat-card-label">Entités / Relations</div><div class="stat-card-val" id="sbEntRel">—</div></div>
+    </div>
+
+    <!-- Doc types -->
+    <div class="sb-section">
+      <div class="sb-title">Types de Documents</div>
+      <div class="doc-type-bar"><span class="doc-type-icon">📋</span><span class="doc-type-label">Loi de Finances</span><span class="doc-type-count" id="sbLoi">—</span></div>
+      <div class="doc-type-bar"><span class="doc-type-icon">📝</span><span class="doc-type-label">Notes Communes</span><span class="doc-type-count" id="sbNote">—</span></div>
+      <div class="doc-type-bar"><span class="doc-type-icon">📖</span><span class="doc-type-label">Code Local</span><span class="doc-type-count" id="sbCode">—</span></div>
+      <div class="doc-type-bar"><span class="doc-type-icon">🤝</span><span class="doc-type-label">Conventions</span><span class="doc-type-count" id="sbConv">—</span></div>
+    </div>
+
+    <!-- Quick searches (visible when Search tab is active) -->
+    <div class="sb-section" id="sbQuickSearch">
+      <div class="sb-title">Recherches Rapides</div>
+      <div class="sb-chip-list">
+        <span class="sb-chip" onclick="quickSearch('TVA')">TVA</span>
+        <span class="sb-chip" onclick="quickSearch('retenue source')">Retenue source</span>
+        <span class="sb-chip" onclick="quickSearch('article 52')">Art. 52</span>
+        <span class="sb-chip" onclick="quickSearch('impot societes')">IS</span>
+        <span class="sb-chip" onclick="quickSearch('penalite retard')">Pénalité</span>
+        <span class="sb-chip" onclick="quickSearch('declaration')">Déclaration</span>
+        <span class="sb-chip" onclick="quickSearch('prix transfert')">Prix transfert</span>
+        <span class="sb-chip" onclick="quickSearch('non resident')">Non-résident</span>
+      </div>
+    </div>
+
+    <!-- Search filters -->
+    <div class="sb-section" id="sbFilters">
+      <div class="sb-title">Filtres</div>
+      <label class="sb-filter-label">Type de document</label>
+      <select class="sb-select" id="filterDocType">
+        <option value="all">Tous</option>
+        <option value="loi">Loi</option>
+        <option value="note_commune">Note Commune</option>
+      </select>
+      <label class="sb-filter-label">Type de chunk</label>
+      <select class="sb-select" id="filterChunkType">
+        <option value="all">Tous</option>
+        <option value="article">Article</option>
+        <option value="section">Section</option>
+        <option value="text_table">Tableau</option>
+      </select>
+    </div>
+
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <main class="main-content">
+
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tabSearch" onclick="showTab('search')">🔍 Recherche</button>
+      <button class="tab-btn" id="tabConsultation" onclick="showTab('consultation')">📋 Consultation IA</button>
+      <button class="tab-btn" id="tabStats" onclick="showTab('stats')">📊 Statistiques</button>
+    </div>
+
+    <!-- ════════════ SEARCH PANEL ════════════ -->
+    <div id="panelSearch">
+        <!-- ═══ Consultation History Search ═══ -->
+<div class="search-box" style="border:1px solid var(--gold);border-left:5px solid var(--gold);margin-bottom:16px">
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;
+              color:var(--muted);margin-bottom:10px;letter-spacing:.5px">
+    📁 Historique des Consultations
+  </div>
+  <div class="search-row">
+    <input type="text" id="consultInput" class="search-input"
+           placeholder="Nom du client (ex: AIRLIQUIDE, ACTIA…)"
+           onkeydown="if(event.key==='Enter') searchHistory()"/>
+    <button class="btn-primary" onclick="searchHistory()">🔍 Rechercher</button>
+  </div>
+  <div class="search-hint">Retrouvez toutes les consultations générées pour un client</div>
+</div>
+<div id="historyResults" style="margin-bottom:20px"></div>
+<!-- ═══════════════════════════════════ -->
+      <div class="search-box">
+        <div class="search-row">
+          <input type="text" class="search-input" id="searchInput"
+                 placeholder="TVA · retenue à la source · article 52 · pénalité fiscale…"
+                 onkeydown="if(event.key==='Enter') doSearch()"/>
+          <button class="btn-primary" onclick="doSearch()" id="searchBtn">🔍 Rechercher</button>
+        </div>
+        <div class="year-row">
+          <span class="year-label">Année :</span>
+          <input type="number" class="year-input" id="yearMin" value="2000" min="1990" max="2030"/>
+          <span class="year-label">–</span>
+          <input type="number" class="year-input" id="yearMax" value="2030" min="1990" max="2030"/>
+        </div>
+        <div class="search-hint">Recherche floue BM25 + Elasticsearch · fautes de frappe tolérées</div>
+      </div>
+      <div id="searchResults"></div>
+    </div>
+
+    <!-- ════════════ CONSULTATION PANEL ════════════ -->
+    <div id="panelConsultation" style="display:none">
+      <div class="cons-layout">
+
+        <!-- Left: form -->
+        <div class="cons-form-card">
+          <div class="cons-form-header">
+            <span style="font-size:20px">📋</span>
+            <div>
+              <div class="cons-form-title">Génération de Consultation Fiscale</div>
+              <div class="cons-form-sub">GraphRAG Neo4j + GPT-4o · Template EY Tunisia</div>
+            </div>
+          </div>
+          <div class="cons-form-body">
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Référence <span>(ex: CONS-2024-001)</span></label>
+                <input type="text" class="form-input" id="consRef" placeholder="CONS-2024-001"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Client</label>
+                <input type="text" class="form-input" id="consClient" placeholder="Nom du client"/>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                Situation du client <span>— Décrivez le contexte, les entités, les accords, les services et les tarifs</span>
+              </label>
+              <textarea class="form-textarea" id="consSituation" rows="9"
+                placeholder="Exemple :&#10;ACTIA Engineering Services (AES) est l'associé unique d'ACTIA Software Tunisie (AST). Une convention de prestation de service a été conclue entre les deux sociétés. AES a effectué des prestations d'assistance administrative, juridique et comptable pour le compte d'AST :&#10;• Assistance à la direction (600€ HT/jour)&#10;• Assistance à la stratégie (1 000€ HT/jour)&#10;• Autres prestations facturées au réel + marge 13%"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                Question fiscale <span>— Ce que la consultation doit déterminer</span>
+              </label>
+              <textarea class="form-textarea" id="consQuestion" rows="3"
+                placeholder="Exemple : Déterminer le taux de la retenue à la source applicable aux services d'assistance administrative, juridique et comptable fournis par AES à AST, et les obligations déclaratives associées."></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Documents communiqués <span>— Ajoutez les documents fournis par le client</span></label>
+              <div class="doc-chips" id="docChips"></div>
+              <div class="doc-add-row">
+                <input type="text" class="doc-add-input" id="docInput"
+                       placeholder="Ex: Convention de prestation de service"
+                       onkeydown="if(event.key==='Enter') addDoc()"/>
+                <button class="btn-ghost" onclick="addDoc()">+ Ajouter</button>
+              </div>
+            </div>
+
+            <button class="btn-generate" id="generateBtn" onclick="generateConsultation()">
+              🚀 Générer la Consultation
+            </button>
+
+          </div>
+        </div>
+
+        <!-- Right: progress + guide -->
+        <div>
+
+          <!-- Progress panel -->
+          <div class="progress-card" id="progressCard">
+            <div class="progress-header">🔄 Progression de la génération</div>
+            <div class="progress-body">
+              <div class="progress-step" id="step-retrieve">
+                <span class="step-icon" id="icon-retrieve">⬜</span>
+                <span>Récupération des sources juridiques</span>
+              </div>
+              <div class="progress-step" id="step-facts">
+                <span class="step-icon" id="icon-facts">⬜</span>
+                <span>Section 1.1 — Compréhension des faits</span>
+              </div>
+              <div class="progress-step" id="step-scope">
+                <span class="step-icon" id="icon-scope">⬜</span>
+                <span>Section 1.2 — Étendue des travaux</span>
+              </div>
+              <div class="progress-step" id="step-analysis">
+                <span class="step-icon" id="icon-analysis">⬜</span>
+                <span>Section 3 — Analyses fiscales (GPT-4o)</span>
+              </div>
+              <div class="progress-step" id="step-abbr">
+                <span class="step-icon" id="icon-abbr">⬜</span>
+                <span>Section 2 — Abréviations</span>
+              </div>
+              <div class="progress-step" id="step-word">
+                <span class="step-icon" id="icon-word">⬜</span>
+                <span>Génération du document Word</span>
+              </div>
+            </div>
+
+            <div id="downloadArea" style="padding:0 16px 16px;display:none">
+              <button class="btn-download" id="downloadBtn">
+                ⬇️ Télécharger la Consultation (.docx)
+              </button>
+            </div>
+          </div>
+
+          <!-- Static guide -->
+          <div class="guide-card" style="margin-top:16px">
+            <div class="guide-header">📐 Structure générée</div>
+            <div class="guide-body">
+              <div class="guide-section">
+                <div class="guide-section-title">📄 Document produit</div>
+                <div class="guide-item">Sommaire automatique</div>
+                <div class="guide-item">1. Contexte</div>
+                <div class="guide-item" style="padding-left:10px">1.1 Compréhension des faits</div>
+                <div class="guide-item" style="padding-left:10px">1.2 Étendue des travaux</div>
+                <div class="guide-item">2. Abréviations</div>
+                <div class="guide-item">3. Analyses fiscales</div>
+                <div class="guide-item">4. Documents communiqués</div>
+              </div>
+              <div class="guide-section">
+                <div class="guide-section-title">⚖️ Ordre d'analyse</div>
+                <div class="guide-item">1. Convention internationale</div>
+                <div class="guide-item">2. Code fiscal (CIRPP, CTVA…)</div>
+                <div class="guide-item">3. Loi de finances</div>
+                <div class="guide-item">4. Décret / Arrêté</div>
+                <div class="guide-item">5. Doctrine (Notes communes)</div>
+              </div>
+              <div class="guide-section">
+                <div class="guide-section-title">🧠 Sources Neo4j</div>
+                <div class="guide-item">30 125 chunks · 34 771 entités</div>
+                <div class="guide-item">291 715 relations</div>
+                <div class="guide-item">Récupération par mots-clés + graphe</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════ STATS PANEL ════════════ -->
+    <div id="panelStats" style="display:none">
+      <h2 style="font-family:'Playfair Display',serif;font-size:20px;margin-bottom:20px">
+        📊 État de la Base de Connaissances
+      </h2>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-card-label">Chunks ES</div><div class="stat-card-val" id="st-esChunks">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Chunks Neo4j</div><div class="stat-card-val" id="st-neoChunks">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Entités</div><div class="stat-card-val" id="st-entities">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Relations</div><div class="stat-card-val" id="st-relations">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Lois de Finances</div><div class="stat-card-val" id="st-lois">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Notes Communes</div><div class="stat-card-val" id="st-notes">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Code Local</div><div class="stat-card-val" id="st-codes">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Conventions</div><div class="stat-card-val" id="st-conv">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Chunks Texte</div><div class="stat-card-val" id="st-text">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">Chunks Tableau</div><div class="stat-card-val" id="st-table">—</div></div>
+        <div class="stat-card"><div class="stat-card-label">GNN Embeddings</div><div class="stat-card-val" id="st-gnn">—</div></div>
+      </div>
+      <div class="stats-conn">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Connectivité</div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px">
+          <span>Elasticsearch <span class="status-dot" id="st-esDot" style="margin-left:5px"></span></span>
+          <span>Neo4j <span class="status-dot" id="st-neo4jDot" style="margin-left:5px"></span></span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ══════════ TOASTS ══════════ -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ══════════ FOOTER ══════════ -->
+<div class="footer">
+  ⚖️ FiscalPRO — Plateforme Juridique &amp; Fiscale Tunisienne &nbsp;·&nbsp;
+  Elasticsearch BM25 + GraphRAG Neo4j + GPT-4o &nbsp;·&nbsp;
+  <span id="footerGnn"></span>
+</div>
+
+<!-- ═══════════════ JAVASCRIPT ═══════════════ -->
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let docs          = [];
+let lastDocBlob   = null;
+let lastDocName   = '';
+let searchData    = null;
+let showingAll    = false;
+
+// ── Tag config ────────────────────────────────────────────────────────────────
+const TAG_CSS = {
+  loi:'tag-loi', note_commune:'tag-note', article:'tag-article',
+  article_part:'tag-article', section:'tag-section', subsection:'tag-section',
+  text_table:'tag-table', image_table:'tag-table', preamble:'tag-other',
+  full_document:'tag-other', resume:'tag-other', text:'tag-other', table:'tag-table'
+};
+const TAG_LABELS = {
+  loi:'Loi', note_commune:'Note Commune', article:'Article',
+  article_part:'Article ↩', section:'Section', subsection:'Sous-section',
+  text_table:'Tableau', image_table:'Tableau IMG', preamble:'Préambule',
+  full_document:'Document', text:'Texte', table:'Tableau', resume:'Résumé'
+};
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function showTab(tab) {
+  ['search','consultation','stats'].forEach(t => {
+    const panel = document.getElementById(`panel${cap(t)}`);
+    const btn   = document.getElementById(`tab${cap(t)}`);
+    if (panel) panel.style.display = t === tab ? '' : 'none';
+    if (btn)   btn.classList.toggle('active', t === tab);
+  });
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  const links = document.querySelectorAll('.nav-link');
+  if (tab === 'search')       links[0]?.classList.add('active');
+  if (tab === 'consultation') links[1]?.classList.add('active');
+  if (tab === 'stats')        links[2]?.classList.add('active');
+
+  // Show/hide sidebar sections depending on tab
+  const showSearchSb = tab === 'search';
+  document.getElementById('sbQuickSearch').style.display = showSearchSb ? '' : 'none';
+  document.getElementById('sbFilters').style.display     = showSearchSb ? '' : 'none';
+
+  if (tab === 'stats') populateStatPanel();
+}
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+// ── Sidebar stats on load ─────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const [esH, neo4jH, statsR] = await Promise.allSettled([
+      fetch('/api/search/health').then(r => r.json()),
+      fetch('/api/consultation/health').then(r => r.json()),
+      fetch('/api/stats').then(r => r.json())
+    ]);
+    const esOk    = esH.status === 'fulfilled'    && esH.value.alive;
+    const neo4jOk = neo4jH.status === 'fulfilled' && neo4jH.value.alive;
+    const setDot = (id, ok) => {
+      document.getElementById(id).className = 'status-dot' + (ok ? '' : ' red');
+      document.getElementById(id).title = ok ? '✅ Connecté' : '❌ Hors ligne';
+    };
+    setDot('esStatusDot',   esOk);
+    setDot('neo4jStatusDot',neo4jOk);
+
+    if (esH.status === 'fulfilled')
+      document.getElementById('sbEsCount').textContent = (esH.value.count || 0).toLocaleString('fr');
+    if (statsR.status === 'fulfilled') {
+      const s = statsR.value;
+      document.getElementById('sbNeoCount').textContent = (s.totalChunks  || 0).toLocaleString('fr');
+      document.getElementById('sbEntRel').textContent   = `${(s.totalEntities||0).toLocaleString('fr')} / ${(s.totalRelations||0).toLocaleString('fr')}`;
+      document.getElementById('sbLoi').textContent  = (s.loisCount        || 0).toLocaleString('fr');
+      document.getElementById('sbNote').textContent  = (s.notesCount       || 0).toLocaleString('fr');
+      document.getElementById('sbCode').textContent  = (s.codesCount       || 0).toLocaleString('fr');
+      document.getElementById('sbConv').textContent  = (s.conventionsCount || 0).toLocaleString('fr');
+      document.getElementById('footerGnn').textContent = `GNN: ${s.gnnActive ? 'Actif ✅' : 'Inactif'}`;
+    }
+  } catch(e) { console.warn('loadStats failed', e); }
+}
+
+// ── Stats panel (full page) ───────────────────────────────────────────────────
+async function populateStatPanel() {
+  try {
+    const [esH, neo4jH, statsR] = await Promise.allSettled([
+      fetch('/api/search/health').then(r => r.json()),
+      fetch('/api/consultation/health').then(r => r.json()),
+      fetch('/api/stats').then(r => r.json())
+    ]);
+    const setDot = (id, ok) => document.getElementById(id).className = 'status-dot' + (ok ? '' : ' red');
+    setDot('st-esDot',    esH.status === 'fulfilled'    && esH.value.alive);
+    setDot('st-neo4jDot', neo4jH.status === 'fulfilled' && neo4jH.value.alive);
+    if (esH.status === 'fulfilled')
+      document.getElementById('st-esChunks').textContent = (esH.value.count || 0).toLocaleString('fr');
+    if (statsR.status === 'fulfilled') {
+      const s = statsR.value;
+      document.getElementById('st-neoChunks').textContent = (s.totalChunks      || 0).toLocaleString('fr');
+      document.getElementById('st-entities').textContent  = (s.totalEntities    || 0).toLocaleString('fr');
+      document.getElementById('st-relations').textContent = (s.totalRelations   || 0).toLocaleString('fr');
+      document.getElementById('st-lois').textContent      = (s.loisCount        || 0).toLocaleString('fr');
+      document.getElementById('st-notes').textContent     = (s.notesCount       || 0).toLocaleString('fr');
+      document.getElementById('st-codes').textContent     = (s.codesCount       || 0).toLocaleString('fr');
+      document.getElementById('st-conv').textContent      = (s.conventionsCount || 0).toLocaleString('fr');
+      document.getElementById('st-text').textContent      = (s.textChunks       || 0).toLocaleString('fr');
+      document.getElementById('st-table').textContent     = (s.tableChunks      || 0).toLocaleString('fr');
+      document.getElementById('st-gnn').textContent       = s.gnnActive ? '✅ Actif' : '❌ Inactif';
+    }
+  } catch(e) { console.warn('stat panel failed', e); }
+}
+
+// ═══════════════════════════════════════════════════
+// CONSULTATION GENERATION
+// ═══════════════════════════════════════════════════
+
+// ── Document chips ────────────────────────────────────────────────────────────
+function addDoc() {
+  const inp = document.getElementById('docInput');
+  const val = inp.value.trim();
+  if (!val) return;
+  docs.push(val);
+  inp.value = '';
+  renderDocChips();
+}
+
+function removeDoc(i) {
+  docs.splice(i, 1);
+  renderDocChips();
+}
+
+function renderDocChips() {
+  const container = document.getElementById('docChips');
+  container.innerHTML = docs.map((d, i) =>
+    `<div class="doc-chip">
+      <span>${escHtml(d)}</span>
+      <button class="doc-chip-remove" onclick="removeDoc(${i})" title="Retirer">✕</button>
+    </div>`
+  ).join('');
+}
+
+// ── Progress steps ────────────────────────────────────────────────────────────
+const STEPS = ['retrieve','facts','scope','analysis','abbr','word'];
+
+function setStep(step, state) {
+  const el   = document.getElementById(`step-${step}`);
+  const icon = document.getElementById(`icon-${step}`);
+  if (!el) return;
+  el.className = 'progress-step ' + state;
+  if (state === 'active')   icon.innerHTML = '<span class="step-spinner"></span>';
+  else if (state === 'done') icon.textContent = '✅';
+  else                       icon.textContent = '⬜';
+}
+
+function resetSteps() {
+  STEPS.forEach(s => setStep(s, 'pending'));
+  document.getElementById('downloadArea').style.display = 'none';
+  lastDocBlob = null;
+}
+
+// ── Main generation ───────────────────────────────────────────────────────────
+async function generateConsultation() {
+  const situation = document.getElementById('consSituation').value.trim();
+  const question  = document.getElementById('consQuestion').value.trim();
+
+  if (!situation) { toast('Veuillez décrire la situation du client.', 'error'); return; }
+  if (!question)  { toast('Veuillez préciser la question fiscale.', 'error'); return; }
+
+  const payload = {
+    reference:     document.getElementById('consRef').value.trim() || `CONS-${new Date().getFullYear()}-XXX`,
+    clientName:    document.getElementById('consClient').value.trim() || 'Client',
+    situation,
+    fiscalQuestion: question,
+    documents:     [...docs]
+  };
+
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Génération en cours…';
+  resetSteps();
+
+  // Animate progress steps (approximate timing; server is the source of truth)
+  setStep('retrieve', 'active');
+  const stepTimers = [
+    setTimeout(() => { setStep('retrieve','done'); setStep('facts','active'); },  4000),
+    setTimeout(() => { setStep('facts','done');    setStep('scope','active'); },  12000),
+    setTimeout(() => { setStep('scope','done');    setStep('analysis','active');},18000),
+    setTimeout(() => { setStep('analysis','done'); setStep('abbr','active'); },   45000),
+    setTimeout(() => { setStep('abbr','done');     setStep('word','active'); },   55000),
+  ];
+
+  try {
+    const resp = await fetch('/api/consultation/generate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
+    });
+
+    stepTimers.forEach(clearTimeout);
+    STEPS.forEach(s => setStep(s, 'done'));
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+      throw new Error(err.error || `HTTP ${resp.status}`);
+    }
+
+    // Get file as blob and prepare download
+    const blob = await resp.blob();
+    const cd   = resp.headers.get('Content-Disposition') || '';
+    lastDocName = cd.match(/filename="?([^";]+)"?/)?.[1] || `Consultation_${payload.reference}.docx`;
+    lastDocBlob = blob;
+
+    const area = document.getElementById('downloadArea');
+    area.style.display = 'block';
+    document.getElementById('downloadBtn').onclick = triggerDownload;
+    triggerDownload(); // auto-download
+
+    toast('Consultation générée avec succès !', 'success');
+
+  } catch(e) {
+    stepTimers.forEach(clearTimeout);
+    STEPS.forEach(s => { const el = document.getElementById(`icon-${s}`); if (el?.textContent === '⬜') {} });
+    setStep('word', 'pending');
+    toast(`Erreur : ${e.message}`, 'error');
+    console.error(e);
+  } finally {
+    btn.disabled  = false;
+    btn.textContent = '🚀 Générer la Consultation';
+  }
+}
+
+function triggerDownload() {
+  if (!lastDocBlob) return;
+  const url = URL.createObjectURL(lastDocBlob);
+  const a   = document.createElement('a');
+  a.href     = url;
+  a.download = lastDocName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════
+// SEARCH ENGINE
+// ═══════════════════════════════════════════════════
+
+function quickSearch(q) {
+  showTab('search');
+  document.getElementById('searchInput').value = q;
+  doSearch();
+}
+
+async function doSearch() {
+  const query = document.getElementById('searchInput').value.trim();
+  if (!query) return;
+  const btn = document.getElementById('searchBtn');
+  btn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px"></span>Recherche…';
+  btn.disabled = true;
+  const container = document.getElementById('searchResults');
+  container.innerHTML = renderSkeletons();
+  showingAll = false;
+  try {
+    const payload = {
+      query,
+      docType:   document.getElementById('filterDocType').value,
+      chunkType: document.getElementById('filterChunkType').value,
+      yearMin:   parseInt(document.getElementById('yearMin').value) || 2000,
+      yearMax:   parseInt(document.getElementById('yearMax').value) || 2030,
+      size: 50
+    };
+    const resp = await fetch('/api/search', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    searchData = await resp.json();
+    renderSearchResults(searchData, query);
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>
+      <div class="empty-title">Erreur de connexion</div>
+      <div class="empty-sub">Elasticsearch inaccessible.<br/><small>${escHtml(e.message)}</small></div></div>`;
+    toast(e.message, 'error');
+  } finally {
+    btn.innerHTML = '🔍 Rechercher'; btn.disabled = false;
+  }
+}
+
+function renderSkeletons() {
+  return Array(3).fill(0).map(() =>
+    `<div class="result-card top">
+      <div class="skeleton" style="height:14px;width:60%;margin-bottom:8px"></div>
+      <div class="skeleton" style="height:11px;width:40%;margin-bottom:10px"></div>
+      <div class="skeleton" style="height:40px;width:100%"></div>
+    </div>`).join('');
+}
+
+function renderSearchResults(data, query) {
+  const container = document.getElementById('searchResults');
+  if (!data.hits?.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔎</div>
+      <div class="empty-title">Aucun résultat</div>
+      <div class="empty-sub">Essayez d'autres mots-clés ou désactivez les filtres.</div></div>`;
+    return;
+  }
+  const {hits, total, elapsedMs, maxScore, docTypeBuckets, chunkTypeBuckets} = data;
+  let html = `<div class="metrics-row">
+    <div class="metric-pill">Résultats : <b>${total.toLocaleString('fr')}</b></div>
+    <div class="metric-pill">Temps : <b>${Math.round(elapsedMs)} ms</b></div>
+    <div class="metric-pill">Meilleur score : <b>${(maxScore||0).toFixed(2)}</b></div>
+  </div>`;
+  const allBuckets = [...(docTypeBuckets||[]), ...(chunkTypeBuckets||[])];
+  if (allBuckets.length) {
+    html += '<div class="tags-row" style="margin-bottom:14px">';
+    allBuckets.forEach(b => {
+      html += `<span class="tag ${TAG_CSS[b.key]||'tag-other'}">${TAG_LABELS[b.key]||b.key}: ${b.count}</span>`;
+    });
+    html += '</div>';
+  }
+  html += `<h3 style="font-family:'Playfair Display',serif;font-size:16px;color:var(--black);margin-bottom:12px">🏆 Top résultats <span style="font-size:12px;color:var(--muted);font-weight:400;font-family:'DM Sans',sans-serif">— classés par pertinence BM25</span></h3>`;
+  hits.slice(0,5).forEach((h,i) => html += renderCard(h, i+1, maxScore, true));
+  if (hits.length > 5) {
+    html += `<div class="section-divider">↓ ${hits.length-5} résultats supplémentaires ↓</div>`;
+    html += `<button class="show-more-btn" id="showMoreBtn" onclick="toggleMore()">Afficher les ${hits.length-5} résultats suivants ▼</button>`;
+    html += '<div id="moreResults" style="display:none">';
+    hits.slice(5).forEach((h,i) => html += renderCard(h, i+6, maxScore, false));
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function toggleMore() {
+  showingAll = !showingAll;
+  document.getElementById('moreResults').style.display = showingAll ? '' : 'none';
+  document.getElementById('showMoreBtn').textContent = showingAll ? 'Masquer ▲' : 'Afficher les résultats suivants ▼';
+}
+
+function renderCard(hit, rank, maxScore, isTop) {
+  const pct = Math.max(2, Math.min(100, Math.round((hit.score / Math.max(maxScore,0.01)) * 100)));
+  const title = [hit.filename, hit.articleNumber ? `Art. ${hit.articleNumber}` : '', hit.sectionTitle]
+    .filter(Boolean).join(' — ') || 'Sans titre';
+  const page = hit.pageNumber ? ` · p.${hit.pageNumber}` : '';
+  const lbl  = TAG_LABELS[hit.chunkType]    || hit.chunkType;
+  const css  = TAG_CSS[hit.chunkType]       || 'tag-other';
+  const dlbl = TAG_LABELS[hit.documentType] || hit.documentType;
+  const dcss = TAG_CSS[hit.documentType]    || 'tag-other';
+  return `
+  <div class="result-card ${isTop ? 'top' : 'rest'}">
+    <div class="card-row">
+      <span class="card-rank">#${rank}</span>
+      <span class="card-title">${escHtml(title)}</span>
+      <span class="card-score-badge">${hit.score.toFixed(2)}</span>
+    </div>
+    <div class="tags-row">
+      ${dlbl ? `<span class="tag ${dcss}">${escHtml(dlbl)}</span>` : ''}
+      <span class="tag ${css}">${escHtml(lbl)}</span>
+    </div>
+    <div class="snippet">${sanitizeHighlight(hit.highlight) || escHtml((hit.content||'').slice(0,300)+'…')}</div>
+    <div class="score-track"><div class="score-fill" style="width:${pct}%"></div></div>
+    <div class="card-meta">${escHtml(hit.filename)}${page}</div>
+  </div>`;
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function sanitizeHighlight(rawHtml) {
+  if (!rawHtml) return '';
+  const stop = ['de','la','le','à','au','que','et','ou','un','une','du','des','en','par','pour','avec','sans','sur','dans','entre'];
+  stop.forEach(w => { rawHtml = rawHtml.replace(new RegExp(`<em>${w}</em>`,'gi'), w); });
+  // Only allow <em> tags — escape everything else
+  return rawHtml.split(/(<\/?em>)/gi)
+    .map(p => /^<\/?em>$/i.test(p) ? p : escHtml(p)).join('');
+}
+
+function toast(msg, type) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type||''}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 5000);
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Consultation history search ───────────────────────────────────────────────
+async function searchHistory() {
+  const input   = document.getElementById('consultInput');
+  const results = document.getElementById('historyResults');
+  const client  = (input.value || '').trim();
+  if (!client) return;
+
+  results.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px">Recherche en cours…</div>';
+
+  try {
+    const resp = await fetch('/api/consultation/history?client=' + encodeURIComponent(client));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    if (!data.length) {
+      results.innerHTML = `
+        <div class="empty-state" style="padding:20px">
+          <div class="empty-icon">📭</div>
+          <div class="empty-title">Aucune consultation trouvée</div>
+          <div class="empty-sub">Aucune consultation pour "<b>${escHtml(client)}</b>".<br/>
+          Générez d'abord une consultation via l'onglet <b>Consultation IA</b>.</div>
+        </div>`;
+      return;
+    }
+
+    results.innerHTML =
+      `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        ${data.length} consultation(s) trouvée(s) pour <b>${escHtml(client)}</b>
+       </div>`
+      + data.map((c, i) => renderHistoryCard(c, i)).join('');
+
+  } catch(e) {
+    results.innerHTML = `<div style="color:var(--red);font-size:13px;padding:8px">
+      Erreur: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderHistoryCard(c, i) {
+  const id       = 'hcard_' + i;
+  const sommaire = (c.sommaire || '').slice(0, 500);
+  const analyses = (c.analyses || '');
+  const hasSom   = sommaire.length > 0;
+  const hasAna   = analyses.length > 0;
+
+  return `
+  <div class="consult-card">
+    <div class="consult-client">📄 ${escHtml(c.client_name || '')}</div>
+    <div class="consult-meta">
+      <span>📅 ${escHtml(c.date        || '')}</span>
+      <span>🔖 ${escHtml(c.reference   || '')}</span>
+      <span>⚙️ ${escHtml(c.method      || '')}</span>
+      <span>📚 ${c.sources_count || 0} sources</span>
+      <span>⏱ ${c.elapsed_min   || 0} min</span>
+    </div>
+    ${hasSom ? `<div class="consult-sommaire">${escHtml(sommaire)}${(c.sommaire||'').length > 500 ? '…' : ''}</div>` : ''}
+    ${hasAna ? `
+      <button class="consult-expand-btn" id="btn_${id}"
+        onclick="
+          const el  = document.getElementById('${id}');
+          const btn = document.getElementById('btn_${id}');
+          const show = el.style.display !== 'block';
+          el.style.display  = show ? 'block' : 'none';
+          btn.textContent   = show ? '▲ Masquer les analyses' : '▼ Voir les analyses complètes';
+        ">▼ Voir les analyses complètes</button>
+      <div class="consult-analyses" id="${id}">${escHtml(analyses)}</div>
+    ` : ''}
+  </div>`;
+}
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadStats();
+  // Default state
+  document.getElementById('sbQuickSearch').style.display = '';
+  document.getElementById('sbFilters').style.display     = '';
+  document.getElementById('searchInput').focus();
+});
+</script>
+</body>
+</html>

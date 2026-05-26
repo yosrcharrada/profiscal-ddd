@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Neo4j.Driver"                          Version="5.18.0" />
+    <PackageReference Include="DocumentFormat.OpenXml"                Version="3.0.2"  />
+    <PackageReference Include="Microsoft.Extensions.Http"             Version="8.0.0"  />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FiscalPlatform.Application\FiscalPlatform.Application.csproj" />
+    <ProjectReference Include="..\FiscalPlatform.Domain\FiscalPlatform.Domain.csproj"           />
+  </ItemGroup>
+</Project>

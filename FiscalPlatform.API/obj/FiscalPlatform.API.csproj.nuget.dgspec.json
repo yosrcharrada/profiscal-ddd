@@ -1,0 +1,326 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\profiscal_new\\FiscalPlatform.API\\FiscalPlatform.API.csproj": {}
+  },
+  "projects": {
+    "C:\\profiscal_new\\FiscalPlatform.API\\FiscalPlatform.API.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\profiscal_new\\FiscalPlatform.API\\FiscalPlatform.API.csproj",
+        "projectName": "FiscalPlatform.API",
+        "projectPath": "C:\\profiscal_new\\FiscalPlatform.API\\FiscalPlatform.API.csproj",
+        "packagesPath": "C:\\Users\\yosrc\\.nuget\\packages\\",
+        "outputPath": "C:\\profiscal_new\\FiscalPlatform.API\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\yosrc\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\profiscal_new\\FiscalPlatform.Application\\FiscalPlatform.Application.csproj": {
+                "projectPath": "C:\\profiscal_new\\FiscalPlatform.Application\\FiscalPlatform.Application.csproj"
+              },
+              "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj": {
+                "projectPath": "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj"
+              },
+              "C:\\profiscal_new\\FiscalPlatform.Infrastructure\\FiscalPlatform.Infrastructure.csproj": {
+                "projectPath": "C:\\profiscal_new\\FiscalPlatform.Infrastructure\\FiscalPlatform.Infrastructure.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "DocumentFormat.OpenXml": {
+              "target": "Package",
+              "version": "[3.0.2, )"
+            },
+            "DotNetEnv": {
+              "target": "Package",
+              "version": "[3.0.0, )"
+            },
+            "MediatR": {
+              "target": "Package",
+              "version": "[12.2.0, )"
+            },
+            "Swashbuckle.AspNetCore": {
+              "target": "Package",
+              "version": "[6.6.2, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.AspNetCore.App": {
+              "privateAssets": "none"
+            },
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.419/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\profiscal_new\\FiscalPlatform.Application\\FiscalPlatform.Application.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\profiscal_new\\FiscalPlatform.Application\\FiscalPlatform.Application.csproj",
+        "projectName": "FiscalPlatform.Application",
+        "projectPath": "C:\\profiscal_new\\FiscalPlatform.Application\\FiscalPlatform.Application.csproj",
+        "packagesPath": "C:\\Users\\yosrc\\.nuget\\packages\\",
+        "outputPath": "C:\\profiscal_new\\FiscalPlatform.Application\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\yosrc\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj": {
+                "projectPath": "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "FluentValidation": {
+              "target": "Package",
+              "version": "[11.9.0, )"
+            },
+            "FluentValidation.DependencyInjectionExtensions": {
+              "target": "Package",
+              "version": "[11.9.0, )"
+            },
+            "MediatR": {
+              "target": "Package",
+              "version": "[12.2.0, )"
+            },
+            "Microsoft.Extensions.Logging.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.419/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj",
+        "projectName": "FiscalPlatform.Domain",
+        "projectPath": "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj",
+        "packagesPath": "C:\\Users\\yosrc\\.nuget\\packages\\",
+        "outputPath": "C:\\profiscal_new\\FiscalPlatform.Domain\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\yosrc\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.419/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\profiscal_new\\FiscalPlatform.Infrastructure\\FiscalPlatform.Infrastructure.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\profiscal_new\\FiscalPlatform.Infrastructure\\FiscalPlatform.Infrastructure.csproj",
+        "projectName": "FiscalPlatform.Infrastructure",
+        "projectPath": "C:\\profiscal_new\\FiscalPlatform.Infrastructure\\FiscalPlatform.Infrastructure.csproj",
+        "packagesPath": "C:\\Users\\yosrc\\.nuget\\packages\\",
+        "outputPath": "C:\\profiscal_new\\FiscalPlatform.Infrastructure\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\yosrc\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\profiscal_new\\FiscalPlatform.Application\\FiscalPlatform.Application.csproj": {
+                "projectPath": "C:\\profiscal_new\\FiscalPlatform.Application\\FiscalPlatform.Application.csproj"
+              },
+              "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj": {
+                "projectPath": "C:\\profiscal_new\\FiscalPlatform.Domain\\FiscalPlatform.Domain.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "DocumentFormat.OpenXml": {
+              "target": "Package",
+              "version": "[3.0.2, )"
+            },
+            "Microsoft.Extensions.Hosting.Abstractions": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Extensions.Http": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Neo4j.Driver": {
+              "target": "Package",
+              "version": "[5.18.0, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.419/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

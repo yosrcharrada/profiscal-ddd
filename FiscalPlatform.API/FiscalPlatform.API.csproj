@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MediatR"                  Version="12.2.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore"   Version="6.6.2"  />
+    <PackageReference Include="DotNetEnv"                Version="3.0.0"  />
+    <PackageReference Include="DocumentFormat.OpenXml"   Version="3.0.2"  />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FiscalPlatform.Application\FiscalPlatform.Application.csproj"      />
+    <ProjectReference Include="..\FiscalPlatform.Infrastructure\FiscalPlatform.Infrastructure.csproj"/>
+    <ProjectReference Include="..\FiscalPlatform.Domain\FiscalPlatform.Domain.csproj"                />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="template_fr.docx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

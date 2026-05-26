@@ -1,0 +1,39 @@
+{
+  "Version": 1,
+  "Hash": "f5xTf/4Xz70uo8TzhTt2CkYOvFn5/G+Jkfpiookzh08=",
+  "Source": "FiscalPlatform.API",
+  "BasePath": "_content/FiscalPlatform.API",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [
+    {
+      "Name": "FiscalPlatform.API\\wwwroot",
+      "Source": "FiscalPlatform.API",
+      "ContentRoot": "C:\\profiscal_new\\FiscalPlatform.API\\wwwroot\\",
+      "BasePath": "_content/FiscalPlatform.API",
+      "Pattern": "**"
+    }
+  ],
+  "Assets": [
+    {
+      "Identity": "C:\\profiscal_new\\FiscalPlatform.API\\wwwroot\\ey-logo-black.jpg",
+      "SourceId": "FiscalPlatform.API",
+      "SourceType": "Discovered",
+      "ContentRoot": "C:\\profiscal_new\\FiscalPlatform.API\\wwwroot\\",
+      "BasePath": "_content/FiscalPlatform.API",
+      "RelativePath": "ey-logo-black.jpg",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "PreferTarget",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot\\ey-logo-black.jpg"
+    }
+  ]
+}

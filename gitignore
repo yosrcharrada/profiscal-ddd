@@ -1,0 +1,56 @@
+# ── .NET ─────────────────────────────────────────────────────────────────────
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.swp
+*.DS_Store
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ── Secrets & Environment ─────────────────────────────────────────────────────
+.env
+*.env
+appsettings.Development.json
+*secrets*
+*secret*
+
+# ── Python ────────────────────────────────────────────────────────────────────
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+combined_bundle.pem
+
+# ── Model cache (large files — keep local only) ───────────────────────────────
+model_cache/
+
+# ── Word template output (binary — commit template_fr.docx manually) ──────────
+Consultation_*.docx
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── NuGet ────────────────────────────────────────────────────────────────────
+*.nupkg
+.nuget/
+packages/
+
+# ── Rider / JetBrains ────────────────────────────────────────────────────────
+.idea/
+
+# ── VS Code ──────────────────────────────────────────────────────────────────
+.vscode/
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
