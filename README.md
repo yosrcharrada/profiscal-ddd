@@ -1,75 +1,182 @@
-# ProFiscal — Plateforme de Consultation Fiscale Augmentée
+# ProFiscal-DDD — Plateforme de Consultation Fiscale Augmentée
 ### EY Tunisia · Tax Technology · 2026
 
 ---
 
-## What is ProFiscal?
+## What is ProFiscal-DDD?
 
-ProFiscal is an AI-powered fiscal consultation platform built for EY Tunisia's tax team.
+ProFiscal-DDD is an AI-powered fiscal consultation platform built for EY Tunisia's tax team.
 It generates professional Word (.docx) consultations in under 2 minutes by combining:
 
 - **GraphRAG** — 30,000+ legal document chunks indexed in Neo4j
 - **Semantic search** — multilingual sentence embeddings (768-dim)
-- **GPT-4o** — Azure OpenAI for structured legal analysis
-- **Elasticsearch** — BM25 full-text search + consultation history
+- **GPT-4o via Azure OpenAI** — structured legal analysis
+- **Semantic Kernel Agents** — true agentic refinement with tool-calling
+- **Elasticsearch** — BM25 full-text search + consultation history + ratings
 
 ---
 
 ## Architecture
 
-This project follows **DDD + Clean Architecture + CQRS** principles, split into 4 layers:
+This project follows **DDD + Clean Architecture + CQRS** across 4 layers with strict compile-time dependency enforcement:
 
 ```
 FiscalPlatform.sln
-├── FiscalPlatform.Domain/          ← Business rules, no external dependencies
-│   ├── Aggregates/Consultation/    ← Consultation aggregate root
-│   ├── ValueObjects/               ← LegalBranch, Country
-│   ├── Repositories/               ← IConsultationRepository (interface)
-│   └── Events/                     ← Domain events
-│
-├── FiscalPlatform.Application/     ← Use cases (CQRS with MediatR)
-│   ├── Consultation/Commands/      ← Generate, Rate, Refine
-│   ├── Consultation/Queries/       ← GetHistory
-│   ├── Search/Queries/             ← SearchLegalDocuments
-│   ├── Chat/Queries/               ← GraphRAG chat
-│   └── Common/                     ← Interfaces, Behaviours, DTOs
-│
-├── FiscalPlatform.Infrastructure/  ← External services
-│   ├── Agents/                     ← LlmAgent, RetrievalAgent, EmbedSearchAgent,
-│   │                                  DocumentGenerationAgent, FeedbackAgent
-│   ├── DomainServices/             ← BranchDetector, CountryDetector, KeywordExtractor
-│   ├── Persistence/                ← ElasticsearchConsultationRepository
-│   └── Search/                     ← ElasticsearchSearchAgent
-│
-└── FiscalPlatform.API/             ← HTTP layer (thin controllers only)
-    ├── Controllers/                ← 7 controllers, one per bounded context
-    ├── Middleware/                 ← Global exception handling
-    └── Requests/                  ← API-layer DTOs
+├── FiscalPlatform.Domain/           ← Business rules, zero external dependencies
+├── FiscalPlatform.Application/      ← Use cases (CQRS with MediatR + SK Agents)
+├── FiscalPlatform.Infrastructure/   ← External services (Neo4j, ES, OpenAI, SK)
+└── FiscalPlatform.API/              ← HTTP layer (thin controllers only)
 ```
 
-### Multi-Agent Pipeline
+### Project Structure
 
-| Agent | Technology | Responsibility |
+```
+FiscalPlatform.Domain/
+├── Aggregates/Consultation/    ← Rich aggregate root: Rate(), Refine(), BeginSession()
+├── ValueObjects/               ← LegalBranch (IS/IRPP/TVA/Retenue/PrixTransfert), Country
+├── Repositories/               ← IConsultationRepository (interface only)
+├── Events/                     ← ConsultationGeneratedEvent, RatedEvent, RefinedEvent
+└── Exceptions/                 ← ConsultationGenerationException, NoSourcesFoundException
+
+FiscalPlatform.Application/
+├── Consultation/Commands/
+│   ├── GenerateConsultation/   ← Orchestrator: Parallel Execution (Phase 2‖3)
+│   ├── RefineConsultation/     ← TRUE SK ChatCompletionAgent with tool-calling
+│   └── RateConsultation/       ← Star rating + FeedbackAgent trigger
+├── Consultation/Queries/       ← GetConsultationHistory
+├── Search/Queries/             ← SearchLegalDocuments
+├── KnowledgeBase/Queries/      ← GetStats
+├── Chat/Queries/               ← GraphRAG chat
+└── Common/
+    ├── Interfaces/Agents/      ← IRetrievalAgent, IEmbedSearchAgent, ILlmAgent...
+    ├── Interfaces/Services/    ← IBranchDetector, ICountryDetector, ISessionStore
+    ├── Behaviours/             ← LoggingBehaviour, ValidationBehaviour (MediatR pipeline)
+    └── DTOs/                   ← ConsultationOutput, LegalSourceDto, AnalysisRow
+
+FiscalPlatform.Infrastructure/
+├── Agents/
+│   ├── LlmAgent.cs             ← Azure OpenAI HTTP client (3 calls per consultation)
+│   ├── RetrievalAgent.cs       ← All Neo4j Cypher queries + newest-doc filtering
+│   ├── EmbedSearchAgent.cs     ← Python embed server HTTP client (768-dim vectors)
+│   ├── DocumentGenerationAgent.cs ← Word .docx generation via OpenXML
+│   └── FeedbackAgent.cs        ← ES ratings storage
+├── Kernel/                     ← Semantic Kernel infrastructure
+│   ├── FiscalKernelFactory.cs  ← Builds SK Kernel with AzureOpenAI + plugins
+│   └── Plugins/
+│       ├── RetrievalPlugin.cs  ← [KernelFunction] semantic_search, keyword_search, search_convention, full_retrieval
+│       └── LegalAnalysisPlugin.cs ← [KernelFunction] analyze_fiscal_point, refine_section, generate_sommaire, answer_fiscal_question
+├── Guardrails/
+│   └── FiscalGuardrails.cs     ← Input guardrail (fiscal keyword check) + Output guardrail (citation validation)
+├── Memory/
+│   └── RewardMemory.cs         ← RLHF: ES ratings → source score boost/penalty
+├── DomainServices/             ← BranchDetector, CountryDetector, KeywordExtractor (rule-based)
+├── Persistence/                ← ElasticsearchConsultationRepository
+├── Search/                     ← ElasticsearchSearchAgent (BM25 full-text)
+└── DependencyInjection.cs      ← Composition root — all registrations
+
+FiscalPlatform.API/
+├── Controllers/                ← 7 controllers, one per bounded context
+├── Middleware/                 ← Global exception handling
+└── Requests/                  ← API-layer DTOs + FileTextExtractor
+```
+
+---
+
+## Multi-Agent Architecture
+
+### Agent Classification
+
+| Agent | Type | Responsibility |
 |---|---|---|
-| BranchDetector | Rule-based | Detect IS / IRPP / TVA / Retenue / PrixTransfert |
-| CountryDetector | Rule-based | Detect country + international flag |
-| KeywordExtractor | Rule-based | Extract keywords and entities |
-| EmbedSearchAgent | Sentence Transformers (768-dim) | Semantic vector search |
-| RetrievalAgent | Neo4j Cypher | Graph-based legal source retrieval |
-| LlmAgent | Azure OpenAI GPT-4o | Consultation generation (3 calls only) |
-| DocumentGenerationAgent | OpenXML | Word .docx generation |
-| FeedbackAgent | Elasticsearch | Rating storage |
+| `BranchDetector` | Rule-based service | Detect IS / IRPP / TVA / Retenue / PrixTransfert |
+| `CountryDetector` | Rule-based service | Detect country + international flag |
+| `KeywordExtractor` | Rule-based service | Extract keywords and entities |
+| `EmbedSearchAgent` | Vector search | Semantic similarity via 768-dim embeddings |
+| `RetrievalAgent` | Graph queries | Neo4j Cypher — newest docs, diversity, hierarchy |
+| `LlmAgent` | Azure OpenAI | GPT-4o calls — exactly 3 per consultation |
+| `DocumentGenerationAgent` | OpenXML | Word .docx template filling |
+| `FeedbackAgent` | ES writes | Rating storage |
+| **`ChatCompletionAgent`** | **TRUE SK Agent** | **Refinement: Brain + Memory + Tool-calling** |
 
-### Workflow Orchestration Patterns
+### True SK Agent — Consultation Refinement
 
-| Feature | Pattern |
-|---|---|
-| Consultation generation | Parallel Execution (Phase 2 ‖ Phase 3) inside Orchestrator |
-| Branch / country detection | Conditional Branching |
-| Rating, persistence | Event-Driven Choreography |
-| Conversation / refinement | State Machine + Human-in-the-Loop |
-| Source retrieval | Hierarchical Delegation |
-| JSON parse failure | Reflective Loop (max 2 iterations) |
+The `RefineConsultationCommandHandler` uses a genuine `ChatCompletionAgent` (Semantic Kernel 1.45):
+
+- **Brain** — Reasons about the user's instruction and decides which tools to invoke
+- **Memory** — `ChatHistory` (volatile session) + `RewardMemory` (ES ratings influence future retrievals)
+- **Actions/Tools** — 6 `[KernelFunction]` tools the agent can call autonomously:
+
+```
+Retrieval.semantic_search      → broad vector search for new sources
+Retrieval.search_convention    → scoped search in a country's convention
+Retrieval.keyword_search       → keyword search + reward memory boost
+Retrieval.full_retrieval       → complete pipeline (Neo4j + embed combined)
+Analysis.refine_section        → rewrite a section based on instruction
+Analysis.analyze_fiscal_point  → deep analysis of a specific point
+Analysis.generate_sommaire     → regenerate executive summary
+Analysis.answer_fiscal_question → answer a direct question
+```
+
+Example agent flow:
+```
+User: "Ajoute des sources sur la retenue pour les non-résidents français"
+
+Agent reasons: "User wants more sources → call keyword_search first"
+Agent calls:   Retrieval.keyword_search("retenue non-résident", "Retenue")
+Agent gets:    8 new sources from Neo4j with reward boost applied
+Agent reasons: "Now refine the analyses section with new sources"
+Agent calls:   Analysis.refine_section("analyses", currentContent, instruction, newSources)
+Agent returns: Updated analyses with new [Sn] citations
+```
+
+---
+
+## Workflow Orchestration Patterns
+
+| Feature | Pattern | Why |
+|---|---|---|
+| Consultation generation | **Parallel Execution inside Orchestrator** | Phase 2‖Phase 3 run simultaneously — under 1 min |
+| Branch/country detection | **Conditional Branching** | Decides which agents activate — zero LLM |
+| Rating, persistence | **Event-Driven Choreography** | Non-blocking, decoupled from generation |
+| Conversation/refinement | **State Machine + Human-in-the-Loop** | Generated → UnderReview → Refined → Approved |
+| Source retrieval | **Hierarchical Delegation** | Handler → RetrievalAgent → sub-queries |
+| JSON parse failure | **Reflective Loop** (max 2 iterations) | Retry with corrected prompt |
+
+---
+
+## Guardrails
+
+### Input Guardrail
+- Verifies the question contains fiscal keywords before calling GPT-4o
+- Blocks off-topic requests — saves tokens and prevents misuse
+- Returns a clear error message if non-fiscal
+
+### Output Guardrail
+After generation, automatically checks:
+1. All `[Sn]` citations reference sources that actually exist
+2. Analyses section is not empty or too short
+3. Each analysis table row has a clear verdict (OUI/NON/SOUMIS/EXONÉRÉ)
+4. No hallucinated citation patterns detected
+5. Minimum 3 citations present
+
+---
+
+## Memory Architecture
+
+| Type | Storage | Used for | Lifetime |
+|---|---|---|---|
+| Volatile (short-term) | `ConcurrentDictionary<sessionId, ChatHistory>` | Active refinement conversation | Active session |
+| Episodic | Elasticsearch — full consultation JSON | History tab, search by client | Permanent |
+| Reward (RLHF) | Elasticsearch — ratings + source metadata | Boost/demote sources in future retrievals | Permanent |
+
+---
+
+## Legal Hierarchy (strictly enforced)
+
+```
+International case:  Convention → Codes → Lois de Finances → Doctrine
+Local case:          Codes → Lois de Finances → Doctrine
+```
 
 ---
 
@@ -78,19 +185,19 @@ FiscalPlatform.sln
 | Method | URL | Description |
 |---|---|---|
 | POST | /api/consultation/generate | Generate a fiscal consultation (.docx) |
-| GET | /api/consultation/history?client=X | Get consultation history by client name |
+| GET  | /api/consultation/history?client=X | Get consultation history by client |
 | POST | /api/consultation/session/start | Start a refinement conversation session |
 | POST | /api/consultation/session/end | End and archive the session |
-| POST | /api/refinement/message | Send a message in the refinement conversation |
+| POST | /api/refinement/message | Send a message to the SK refinement agent |
 | POST | /api/rating | Submit a 1–5 star rating |
 | POST | /api/search | Full-text legal document search |
-| GET | /api/stats | Knowledge base statistics |
+| GET  | /api/stats | Knowledge base statistics |
 | POST | /api/chat | GraphRAG chat |
 | POST | /api/document/extract | Extract text from uploaded file |
-| GET | /api/search/health | Elasticsearch health |
-| GET | /api/stats/health | Neo4j health |
+| GET  | /api/search/health | Elasticsearch health |
+| GET  | /api/stats/health | Neo4j health |
 
-Swagger UI available at: `http://localhost:8080/swagger`
+Swagger UI: `http://localhost:8080/swagger`
 
 ---
 
@@ -100,9 +207,9 @@ Swagger UI available at: `http://localhost:8080/swagger`
 |---|---|---|
 | .NET SDK | 8.0+ | C# backend |
 | Python | 3.11+ | Embed server |
-| Neo4j | 5.x | Graph knowledge base |
-| Elasticsearch | 9.x | Full-text search + consultation history |
-| GPT-4o | via EY Azure | LLM generation |
+| Neo4j | 5.x | Graph knowledge base (67K nodes, 291K relations) |
+| Elasticsearch | 9.x | Full-text search + history + ratings |
+| GPT-4o | EY Azure OpenAI | LLM generation (EY network required) |
 
 ---
 
@@ -111,13 +218,13 @@ Swagger UI available at: `http://localhost:8080/swagger`
 ### 1 — Clone
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/profiscal-ddd.git
+git clone https://github.com/yosrcharrada/profiscal-ddd.git
 cd profiscal-ddd
 ```
 
 ### 2 — Environment variables
 
-Create a `.env` file at the root (never commit this):
+Create `.env` at the solution root (never commit this):
 
 ```env
 NEO4J_URI=neo4j://127.0.0.1:7687
@@ -134,25 +241,20 @@ ES_HOST=http://localhost:9200
 ES_INDEX=tunisian_legal
 ```
 
-### 3 — Python venv (for embed server)
+### 3 — Python venv (embed server)
 
 ```bash
 python -m venv venv
-venv\Scripts\activate          # Windows
+venv\Scripts\activate
 pip install flask neo4j python-dotenv certifi
 pip install sentence-transformers==2.7.0
 pip install huggingface_hub==0.21.4
 ```
 
-### 4 — NuGet restore
+### 4 — Build
 
 ```bash
 dotnet restore FiscalPlatform.sln
-```
-
-### 5 — Build
-
-```bash
 dotnet build FiscalPlatform.sln
 ```
 
@@ -160,62 +262,40 @@ dotnet build FiscalPlatform.sln
 
 ## Running the Platform
 
-Start all three services in separate terminals:
-
-**Terminal 1 — Elasticsearch**
-```bash
-# Navigate to your Elasticsearch installation
-.\bin\elasticsearch.bat
-```
+**Terminal 1 — Elasticsearch** (start from your ES installation)
 
 **Terminal 2 — Embed server**
 ```bash
-cd profiscal-ddd
 venv\Scripts\activate
 python embed_server.py
 ```
-Waits for: `Model loaded in Xs — dim=768`
+Wait for: `Model loaded — dim=768`
 
 **Terminal 3 — .NET API**
 ```bash
-cd profiscal-ddd
 dotnet run --project FiscalPlatform.API\FiscalPlatform.API.csproj
 ```
-Waits for: `Now listening on: http://localhost:8080`
+Wait for: `Now listening on: http://localhost:8080`
 
-Open browser: **http://localhost:8080**
+Open: **http://localhost:8080**
 
 ---
 
-## Key Features
+## Tech Stack
 
-### Consultation Generation
-- Detects fiscal branches (IS, IRPP, TVA, Retenue, Prix de Transfert)
-- Detects countries and applies international hierarchy (Convention first)
-- Retrieves 30 sources from the legal knowledge base
-- Corrects article_ref metadata errors at runtime
-- Generates structured Word .docx with EY branding
-- Auto-saves to Elasticsearch for history
-
-### Legal Hierarchy (strictly enforced)
-```
-International case:  Convention → Codes → Lois de Finances → Doctrine
-Local case:          Codes → Lois de Finances → Doctrine
-```
-
-### Consultation History
-- Every generated consultation is automatically saved to ES
-- Search by client name from the Search tab
-- Results show sommaire + expandable full analyses
-
-### Conversation / Refinement
-- After generation, open a session and chat to refine any section
-- Session stored in-memory (volatile) while active
-- Archived to Elasticsearch when session ends
-
-### Star Rating
-- Rate any consultation 1–5 stars
-- Ratings stored in `profiscal_ratings` ES index
+| Component | Technology |
+|---|---|
+| Backend | C# .NET 8 |
+| CQRS | MediatR 12.2 |
+| Validation | FluentValidation 11.9 |
+| True Agent | Microsoft Semantic Kernel 1.45 (ChatCompletionAgent) |
+| Graph DB | Neo4j.Driver 5.18 |
+| Word generation | DocumentFormat.OpenXml 3.0 |
+| Search | Elasticsearch 9 |
+| Env loading | DotNetEnv 3.0 |
+| API docs | Swashbuckle (Swagger) |
+| Embeddings | sentence-transformers paraphrase-multilingual-mpnet-base-v2 (768-dim) |
+| LLM | GPT-4o via EY Azure OpenAI |
 
 ---
 
@@ -223,38 +303,14 @@ Local case:          Codes → Lois de Finances → Doctrine
 
 | Metric | Value |
 |---|---|
-| Total chunks | 30,125 |
-| Entities | 34,771 |
-| Relations | 291,715 |
-| Embedding model | paraphrase-multilingual-mpnet-base-v2 (768-dim) |
+| Total chunks | 67,392 nodes |
+| Relationships | 291,715 |
+| Embedding dimensions | 768 |
 | Similarity threshold | 0.30 |
+| ES legal documents | 13,590 |
 
-Document types covered: Lois de Finances, Codes fiscaux (CIRPPIS, CTVA, CDPF), Conventions de non-double imposition, Notes Communes, Commentaires Faiez Choyakh, Décrets & Arrêtés.
-
----
-
-## Project Structure Notes
-
-- `embed_server.py` — standalone Python microservice on port 8081
-- `template_fr.docx` — EY Word template with placeholders
-- `model_cache/` — local sentence-transformer model (not committed, ~1GB)
-- `.env` — secrets file (never committed)
+Document types: Lois de Finances, CIRPPIS, CTVA, CDPF, Conventions de non-double imposition, Notes Communes, Commentaires Faiez Choyakh, Décrets & Arrêtés.
 
 ---
 
-## Built With
-
-- **C# .NET 8** — backend
-- **MediatR 12** — CQRS command/query bus
-- **FluentValidation** — command validation pipeline
-- **Neo4j.Driver 5** — graph database client
-- **DocumentFormat.OpenXml 3** — Word document generation
-- **DotNetEnv** — `.env` file loading
-- **Swashbuckle** — Swagger API documentation
-- **Python Flask** — embed microservice
-- **sentence-transformers** — multilingual embeddings
-- **Elasticsearch 9** — full-text search + persistence
-
----
-
-## EY Tunisia — Tax Technology Team · 2026
+## EY Tunisia — Tax Technology · 2026
