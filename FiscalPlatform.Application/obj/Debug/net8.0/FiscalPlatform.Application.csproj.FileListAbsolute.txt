@@ -13,3 +13,4 @@ C:\profiscal_new\FiscalPlatform.Application\obj\Debug\net8.0\FiscalPlatform.Appl
 C:\profiscal_new\FiscalPlatform.Application\obj\Debug\net8.0\refint\FiscalPlatform.Application.dll
 C:\profiscal_new\FiscalPlatform.Application\obj\Debug\net8.0\FiscalPlatform.Application.pdb
 C:\profiscal_new\FiscalPlatform.Application\obj\Debug\net8.0\ref\FiscalPlatform.Application.dll
+C:\profiscal_new\FiscalPlatform.Application\obj\Debug\net8.0\FiscalPlatform.Application.sourcelink.json

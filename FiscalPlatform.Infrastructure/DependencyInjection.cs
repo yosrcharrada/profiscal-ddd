@@ -3,43 +3,54 @@ using FiscalPlatform.Application.Common.Interfaces.Services;
 using FiscalPlatform.Domain.Repositories;
 using FiscalPlatform.Infrastructure.Agents;
 using FiscalPlatform.Infrastructure.DomainServices;
+using FiscalPlatform.Infrastructure.Guardrails;
+using FiscalPlatform.Infrastructure.Kernel;
+using FiscalPlatform.Infrastructure.Memory;
 using FiscalPlatform.Infrastructure.Persistence;
+using FiscalPlatform.Infrastructure.Search;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.SemanticKernel;
 
 namespace FiscalPlatform.Infrastructure;
 
 /// <summary>
-/// Single DI registration point for the entire Infrastructure layer.
-/// API only calls AddInfrastructure() — the Composition Root pattern.
-/// All agents, repositories, and domain services registered here.
+/// Composition root — all infrastructure registrations in one place.
+/// Program.cs calls services.AddInfrastructure() only.
 /// </summary>
 public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
-        // ── AI Agents (each has exactly one responsibility) ───────────────────
+        // ── AI Agents (single responsibility each) ───────────────────────────
         services.AddSingleton<ILlmAgent,                LlmAgent>();
         services.AddSingleton<IEmbedSearchAgent,        EmbedSearchAgent>();
         services.AddSingleton<IFeedbackAgent,           FeedbackAgent>();
+        services.AddSingleton<IRetrievalAgent,          RetrievalAgent>();
+        services.AddSingleton<IDocumentGenerationAgent, DocumentGenerationAgent>();
+        services.AddSingleton<ISearchAgent,             ElasticsearchSearchAgent>();
 
-        // RetrievalAgent and DocumentGenerationAgent registered from API project
-        // because they depend on Neo4j.Driver and DocumentFormat.OpenXml
-        // which live in Infrastructure — they are added there via partial registrations:
-
-        // ── Domain Services (pure business logic, no AI) ─────────────────────
+        // ── Domain Services (pure logic, no AI) ──────────────────────────────
         services.AddSingleton<IBranchDetector,   BranchDetector>();
         services.AddSingleton<ICountryDetector,  CountryDetector>();
         services.AddSingleton<IKeywordExtractor, KeywordExtractor>();
 
-        // ── Session Store (volatile memory — in-process) ─────────────────────
-        services.AddSingleton<ISessionStore, InMemorySessionStore>();
+        // ── Memory ───────────────────────────────────────────────────────────
+        services.AddSingleton<ISessionStore,  InMemorySessionStore>();
+        services.AddSingleton<RewardMemory>();                  // RLHF reward memory
 
-        // ── Repository (Elasticsearch-backed) ────────────────────────────────
+        // ── Guardrails ───────────────────────────────────────────────────────
+        services.AddSingleton<FiscalGuardrails>();
+
+        // ── Semantic Kernel (true agent infrastructure) ───────────────────────
+        // FiscalKernelFactory builds a Kernel with RetrievalPlugin + AnalysisPlugin
+        // Used by ChatCompletionAgent in RefineConsultationCommandHandler
+        services.AddSingleton<FiscalKernelFactory>();
+        services.AddSingleton<Microsoft.SemanticKernel.Kernel>(sp =>
+            sp.GetRequiredService<FiscalKernelFactory>().Create());
+
+        // ── Repository ───────────────────────────────────────────────────────
         services.AddSingleton<IConsultationRepository, ElasticsearchConsultationRepository>();
 
         return services;
     }
 }
-// Note: IRetrievalAgent, IDocumentGenerationAgent, ISearchAgent
-// are registered in Program.cs (API layer) because they need IWebHostEnvironment
-// or are in Infrastructure/Search subfolder — see FiscalPlatform.API/Program.cs

@@ -8,7 +8,9 @@
     <PackageReference Include="MediatR"                                        Version="12.2.0" />
     <PackageReference Include="FluentValidation"                               Version="11.9.0" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.9.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"      Version="8.0.0"  />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"      Version="9.0.0"  />
+    <PackageReference Include="Microsoft.SemanticKernel"                       Version="1.45.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Agents.Core"           Version="1.45.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FiscalPlatform.Domain\FiscalPlatform.Domain.csproj" />

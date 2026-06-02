@@ -9,3 +9,4 @@ C:\profiscal_new\FiscalPlatform.Domain\obj\Debug\net8.0\FiscalPlatform.Domain.dl
 C:\profiscal_new\FiscalPlatform.Domain\obj\Debug\net8.0\refint\FiscalPlatform.Domain.dll
 C:\profiscal_new\FiscalPlatform.Domain\obj\Debug\net8.0\FiscalPlatform.Domain.pdb
 C:\profiscal_new\FiscalPlatform.Domain\obj\Debug\net8.0\ref\FiscalPlatform.Domain.dll
+C:\profiscal_new\FiscalPlatform.Domain\obj\Debug\net8.0\FiscalPlatform.Domain.sourcelink.json

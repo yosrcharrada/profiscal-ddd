@@ -4,7 +4,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using FiscalPlatform.Application.Common.DTOs;
 using FiscalPlatform.Application.Common.Interfaces.Agents;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace FiscalPlatform.Infrastructure.Agents;
@@ -17,13 +17,19 @@ namespace FiscalPlatform.Infrastructure.Agents;
 /// Strips numeric Word artifacts from headers (^\d{7,}).
 /// </summary>
 public sealed class DocumentGenerationAgent(
-    IHostEnvironment env,
+    IConfiguration config,
     ILogger<DocumentGenerationAgent> logger)
     : IDocumentGenerationAgent
 {
     public byte[] Generate(GenerateDocumentRequest req)
     {
-        var path = Path.Combine(env.ContentRootPath, "template_fr.docx");
+        // Try config path, then current directory, then AppContext base
+        var templateName = "template_fr.docx";
+        var path = config["TemplatePath"] ?? "";
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            path = Path.Combine(Directory.GetCurrentDirectory(), templateName);
+        if (!File.Exists(path))
+            path = Path.Combine(AppContext.BaseDirectory, templateName);
         if (!File.Exists(path)) throw new FileNotFoundException("template_fr.docx not found", path);
 
         using var mem = new MemoryStream();

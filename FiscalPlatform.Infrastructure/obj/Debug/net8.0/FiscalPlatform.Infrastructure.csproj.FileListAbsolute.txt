@@ -15,3 +15,4 @@ C:\profiscal_new\FiscalPlatform.Infrastructure\obj\Debug\net8.0\FiscalPlatform.I
 C:\profiscal_new\FiscalPlatform.Infrastructure\obj\Debug\net8.0\refint\FiscalPlatform.Infrastructure.dll
 C:\profiscal_new\FiscalPlatform.Infrastructure\obj\Debug\net8.0\FiscalPlatform.Infrastructure.pdb
 C:\profiscal_new\FiscalPlatform.Infrastructure\obj\Debug\net8.0\ref\FiscalPlatform.Infrastructure.dll
+C:\profiscal_new\FiscalPlatform.Infrastructure\obj\Debug\net8.0\FiscalPlatform.Infrastructure.sourcelink.json
