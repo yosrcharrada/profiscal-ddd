@@ -54,3 +54,7 @@ packages/
 # ── OS ───────────────────────────────────────────────────────────────────────
 Thumbs.db
 Desktop.ini
+
+FixRetrievalAgent.ps1
+comments.txt
+to_add.txt

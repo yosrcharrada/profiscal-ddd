@@ -13,15 +13,11 @@ using Microsoft.SemanticKernel;
 
 namespace FiscalPlatform.Infrastructure;
 
-/// <summary>
-/// Composition root — all infrastructure registrations in one place.
-/// Program.cs calls services.AddInfrastructure() only.
-/// </summary>
 public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
-        // ── AI Agents (single responsibility each) ───────────────────────────
+        // ── AI Agents ─────────────────────────────────────────────────────────
         services.AddSingleton<ILlmAgent,                LlmAgent>();
         services.AddSingleton<IEmbedSearchAgent,        EmbedSearchAgent>();
         services.AddSingleton<IFeedbackAgent,           FeedbackAgent>();
@@ -29,26 +25,29 @@ public static class DependencyInjection
         services.AddSingleton<IDocumentGenerationAgent, DocumentGenerationAgent>();
         services.AddSingleton<ISearchAgent,             ElasticsearchSearchAgent>();
 
-        // ── Domain Services (pure logic, no AI) ──────────────────────────────
+        // ── True SK ReAct Agent — Retrieval Planner ───────────────────────────
+        // Uses SK ChatCompletionAgent with targeted fetch tools.
+        // Max 2 ReAct iterations, ~8-12s additional time, gives legally-guided sources.
+        services.AddSingleton<IRetrievalPlannerAgent,   RetrievalPlannerAgent>();
+
+        // ── Domain Services (pure logic, no AI) ───────────────────────────────
         services.AddSingleton<IBranchDetector,   BranchDetector>();
         services.AddSingleton<ICountryDetector,  CountryDetector>();
         services.AddSingleton<IKeywordExtractor, KeywordExtractor>();
 
-        // ── Memory ───────────────────────────────────────────────────────────
-        services.AddSingleton<ISessionStore,  InMemorySessionStore>();
-        services.AddSingleton<RewardMemory>();                  // RLHF reward memory
+        // ── Memory ────────────────────────────────────────────────────────────
+        services.AddSingleton<ISessionStore, InMemorySessionStore>();
+        services.AddSingleton<RewardMemory>();
 
-        // ── Guardrails ───────────────────────────────────────────────────────
+        // ── Guardrails ────────────────────────────────────────────────────────
         services.AddSingleton<FiscalGuardrails>();
 
-        // ── Semantic Kernel (true agent infrastructure) ───────────────────────
-        // FiscalKernelFactory builds a Kernel with RetrievalPlugin + AnalysisPlugin
-        // Used by ChatCompletionAgent in RefineConsultationCommandHandler
+        // ── Semantic Kernel (refinement agent) ────────────────────────────────
         services.AddSingleton<FiscalKernelFactory>();
         services.AddSingleton<Microsoft.SemanticKernel.Kernel>(sp =>
             sp.GetRequiredService<FiscalKernelFactory>().Create());
 
-        // ── Repository ───────────────────────────────────────────────────────
+        // ── Repository ────────────────────────────────────────────────────────
         services.AddSingleton<IConsultationRepository, ElasticsearchConsultationRepository>();
 
         return services;

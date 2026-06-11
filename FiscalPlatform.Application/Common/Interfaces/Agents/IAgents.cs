@@ -18,6 +18,21 @@ public interface IRetrievalAgent
     Task<List<SourceChunkDto>> VectorSearchAsync(float[] embedding, int topK = 8);
     Task<List<SourceChunkDto>> GraphExpandAsync(List<string> entities, int topK = 6);
     Task<List<SourceChunkDto>> KeywordFallbackAsync(string query, int topK = 8);
+    // ─── ADD TO IRetrievalAgent interface ────────────────────────────────────────
+    // Targeted fetch methods used by RetrievalPlannerAgent via RetrievalPlannerPlugin
+
+    Task<List<LegalSourceDto>> FetchConventionArticleAsync(
+        string country, string[] keywords, CancellationToken ct = default);
+
+    Task<List<LegalSourceDto>> FetchNoteCommune2Async(
+        string? country, CancellationToken ct = default);
+
+    Task<List<LegalSourceDto>> FetchDomesticRetenueAsync(
+        List<string> keywords, CancellationToken ct = default);
+
+    Task<List<LegalSourceDto>> FetchDomesticTaxRulesAsync(
+        string taxType, string[] keywords, CancellationToken ct = default);
+
 }
 
 // ─── EMBED SEARCH AGENT ──────────────────────────────────────────────────────

@@ -5,25 +5,24 @@ using Microsoft.Extensions.Logging;
 namespace FiscalPlatform.Infrastructure.Guardrails;
 
 /// <summary>
-/// Fiscal Guardrails — input + output validation layer.
+/// Fiscal Guardrails — input + output validation.
 ///
 /// INPUT GUARDRAIL:
-///   Verifies the question is genuinely fiscal before calling GPT-4o.
-///   Blocks off-topic requests (cooking recipes, personal advice, etc.)
-///   Saves tokens and prevents misuse.
+///   Verifies question is genuinely fiscal before calling GPT-4o.
 ///
 /// OUTPUT GUARDRAIL:
-///   After generation, verifies:
+///   After generation verifies:
 ///   1. All [Sn] citations reference sources that actually exist
 ///   2. No section is empty or too short
 ///   3. Each analysis block contains a verdict
-///   4. No hallucinated article numbers appear
+///   4. No hallucination citation patterns
+///   5. All percentages cite their [Sn] source
+///   6. Art.92 CIRPPIS flagged as LF reference warning
 /// </summary>
 public sealed class FiscalGuardrails
 {
     private readonly ILogger<FiscalGuardrails> _logger;
 
-    // Fiscal keywords — at least one must appear in the question
     private static readonly string[] FiscalKeywords =
     {
         "impôt","taxe","tva","irpp","retenue","fiscal","fisc","cotisation",
@@ -34,41 +33,45 @@ public sealed class FiscalGuardrails
         "taux","base imposable","résultat","charge","produit","amortissement",
         "provision","crédit","remboursement","sanction","pénalité","contrôle",
         "vérification","redressement","réclamation","délai","prescription",
-        "is","tvt","droits","droits d'enregistrement","douane","accise",
-        "contribution","prélèvement","retenu","versement","acompte",
+        "is ","tvt","droits","droits d'enregistrement","douane","accise",
+        "contribution","prélèvement","retenu","versement","acompte","redevances",
+        "établissement stable","assistance technique","frais de siège",
     };
 
-    // Patterns that suggest hallucinated content
+    // Patterns that indicate hallucinated or wrong citation format
     private static readonly Regex[] HallucinationPatterns =
     {
-        new(@"\[code\s+\w+[_\-]\d{4}\s*,\s*Art\.\s*\d+\]", RegexOptions.IgnoreCase), // [code irpp_is_2019, Art. 24]
-        new(@"article\s+\d+\s+(?:du|de la|de l')\s+(?:code|loi)", RegexOptions.IgnoreCase), // article 52 du code (without [Sn])
+        // Wrong format: [code irpp_is_2019, Art. 24] — should be [S1]
+        new(@"\[code\s+\w+[_\-]\d{4}\s*,\s*Art\.\s*\d+\]", RegexOptions.IgnoreCase),
+        // Wrong format: (article X du code) — should cite [Sn]
+        new(@"\(article\s+\d+\s+du\s+(?:code|loi)\b", RegexOptions.IgnoreCase),
     };
+
+    // Pattern: percentage NOT followed by [Sn] citation within 100 chars
+    private static readonly Regex PercentagePattern =
+        new(@"\b(\d{1,2}(?:[.,]\d)?)\s*%\b", RegexOptions.IgnoreCase);
+    private static readonly Regex CitationNearby =
+        new(@"\[S\d+\]", RegexOptions.IgnoreCase);
 
     public FiscalGuardrails(ILogger<FiscalGuardrails> logger) => _logger = logger;
 
     // ── INPUT GUARDRAIL ───────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Validates that the input is a genuine fiscal question.
-    /// Returns (isValid, reason).
-    /// </summary>
     public (bool IsValid, string? Reason) ValidateInput(string situation, string fiscalQuestion)
     {
         var combined = (situation + " " + fiscalQuestion).ToLower();
 
-        // Must contain at least one fiscal keyword
         bool hasFiscalContent = FiscalKeywords.Any(kw =>
             combined.Contains(kw, StringComparison.OrdinalIgnoreCase));
 
         if (!hasFiscalContent)
         {
-            _logger.LogWarning("INPUT GUARDRAIL: No fiscal keywords detected in question");
-            return (false, "La question ne semble pas être de nature fiscale. " +
-                          "Veuillez préciser votre question fiscale (IS, TVA, retenue, etc.)");
+            _logger.LogWarning("INPUT GUARDRAIL: No fiscal keywords detected");
+            return (false,
+                "La question ne semble pas être de nature fiscale. " +
+                "Veuillez préciser votre question fiscale (IS, TVA, retenue, etc.)");
         }
 
-        // Minimum length checks
         if (situation.Trim().Length < 20)
             return (false, "La situation doit décrire le contexte en au moins 20 caractères.");
 
@@ -81,19 +84,16 @@ public sealed class FiscalGuardrails
 
     // ── OUTPUT GUARDRAIL ──────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Validates the generated consultation output.
-    /// Returns a list of issues found (empty = all good).
-    /// </summary>
     public List<GuardrailIssue> ValidateOutput(
-        ConsultationOutput output,
-        List<LegalSourceDto> sources)
+        ConsultationOutput output, List<LegalSourceDto> sources)
     {
         var issues = new List<GuardrailIssue>();
         var maxIdx = sources.Count;
+        var allText = (output.Analyses ?? "") + " " +
+                      (output.SommairExecutif ?? "") + " " +
+                      (output.Documents ?? "");
 
-        // 1. Check all [Sn] citations reference real sources
-        var allText = output.Analyses + " " + output.SommairExecutif + " " + output.Documents;
+        // 1. Check [Sn] citations reference real sources
         var citationMatches = Regex.Matches(allText, @"\[S(\d+)\]");
         foreach (Match m in citationMatches)
         {
@@ -101,30 +101,31 @@ public sealed class FiscalGuardrails
             {
                 issues.Add(new GuardrailIssue(
                     GuardrailSeverity.Error,
-                    $"Citation [S{idx}] references a non-existent source (max: S{maxIdx})",
-                    "Citation invalide détectée — source inexistante"));
+                    $"[S{idx}] references non-existent source (max: S{maxIdx})",
+                    $"Citation [S{idx}] invalide — source inexistante"));
             }
         }
 
-        // 2. Check analyses is not empty
+        // 2. Check analyses section not empty
         if (string.IsNullOrWhiteSpace(output.Analyses) || output.Analyses.Length < 100)
         {
             issues.Add(new GuardrailIssue(
                 GuardrailSeverity.Error,
-                "Analyses section is empty or too short",
+                "Analyses section empty or too short",
                 "La section analyses est vide ou insuffisante"));
         }
 
         // 3. Check sommaire exists
-        if (string.IsNullOrWhiteSpace(output.SommairExecutif) || output.SommairExecutif.Length < 50)
+        if (string.IsNullOrWhiteSpace(output.SommairExecutif) ||
+            output.SommairExecutif.Length < 50)
         {
             issues.Add(new GuardrailIssue(
                 GuardrailSeverity.Warning,
-                "Sommaire is empty or too short",
+                "Sommaire too short",
                 "Le sommaire exécutif est insuffisant"));
         }
 
-        // 4. Check each analysis table row has a verdict
+        // 4. Check verdicts in table
         foreach (var row in output.AnalysisTable)
         {
             var hasVerdict = new[] { "OUI", "NON", "SOUMIS", "EXONÉR", "DÉDUCTIBL", "%" }
@@ -133,38 +134,67 @@ public sealed class FiscalGuardrails
             {
                 issues.Add(new GuardrailIssue(
                     GuardrailSeverity.Warning,
-                    $"Row '{row.Sujet[..Math.Min(row.Sujet.Length, 40)]}' has no clear verdict",
+                    $"Row '{row.Sujet[..Math.Min(row.Sujet.Length,40)]}' has no verdict",
                     "Un point d'analyse n'a pas de verdict clair"));
             }
         }
 
-        // 5. Check for hallucination patterns (citation format violations)
+        // 5. Check hallucination citation patterns
         foreach (var pattern in HallucinationPatterns)
         {
-            var matches = pattern.Matches(allText);
-            foreach (Match m in matches)
+            foreach (Match m in pattern.Matches(allText))
             {
                 issues.Add(new GuardrailIssue(
                     GuardrailSeverity.Error,
-                    $"Hallucinated citation pattern detected: '{m.Value}'",
-                    $"Citation mal formatée détectée: '{m.Value}' — doit utiliser [Sn]"));
-                _logger.LogWarning("OUTPUT GUARDRAIL: Hallucination pattern: {P}", m.Value);
+                    $"Wrong citation format: '{m.Value}'",
+                    $"Format de citation invalide: '{m.Value}' — utiliser [Sn]"));
+                _logger.LogWarning("OUTPUT GUARDRAIL: Wrong citation: {P}", m.Value);
             }
         }
 
-        // 6. Minimum citation count
-        var citationCount = citationMatches.Count;
-        if (citationCount < 3)
+        // 6. NEW: Check percentages cite their source
+        // Find all percentages and check if [Sn] appears within 150 chars after
+        var percentMatches = PercentagePattern.Matches(allText);
+        foreach (Match pm in percentMatches)
+        {
+            var windowEnd = Math.Min(allText.Length, pm.Index + 150);
+            var window    = allText[pm.Index..windowEnd];
+            if (!CitationNearby.IsMatch(window))
+            {
+                issues.Add(new GuardrailIssue(
+                    GuardrailSeverity.Warning,
+                    $"Percentage '{pm.Value}' has no [Sn] citation within 150 chars",
+                    $"Taux {pm.Value} non justifié par une source [Sn]"));
+            }
+        }
+
+        // 7. NEW: Check for Art.92 CIRPPIS cited as standalone article
+        // (it's an LF amendment reference, not an autonomous CIRPPIS article)
+        var art92Pattern = new Regex(
+            @"(?:CIRPPIS|code\s+irpp)[^\]]*Art\.?\s*92\b(?!\s*\[réf\.\s*LF\])",
+            RegexOptions.IgnoreCase);
+        foreach (Match m in art92Pattern.Matches(allText))
         {
             issues.Add(new GuardrailIssue(
                 GuardrailSeverity.Warning,
-                $"Only {citationCount} citations found — expected at least 3",
-                "Peu de sources citées — la consultation manque peut-être de fondements juridiques"));
+                $"Art.92 CIRPPIS cited as standalone — it's an LF reference: '{m.Value}'",
+                "Art.92 CIRPPIS est une référence LF, pas un article autonome du code"));
+            _logger.LogWarning("OUTPUT GUARDRAIL: Art.92 CIRPPIS cited as standalone");
+        }
+
+        // 8. Minimum citation count
+        if (citationMatches.Count < 3)
+        {
+            issues.Add(new GuardrailIssue(
+                GuardrailSeverity.Warning,
+                $"Only {citationMatches.Count} citations (expected ≥3)",
+                "Peu de sources citées — la consultation manque de fondements juridiques"));
         }
 
         if (!issues.Any())
-            _logger.LogInformation("OUTPUT GUARDRAIL: ✅ All checks passed ({C} citations, {R} table rows)",
-                citationCount, output.AnalysisTable.Count);
+            _logger.LogInformation(
+                "OUTPUT GUARDRAIL: ✅ All checks passed ({C} citations, {R} rows)",
+                citationMatches.Count, output.AnalysisTable.Count);
         else
             _logger.LogWarning("OUTPUT GUARDRAIL: {N} issue(s) found", issues.Count);
 
