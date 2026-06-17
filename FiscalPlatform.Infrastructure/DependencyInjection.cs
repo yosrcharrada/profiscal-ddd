@@ -9,7 +9,6 @@ using FiscalPlatform.Infrastructure.Memory;
 using FiscalPlatform.Infrastructure.Persistence;
 using FiscalPlatform.Infrastructure.Search;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.SemanticKernel;
 
 namespace FiscalPlatform.Infrastructure;
 
@@ -25,9 +24,10 @@ public static class DependencyInjection
         services.AddSingleton<IDocumentGenerationAgent, DocumentGenerationAgent>();
         services.AddSingleton<ISearchAgent,             ElasticsearchSearchAgent>();
 
-        // ── True SK ReAct Agent — Retrieval Planner ───────────────────────────
-        // Uses SK ChatCompletionAgent with targeted fetch tools.
-        // Max 2 ReAct iterations, ~8-12s additional time, gives legally-guided sources.
+        // ── TRUE ReAct Retrieval Agent ────────────────────────────────────────
+        // Bounded 2-round ReAct loop with parallel tool dispatch.
+        // Brain (GPT-4o via ILlmAgent) decides tools, observes results, adapts.
+        // ~13-16s total (2 LLM calls + parallel fetches), genuine agent behaviour.
         services.AddSingleton<IRetrievalPlannerAgent,   RetrievalPlannerAgent>();
 
         // ── Domain Services (pure logic, no AI) ───────────────────────────────
@@ -42,7 +42,7 @@ public static class DependencyInjection
         // ── Guardrails ────────────────────────────────────────────────────────
         services.AddSingleton<FiscalGuardrails>();
 
-        // ── Semantic Kernel (refinement agent) ────────────────────────────────
+        // ── Semantic Kernel (refinement agent only) ───────────────────────────
         services.AddSingleton<FiscalKernelFactory>();
         services.AddSingleton<Microsoft.SemanticKernel.Kernel>(sp =>
             sp.GetRequiredService<FiscalKernelFactory>().Create());
