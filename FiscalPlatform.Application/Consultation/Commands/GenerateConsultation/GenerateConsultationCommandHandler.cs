@@ -267,8 +267,9 @@ public sealed class GenerateConsultationCommandHandler(
             }
         }
 
-        var etendueItems = GetList(p1, "etendue_items");
-        var sommaire     = GetStr(p1, "sommaire_executif");
+        var etendueItems  = GetList(p1, "etendue_items");
+        var sommaire      = GetStr(p1, "sommaire_executif");
+        var contexteFaits = GetStr(p1, "contexte_faits");
         sw5.Stop();
         timings.Add(new("5. LLM Phase 1", sw5.Elapsed.TotalMilliseconds,
             $"{etendueItems.Count} items"));
@@ -308,7 +309,7 @@ public sealed class GenerateConsultationCommandHandler(
         logger.LogInformation("┌─ [PHASE 2+3] analyses ‖ table — parallel…");
         var sw6   = Stopwatch.StartNew();
         var task2 = llmAgent.CompleteAsync(SystemPrompt,
-            BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, isIntl, branches, plan),
+            BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan),
             "Phase2", 3800, ct);
         var task3 = llmAgent.CompleteAsync(SystemPrompt,
             BuildPhase3Prompt(cmd, sources, etendueItems),
@@ -440,7 +441,10 @@ public sealed class GenerateConsultationCommandHandler(
             "\nRÈGLES:\n" +
             "- etendue_items: UNIQUEMENT les points demandés explicitement par le client. ZÉRO ajout.\n" +
             "- contexte_faits: faits purs, ZÉRO citation. Début: \"Nous comprenons que :\"\n" +
-            "- etendue: section 1.2, reprend etendue_items.\n" +
+            "- etendue: section 1.2. DOIT commencer par \"Notre analyse portera sur\" suivi des " +
+            "points listés. INTERDICTION ABSOLUE de \"Analyse limitée à\" ou de toute phrase " +
+            "disant que d'autres aspects ne sont pas couverts (pas de \"Aucun autre aspect... " +
+            "n'est couvert\").\n" +
             "- abbreviations: SIGLE : Définition\n" +
             "- sommaire_executif: verdicts concis, max 1 [Sn] par point, tout taux justifié.\n" +
             "- pays_non_resident: pays de résidence de la partie étrangère (ex: france, maroc). " +
@@ -452,7 +456,7 @@ public sealed class GenerateConsultationCommandHandler(
 
     private static string BuildPhase2Prompt(GenerateConsultationCommand cmd,
         List<LegalSourceDto> sources, List<string> etendueItems, string sommaire,
-        bool isIntl, HashSet<string> branches, RetrievalPlan plan)
+        string contexteFaits, bool isIntl, HashSet<string> branches, RetrievalPlan plan)
     {
         var n  = etendueItems.Count;
         var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i+1}. {x}"));
@@ -461,9 +465,19 @@ public sealed class GenerateConsultationCommandHandler(
         if (isIntl || plan.EsRiskPossible)
         {
             bg.AppendLine("  CAS INTERNATIONAL — SÉQUENCE OBLIGATOIRE PAR POINT:");
-            bg.AppendLine("  1. Analyser risque ES (Convention Art.5) → si ES: taux IS");
-            bg.AppendLine($"  2. Si pas ES: service = redevance? (Convention Art.12 — type: {plan.IncomeType})");
-            bg.AppendLine("  3. TVA: analyser applicabilité");
+            bg.AppendLine("  1. ES — DEUX tests distincts à trancher séparément, chacun avec un verdict explicite:");
+            bg.AppendLine("     a) Présence directe du prestataire étranger en Tunisie (lieu fixe d'affaires, " +
+                          "personnel propre stationné, durée de présence) → conclure ES propre OUI/NON.");
+            bg.AppendLine("     b) Si le prestataire étranger est actionnaire/associé/société mère du client " +
+                          "tunisien : RAPPELER EXPLICITEMENT que le simple lien de contrôle ou d'actionnariat " +
+                          "NE constitue PAS en soi un ES (le client tunisien n'est pas automatiquement un ES de " +
+                          "sa société mère étrangère), SAUF si les locaux du client tunisien sont mis à la " +
+                          "disposition du prestataire étranger pour l'exercice de SA PROPRE activité, ou si le " +
+                          "client tunisien agit comme agent dépendant concluant habituellement des contrats au " +
+                          "nom du prestataire étranger. Conclure explicitement OUI/NON sur ce second test aussi.");
+            bg.AppendLine("  2. Si AUCUN ES (les deux tests négatifs) : service = redevance ? " +
+                         $"(Convention Art.12 — type identifié: {plan.IncomeType}) → trancher OUI/NON.");
+            bg.AppendLine("  3. TVA : analyser applicabilité et trancher.");
         }
         if (plan.NoteCommune2Used)
             bg.AppendLine("  Note Commune N°2/2015 disponible → utiliser ses tableaux Annexe 1 pour taux par pays");
@@ -481,15 +495,31 @@ public sealed class GenerateConsultationCommandHandler(
         return
             $"PHASE 2 — JSON avec 1 clé: analyses.\n\n" +
             $"Client : {cmd.ClientName} | Question : {cmd.FiscalQuestion}\n\n" +
+            $"FAITS ÉTABLIS EN SECTION 1.1 (à utiliser pour trancher, ne pas re-discuter en \"Si...\"):\n" +
+            $"{contexteFaits}\n\n" +
             $"ÉTENDUE ({n} points):\n{et}\n\n" +
             SourcesBlock(sources) +
             $"\nORDRE: {(isIntl ? "Convention → Codes → LdF → Doctrine" : "Codes → LdF → Doctrine")}\n" +
             bg +
-            $"\nFORMAT {n} blocs 4.1 à 4.{n}:\n" +
+            $"\n═══ RÈGLE ABSOLUE — PRISE DE POSITION OBLIGATOIRE ═══\n" +
+            "INTERDIT d'écrire \"Si X alors Y, Si A alors B\" comme contenu de \"Application au cas\" " +
+            "ou \"Conclusion\". C'est un générateur de scénarios génériques, PAS une analyse de CE cas. " +
+            "Tu DOIS: (1) lire les FAITS ÉTABLIS ci-dessus, (2) déclarer explicitement quel scénario " +
+            "s'applique à CE client en citant le fait précis qui le détermine " +
+            "(ex: \"Le fait établi que [citer] permet de déterminer que...\"), (3) dérouler l'analyse " +
+            "UNIQUEMENT pour le scénario retenu, (4) donner UN SEUL verdict en conclusion — jamais " +
+            "plusieurs verdicts conditionnels. NON DOCUMENTÉ s'applique UNIQUEMENT à un sous-point " +
+            "réellement indéterminé (ex: taux exact si le pays n'est pas connu) — cela ne doit JAMAIS " +
+            "transformer l'ensemble de la conclusion en liste de scénarios.\n\n" +
+            $"FORMAT {n} blocs 4.1 à 4.{n}:\n" +
             "  4.X [Titre]\n" +
             "  Principe applicable : [Sn] : \"citation exacte du texte\".\n" +
-            "  Application au cas : appliquer le principe général aux faits spécifiques.\n" +
-            "  Conclusion : VERDICT — justification avec taux cité depuis [Sn].\n\n" +
+            "  Détermination : sur la base du fait établi [citer], le scénario applicable à ce cas est... " +
+            "(une seule phrase déclarative, pas de \"si\").\n" +
+            "  Application au cas : dérouler l'analyse pour CE scénario uniquement.\n" +
+            "  Conclusion : UN SEUL VERDICT — justification avec taux cité depuis [Sn]. " +
+            "Si un sous-point précis (ex: taux exact) est indéterminé, le signaler avec NON DOCUMENTÉ " +
+            "sans remettre en cause le reste du verdict.\n\n" +
             "[Sn] OBLIGATOIRE par bloc. Tout taux doit citer sa source [Sn].\n\n" +
             "{\"analyses\":\"4. ANALYSES\\n\\n[blocs]\"}";
     }
@@ -553,6 +583,27 @@ public sealed class GenerateConsultationCommandHandler(
     {
         foreach (var s in sources)
         {
+            // Fix 0: Art. 92 in CIRPPIS/CTVA/CDPF is NEVER a real standalone article —
+            // confirmed via direct Neo4j inspection that every "Art. 92" tag in these
+            // docs is actually a mislabeled Loi de Finances amendment reference (the
+            // real Art.92 lives in loi-de-finances-2016, not in these Codes). This is
+            // unconditional — it does NOT depend on matching a text pattern, because
+            // different mislabeled chunks have different embedded text shapes and a
+            // text-pattern check alone misses some of them.
+            var refTrimmed = s.ArticleRef?.Trim() ?? "";
+            var isArt92 = refTrimmed.Equals("Art. 92", StringComparison.OrdinalIgnoreCase) ||
+                          refTrimmed.Equals("Art.92",  StringComparison.OrdinalIgnoreCase) ||
+                          refTrimmed.Equals("Article 92", StringComparison.OrdinalIgnoreCase);
+            if (isArt92 &&
+                (s.DocName.ToLower().Contains("irpp") ||
+                 s.DocName.ToLower().Contains("ctva") ||
+                 s.DocName.ToLower().Contains("cdpf")))
+            {
+                if (!s.ArticleRef.Contains("[réf. LF]"))
+                    s.ArticleRef = s.ArticleRef.Trim() + " [réf. LF]";
+                continue;
+            }
+
             // Fix 1: detect real article number from chunk text start
             var m = Regex.Match(s.Text,
                 @"^ARTICLE\s+(\d+[\w\s]*?)\s*[:\n]", RegexOptions.IgnoreCase);
