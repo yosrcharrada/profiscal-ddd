@@ -1,0 +1,42 @@
+# Build directories
+backend/*/bin/
+backend/*/obj/
+frontend/build/
+frontend/node_modules/
+
+# SQLite database + WAL files (runtime artifacts — never commit)
+*.db
+*.db-shm
+*.db-wal
+
+# .NET user-secrets (local-only, never commit)
+secrets.json
+appsettings.*.local.json
+
+# Dependencies
+node_modules/
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model cache (optional - remove if you want to include it)
+model_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/

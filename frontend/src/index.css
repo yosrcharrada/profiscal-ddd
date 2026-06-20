@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap');
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'liga' 1, 'calt' 1, 'cv11' 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    color: #2E2E38;
+    background: #FFFFFF;
+  }
+  ::selection {
+    background: rgba(255, 230, 0, 0.4);
+    color: #2E2E38;
+  }
+}
