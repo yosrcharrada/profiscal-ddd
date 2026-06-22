@@ -17,10 +17,12 @@ namespace FiscalPlatform.Infrastructure.Agents;
 /// </summary>
 public sealed class LlmAgent(IConfiguration config, ILogger<LlmAgent> logger) : ILlmAgent
 {
-    private readonly string _model      = config["OpenAI:ChatModel"]  is { Length: > 0 } m  ? m  : "gpt-4o";
-    private readonly string _apiKey     = config["OpenAI:ApiKey"]     is { Length: > 0 } k  ? k  : "";
-    private readonly string _endpoint   = config["OpenAI:Endpoint"]   is { Length: > 0 } e  ? e  : "";
-    private readonly string _apiVersion = config["OpenAI:ApiVersion"] is { Length: > 0 } av ? av : "2024-02-15-preview";
+    // Read config first (binds OpenAI__* env vars + appsettings), then fall back to the
+    // single-underscore OPENAI_* env vars so an existing .env from the original project works.
+    private readonly string _model      = config["OpenAI:ChatModel"]  is { Length: > 0 } m  ? m  : (Environment.GetEnvironmentVariable("OPENAI_CHAT_MODEL")  ?? "gpt-4o");
+    private readonly string _apiKey     = config["OpenAI:ApiKey"]     is { Length: > 0 } k  ? k  : (Environment.GetEnvironmentVariable("OPENAI_API_KEY")     ?? "");
+    private readonly string _endpoint   = config["OpenAI:Endpoint"]   is { Length: > 0 } e  ? e  : (Environment.GetEnvironmentVariable("OPENAI_ENDPOINT")    ?? "");
+    private readonly string _apiVersion = config["OpenAI:ApiVersion"] is { Length: > 0 } av ? av : (Environment.GetEnvironmentVariable("OPENAI_API_VERSION") ?? "2024-02-15-preview");
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(4) };
 
     // true = Azure OpenAI (endpoint is set); false = standard api.openai.com
