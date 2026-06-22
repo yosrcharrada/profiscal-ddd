@@ -7,6 +7,27 @@ This folder is a **brand-new merge**, built on the Desktop. Neither source folde
 Goal: take the colleague's polished React frontend + its auth/host platform and run it on **your**
 folder-1 fiscal engine, keeping all of your engine's functionality and behavior.
 
+## Chatbot upgraded to a real agent (`/api/fiscal/chat`)
+
+The original `ChatQueryHandler` was a one-shot RAG (single embed search → one LLM call). It is now a
+**bounded ReAct agent** (same philosophy as the retrieval planner):
+- **Brain** — GPT-4o decides, as JSON, which tools to call each round.
+- **Actions** — `semantic_search` (primary), `search_convention` (foreign country), `keyword_search`
+  (exact article), `graph_expand` — dispatched **in parallel** (`Task.WhenAll`) and executed by the
+  handler so the retrieved sources are returned to the UI's citation chips.
+- **Memory** — full conversation history (passed from the frontend) is replayed each turn.
+- **Observe-and-adapt** — bounded to 2 rounds; round 2 only runs if round 1 was thin.
+- Answers cite `[Source N]`; says **NON DOCUMENTÉ** honestly when sources don't cover the point.
+
+Bugs fixed while building it (all in the host/engine glue, none in your engine business logic):
+- Planner steered to prefer `semantic_search`; `keyword_search` reserved for exact article numbers
+  (the crude `CONTAINS` fallback was returning irrelevant conventions for general questions).
+- `search_convention` now skips when no country, or when the country is Tunisia itself — `"tunisie"`
+  matches every convention `doc_name` (`…tunisienne…`) and was flooding/burying domestic sources.
+
+The API contract is unchanged (`POST /api/fiscal/chat {question, history}` → `{answer, sources, elapsedMs}`),
+so the frontend Chat page needed no changes.
+
 ## What this folder contains
 
 ```
