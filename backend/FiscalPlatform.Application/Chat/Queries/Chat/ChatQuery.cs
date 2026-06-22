@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using FiscalPlatform.Application.Common.DTOs;
 using FiscalPlatform.Application.Common.Interfaces.Agents;
+using FiscalPlatform.Application.Common.Interfaces.Services;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
@@ -26,6 +27,9 @@ public sealed class ChatQueryHandler(
     IRetrievalAgent retrieval,
     ILlmAgent llm,
     IEmbedSearchAgent embed,
+    IBranchDetector branchDetector,
+    ICountryDetector countryDetector,
+    IKeywordExtractor keywordExtractor,
     ILogger<ChatQueryHandler> logger)
     : IRequestHandler<ChatQuery, ChatResponseDto>
 {
@@ -113,6 +117,20 @@ public sealed class ChatQueryHandler(
             }
         }
 
+        // ── Safety net: if the agent gathered nothing (e.g. embed down + a tool that
+        //    found nothing), run the full engine pipeline once on the raw question before
+        //    concluding "no sources". Avoids false NON DOCUMENTÉ on the work PC. ──────────
+        if (accumulated.Count == 0 && question.Length > 0)
+        {
+            foreach (var c in await DeepRetrieveAsync(question, ct))
+            {
+                var txt = c.Text ?? "";
+                var key = (c.DocName + "|" + c.ArticleRef + "|" + txt[..Math.Min(txt.Length, 60)]).Trim();
+                if (seen.Add(key)) accumulated.Add(c);
+            }
+            logger.LogInformation("│  [CHAT-AGENT] safety-net deep retrieve: {N} sources", accumulated.Count);
+        }
+
         // ── Rank, cap, and number the sources for the answer ──────────────────
         var finalSources = accumulated.OrderByDescending(s => s.Score).Take(MaxSources).ToList();
 
@@ -164,7 +182,15 @@ public sealed class ChatQueryHandler(
             switch (tc.Tool)
             {
                 case "semantic_search":
-                    return (await embed.SearchAsync(tc.Query ?? "", topK: 8)).Select(ToChunk).ToList();
+                {
+                    // Try the embed server first; if it's unavailable or has no vector index
+                    // (e.g. on a machine where embeddings aren't indexed), fall back to the
+                    // engine's full Neo4j retrieval pipeline so the chat still gets real sources.
+                    var hits = (await embed.SearchAsync(tc.Query ?? "", topK: 8)).Select(ToChunk).ToList();
+                    if (hits.Count == 0)
+                        hits = await DeepRetrieveAsync(tc.Query ?? "", ct);
+                    return hits;
+                }
 
                 case "search_convention":
                 {
@@ -190,7 +216,9 @@ public sealed class ChatQueryHandler(
                 }
 
                 case "keyword_search":
-                    return await retrieval.KeywordFallbackAsync(tc.Query ?? "", topK: 8);
+                    // Use the real branch-guided engine pipeline (not the crude CONTAINS-any
+                    // fallback, which matched generic words like "article" and returned noise).
+                    return await DeepRetrieveAsync(tc.Query ?? "", ct);
 
                 case "graph_expand":
                 {
@@ -209,6 +237,20 @@ public sealed class ChatQueryHandler(
             logger.LogDebug(ex, "chat tool {T} failed", tc.Tool);
             return new();
         }
+    }
+
+    // Full engine retrieval (branch detection → targeted Neo4j fetch → graph expansion →
+    // diversity). Same pipeline that powers consultations — works without the embed server.
+    private async Task<List<SourceChunkDto>> DeepRetrieveAsync(string query, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return new();
+        var branches            = branchDetector.Detect(query, "");
+        var (keywords, entities)= keywordExtractor.Extract(query, "");
+        var (countries, isIntl) = countryDetector.Detect(query);
+        var src = await retrieval.RetrieveSourcesAsync(
+            keywords, entities, countries, isIntl, branches,
+            new List<LegalSourceDto>(), maxResults: 12, ct);
+        return src.Select(ToChunk).ToList();
     }
 
     private static SourceChunkDto ToChunk(LegalSourceDto s) => new()
