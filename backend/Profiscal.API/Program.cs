@@ -66,6 +66,10 @@ builder.Services.AddValidatorsFromAssemblyContaining<
     FiscalPlatform.Application.Consultation.Commands
     .GenerateConsultation.GenerateConsultationCommandValidator>();
 
+// Chat agent resolved directly (for the SSE streaming endpoint, alongside MediatR).
+builder.Services.AddScoped<
+    FiscalPlatform.Application.Chat.Queries.Chat.ChatQueryHandler>();
+
 // EF / Neo4j replacements for the original Elasticsearch services.
 builder.Services.AddSingleton<ISearchAgent, Neo4jSearchAgent>();
 builder.Services.AddScoped<IConsultationRepository, EfConsultationRepository>();

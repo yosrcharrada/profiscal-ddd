@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using FiscalPlatform.Application.Common.DTOs;
@@ -10,6 +11,13 @@ namespace FiscalPlatform.Application.Chat.Queries.Chat;
 
 public sealed record ChatQuery(string Question, List<string> History) : IRequest<ChatResponseDto>;
 public sealed record ChatResponseDto(string Answer, List<SourceChunkDto> Sources, double ElapsedMs);
+
+// ── Streaming events (consumed by the SSE endpoint and aggregated by Handle) ──
+public abstract record ChatStreamEvent;
+public sealed record ChatStatusEvent(string Phase, string Text)        : ChatStreamEvent;
+public sealed record ChatSourcesEvent(List<SourceChunkDto> Sources)    : ChatStreamEvent;
+public sealed record ChatTokenEvent(string Text)                       : ChatStreamEvent;
+public sealed record ChatDoneEvent(double ElapsedMs)                   : ChatStreamEvent;
 
 /// <summary>
 /// Legal chatbot as a TRUE bounded-ReAct agent — same architecture as RetrievalPlannerAgent,
@@ -60,17 +68,44 @@ public sealed class ChatQueryHandler(
         "couvert par les sources, écris 'NON DOCUMENTÉ' pour ce point — n'invente jamais une règle, " +
         "un taux ou un article. Markdown autorisé (titres, listes, gras).";
 
+    // Non-streaming entry point (MediatR). Aggregates the streaming events into one DTO,
+    // so there is a SINGLE agent implementation (StreamAsync) behind both endpoints.
     public async Task<ChatResponseDto> Handle(ChatQuery query, CancellationToken ct)
+    {
+        var sb      = new StringBuilder();
+        var sources = new List<SourceChunkDto>();
+        double ms   = 0;
+        await foreach (var ev in StreamAsync(query, ct))
+        {
+            switch (ev)
+            {
+                case ChatTokenEvent t:   sb.Append(t.Text);     break;
+                case ChatSourcesEvent s: sources = s.Sources;   break;
+                case ChatDoneEvent d:    ms = d.ElapsedMs;      break;
+            }
+        }
+        var answer = sb.ToString().Trim();
+        return new ChatResponseDto(answer.Length == 0 ? "Je n'ai pas pu répondre." : answer, sources, ms);
+    }
+
+    /// <summary>
+    /// The agent as a live event stream: status updates (what it's doing), then the source
+    /// list, then the answer token-by-token, then done. Same ReAct loop as before.
+    /// </summary>
+    public async IAsyncEnumerable<ChatStreamEvent> StreamAsync(
+        ChatQuery query, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var sw       = System.Diagnostics.Stopwatch.StartNew();
         var question = (query.Question ?? "").Trim();
-        logger.LogInformation("┌─ [CHAT-AGENT] '{Q}'", question[..Math.Min(question.Length, 60)]);
+        logger.LogInformation("┌─ [CHAT-AGENT] (stream) '{Q}'", question[..Math.Min(question.Length, 60)]);
 
         var historyText  = BuildHistoryText(query.History);
         var accumulated  = new List<SourceChunkDto>();
         var seen         = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var observations = new StringBuilder();
         var ready        = false;
+
+        yield return new ChatStatusEvent("analyzing", "Analyse de la question…");
 
         // ── Reason + Act + Observe (bounded) ──────────────────────────────────
         for (int round = 1; round <= MaxPlanningRounds && !ready; round++)
@@ -87,7 +122,6 @@ public sealed class ChatQueryHandler(
 
             if (plan is null)
             {
-                // Robust fallback: one semantic search on the raw question, then stop planning.
                 if (round == 1)
                     plan = new ChatPlan(new() { new ChatToolCall("semantic_search", question, null, null) }, false);
                 else { ready = true; break; }
@@ -96,10 +130,16 @@ public sealed class ChatQueryHandler(
             ready = plan.ReadyToAnswer || plan.ToolCalls.Count == 0;
             if (plan.ToolCalls.Count == 0) break;
 
+            var desc = string.Join(", ", plan.ToolCalls.Select(t =>
+            {
+                var a = t.Query ?? t.Country ?? t.Entities ?? "";
+                return a.Length > 0 ? $"{Friendly(t.Tool)} « {(a.Length > 48 ? a[..48] + "…" : a)} »" : Friendly(t.Tool);
+            }));
+            yield return new ChatStatusEvent("searching", $"Recherche de sources juridiques — {desc}");
+
             // Act: dispatch every requested tool concurrently (the key ReAct trick).
             var results = await Task.WhenAll(plan.ToolCalls.Select(tc => ExecuteToolAsync(tc, ct)));
 
-            // Observe: fold results into memory with explicit empties flagged.
             foreach (var (tc, chunks) in plan.ToolCalls.Zip(results))
             {
                 var added = 0;
@@ -117,11 +157,10 @@ public sealed class ChatQueryHandler(
             }
         }
 
-        // ── Safety net: if the agent gathered nothing (e.g. embed down + a tool that
-        //    found nothing), run the full engine pipeline once on the raw question before
-        //    concluding "no sources". Avoids false NON DOCUMENTÉ on the work PC. ──────────
+        // Safety net: full engine retrieval before concluding "no sources".
         if (accumulated.Count == 0 && question.Length > 0)
         {
+            yield return new ChatStatusEvent("searching", "Recherche approfondie dans le corpus…");
             foreach (var c in await DeepRetrieveAsync(question, ct))
             {
                 var txt = c.Text ?? "";
@@ -131,47 +170,62 @@ public sealed class ChatQueryHandler(
             logger.LogInformation("│  [CHAT-AGENT] safety-net deep retrieve: {N} sources", accumulated.Count);
         }
 
-        // ── Rank, cap, and number the sources for the answer ──────────────────
         var finalSources = accumulated.OrderByDescending(s => s.Score).Take(MaxSources).ToList();
+        yield return new ChatSourcesEvent(finalSources);
+        yield return new ChatStatusEvent("writing", "Rédaction de la réponse…");
 
-        // ── Reason: produce the grounded, cited answer ────────────────────────
-        string answer;
-        if (finalSources.Count == 0)
+        // Reason: stream the grounded, cited answer token-by-token.
+        var answerUser = BuildAnswerPrompt(finalSources, historyText, question);
+        var any = false;
+        await foreach (var tok in llm.StreamAsync(AnswerSystem, answerUser, "Chat-Answer", ct))
         {
-            var directUser =
-                (historyText.Length > 0 ? $"CONVERSATION:\n{historyText}\n\n" : "") +
-                $"QUESTION: {question}\n\n" +
-                "Aucune source juridique n'a été trouvée. Si la question est conversationnelle, " +
-                "réponds normalement et brièvement. Sinon, indique clairement qu'aucune source ne " +
-                "couvre ce point et invite à reformuler ou préciser.";
-            answer = await llm.CompleteAsync(AnswerSystem, directUser, "Chat-Answer", 1200, ct)
-                     ?? "Je n'ai pas pu répondre.";
+            any = true;
+            yield return new ChatTokenEvent(tok);
         }
-        else
+        if (!any) // streaming unavailable → one-shot fallback so the user still gets an answer
         {
-            var srcBlock = new StringBuilder();
-            for (var i = 0; i < finalSources.Count; i++)
-            {
-                var s       = finalSources[i];
-                var txt     = s.Text ?? "";
-                var preview = txt.Length > 600 ? txt[..600] + "…" : txt;
-                srcBlock.AppendLine($"[Source {i + 1}] {s.Category} — {s.DocName} {s.ArticleRef}".TrimEnd());
-                srcBlock.AppendLine(preview);
-                srcBlock.AppendLine();
-            }
-            var answerUser =
-                (historyText.Length > 0 ? $"CONVERSATION:\n{historyText}\n\n" : "") +
-                $"SOURCES:\n{srcBlock}\n" +
-                $"QUESTION: {question}\n\n" +
-                "Réponds en citant [Source N] pour chaque élément.";
-            answer = await llm.CompleteAsync(AnswerSystem, answerUser, "Chat-Answer", 1600, ct)
-                     ?? "Je n'ai pas pu répondre.";
+            var full = await llm.CompleteAsync(AnswerSystem, answerUser, "Chat-Answer", 1600, ct)
+                       ?? "Je n'ai pas pu répondre.";
+            yield return new ChatTokenEvent(full);
         }
 
         sw.Stop();
-        logger.LogInformation("└─ [CHAT-AGENT] ✓ {Ms:F0}ms | {N} sources",
+        logger.LogInformation("└─ [CHAT-AGENT] ✓ {Ms:F0}ms | {N} sources (stream)",
             sw.Elapsed.TotalMilliseconds, finalSources.Count);
-        return new ChatResponseDto(answer, finalSources, sw.Elapsed.TotalMilliseconds);
+        yield return new ChatDoneEvent(sw.Elapsed.TotalMilliseconds);
+    }
+
+    private static string Friendly(string tool) => tool switch
+    {
+        "semantic_search"   => "recherche sémantique",
+        "search_convention" => "convention fiscale",
+        "keyword_search"    => "recherche ciblée",
+        "graph_expand"      => "graphe juridique",
+        _                   => tool,
+    };
+
+    private static string BuildAnswerPrompt(
+        List<SourceChunkDto> sources, string historyText, string question)
+    {
+        var ctx = historyText.Length > 0 ? $"CONVERSATION:\n{historyText}\n\n" : "";
+        if (sources.Count == 0)
+            return ctx + $"QUESTION: {question}\n\n" +
+                "Aucune source juridique n'a été trouvée. Si la question est conversationnelle, " +
+                "réponds normalement et brièvement. Sinon, indique clairement qu'aucune source ne " +
+                "couvre ce point et invite à reformuler ou préciser.";
+
+        var srcBlock = new StringBuilder();
+        for (var i = 0; i < sources.Count; i++)
+        {
+            var s       = sources[i];
+            var txt     = s.Text ?? "";
+            var preview = txt.Length > 600 ? txt[..600] + "…" : txt;
+            srcBlock.AppendLine($"[Source {i + 1}] {s.Category} — {s.DocName} {s.ArticleRef}".TrimEnd());
+            srcBlock.AppendLine(preview);
+            srcBlock.AppendLine();
+        }
+        return ctx + $"SOURCES:\n{srcBlock}\n" + $"QUESTION: {question}\n\n" +
+               "Réponds en citant [Source N] pour chaque élément.";
     }
 
     // ── Tool execution (the agent's real Actions) ─────────────────────────────

@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using FiscalPlatform.Application.Common.Interfaces.Agents;
@@ -35,6 +36,79 @@ public sealed class LlmAgent(IConfiguration config, ILogger<LlmAgent> logger) : 
     public Task<string?> ChatAsync(IEnumerable<(string Role, string Content)> history,
         string sys, CancellationToken ct = default) =>
         SendAsync(sys, history, "Chat", ct);
+
+    // ── Token streaming (stream:true) ─────────────────────────────────────────
+    public async IAsyncEnumerable<string> StreamAsync(
+        string sys, string user, string label,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(_apiKey))
+        {
+            logger.LogError("[{L}] API key missing — set OpenAI__ApiKey in .env", label);
+            yield break;
+        }
+
+        var allMsgs = new object[]
+        {
+            new { role = "system", content = sys },
+            new { role = "user",   content = user },
+        };
+
+        string url;
+        object bodyObj;
+        if (IsAzure)
+        {
+            var apiVersion = _apiVersion.Trim().Trim('"').Trim('\'');
+            url     = _endpoint.TrimEnd('/') + $"/openai/deployments/{_model}/chat/completions?api-version={apiVersion}";
+            bodyObj = new { messages = allMsgs, temperature = 0, stream = true };
+        }
+        else
+        {
+            url     = "https://api.openai.com/v1/chat/completions";
+            bodyObj = new { model = _model, messages = allMsgs, temperature = 0, stream = true };
+        }
+
+        logger.LogInformation("  [{L}] → {Mode} {M} (stream)", label, IsAzure ? "Azure" : "OpenAI", _model);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, url)
+            { Content = new StringContent(JsonSerializer.Serialize(bodyObj), Encoding.UTF8, "application/json") };
+        if (IsAzure) req.Headers.Add("api-key", _apiKey);
+        else         req.Headers.Add("Authorization", $"Bearer {_apiKey}");
+
+        using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var rb = await resp.Content.ReadAsStringAsync(ct);
+            logger.LogError("  [{L}] stream HTTP {S}: {B}", label, (int)resp.StatusCode,
+                rb.Length > 300 ? rb[..300] : rb);
+            yield break;
+        }
+
+        using var stream = await resp.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync(ct);
+            if (string.IsNullOrEmpty(line) || !line.StartsWith("data:")) continue;
+            var data = line["data:".Length..].Trim();
+            if (data == "[DONE]") break;
+
+            string? token = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(data);
+                var choices = doc.RootElement.GetProperty("choices");
+                if (choices.GetArrayLength() > 0 &&
+                    choices[0].TryGetProperty("delta", out var delta) &&
+                    delta.TryGetProperty("content", out var c))
+                    token = c.GetString();
+            }
+            catch { token = null; }
+
+            if (!string.IsNullOrEmpty(token)) yield return token;
+        }
+    }
 
     private async Task<string?> SendAsync(
         string sys,

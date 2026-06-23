@@ -346,6 +346,7 @@ export default function Chat() {
   const [activeId, setActiveId] = useState(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [streamStatus, setStreamStatus] = useState("");
   const [viewing, setViewing] = useState(null);
   const [viewList, setViewList] = useState([]);
   const [histOpen, setHistOpen] = useState(
@@ -384,30 +385,45 @@ export default function Chat() {
       update(id, next);
     }
     setBusy(true);
+    setStreamStatus("Analyse de la question…");
+
+    const history = prior.map((m) => m.content);
+    let acc = "";
+    let srcs = [];
+    let gotToken = false;
+    const render = (extra = {}) =>
+      update(id, [...next, { role: "assistant", content: acc, sources: srcs, ...extra }]);
+
     try {
-      const history = prior.map((m) => m.content);
-      const { data } = await fiscalService.chat(q, history);
-      update(id, [
-        ...next,
+      await fiscalService.chatStream(
+        { question: q, history },
         {
-          role: "assistant",
-          content: data.data.answer,
-          sources: data.data.sources,
+          onStatus: (s) => setStreamStatus(s?.text || ""),
+          onSources: (list) => { srcs = list || []; },
+          onToken: (t) => {
+            gotToken = true;
+            acc += t;
+            setStreamStatus(""); // hide the thinking indicator once text starts
+            render({ streaming: true });
+          },
+          onDone: () => { if (gotToken) render(); },
+          onError: () => {
+            if (!gotToken)
+              update(id, [
+                ...next,
+                {
+                  role: "assistant",
+                  content:
+                    "Désolé — je n’ai pas pu répondre. Vérifiez que Neo4j et le LLM sont connectés.",
+                  error: true,
+                },
+              ]);
+          },
         },
-      ]);
-    } catch (err) {
-      update(id, [
-        ...next,
-        {
-          role: "assistant",
-          content:
-            err.response?.data?.message ||
-            "Désolé — je n’ai pas pu répondre. Vérifiez que Neo4j et le LLM sont connectés.",
-          error: true,
-        },
-      ]);
+      );
     } finally {
       setBusy(false);
+      setStreamStatus("");
     }
   };
 
@@ -615,12 +631,12 @@ export default function Chat() {
                     </div>
                   ),
                 )}
-                {busy && (
+                {busy && streamStatus && (
                   <div className="flex gap-3.5 animate-fade-in">
                     <AssistantAvatar pulsing />
                     <div className="flex items-center gap-2 pt-2.5">
-                      <span className="text-[13px] text-muted font-medium">
-                        Analyse du corpus
+                      <span className="text-[13px] text-muted font-medium italic">
+                        {streamStatus}
                       </span>
                       {[0, 150, 300].map((d) => (
                         <span

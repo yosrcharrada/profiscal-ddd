@@ -49,6 +49,10 @@ public interface ILlmAgent
         string label, int maxTokens = 3000, CancellationToken ct = default);
     Task<string?> ChatAsync(IEnumerable<(string Role, string Content)> history,
         string systemPrompt, CancellationToken ct = default);
+
+    /// <summary>Streams the completion token-by-token (stream:true). Yields content deltas.</summary>
+    IAsyncEnumerable<string> StreamAsync(string systemPrompt, string userPrompt,
+        string label, CancellationToken ct = default);
 }
 
 // ─── DOCUMENT GENERATION AGENT ───────────────────────────────────────────────

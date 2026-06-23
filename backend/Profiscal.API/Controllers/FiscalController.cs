@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using FiscalPlatform.Application.Chat.Queries.Chat;
 using FiscalPlatform.Application.Common.Interfaces.Agents;
 using FiscalPlatform.Application.Consultation.Commands.GenerateConsultation;
@@ -8,6 +9,7 @@ using FiscalPlatform.Application.KnowledgeBase.Queries.GetStats;
 using FiscalPlatform.Application.Search.Queries.SearchLegalDocuments;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Profiscal.API.Fiscal;
 using Profiscal.Contracts.Common;
@@ -28,8 +30,12 @@ public sealed class FiscalController(
     ISearchAgent searchAgent,
     IRetrievalAgent retrievalAgent,
     IDocumentGenerationAgent docAgent,
+    ChatQueryHandler chatAgent,
     ConsultationStore store) : ControllerBase
 {
+    private static readonly JsonSerializerOptions SseJson =
+        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
     private Guid? CurrentUserId =>
         Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub"), out var id)
             ? id : null;
@@ -98,6 +104,44 @@ public sealed class FiscalController(
             return BadRequest(ApiResponse<object>.Fail("Question required."));
         var result = await mediator.Send(new ChatQuery(req.Question, req.History ?? new()), ct);
         return Ok(ApiResponse<ChatResponseDto>.Ok(result));
+    }
+
+    /// <summary>
+    /// Streaming chatbot (Server-Sent Events): emits `status` updates while the agent works,
+    /// then `sources`, then the answer `token`-by-token, then `done`.
+    /// </summary>
+    [HttpPost("chat/stream")]
+    public async Task ChatStream([FromBody] ChatApiRequest req, CancellationToken ct)
+    {
+        Response.Headers["Content-Type"]      = "text/event-stream";
+        Response.Headers["Cache-Control"]     = "no-cache";
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        if (string.IsNullOrWhiteSpace(req.Question))
+        {
+            await WriteSse("error", "{\"message\":\"Question required.\"}", ct);
+            return;
+        }
+
+        await foreach (var ev in chatAgent.StreamAsync(new ChatQuery(req.Question, req.History ?? new()), ct))
+        {
+            var (name, payload) = ev switch
+            {
+                ChatStatusEvent s  => ("status",  JsonSerializer.Serialize(new { phase = s.Phase, text = s.Text }, SseJson)),
+                ChatSourcesEvent s => ("sources", JsonSerializer.Serialize(s.Sources, SseJson)),
+                ChatTokenEvent t   => ("token",   JsonSerializer.Serialize(new { text = t.Text }, SseJson)),
+                ChatDoneEvent d    => ("done",    JsonSerializer.Serialize(new { elapsedMs = d.ElapsedMs }, SseJson)),
+                _                  => ("", ""),
+            };
+            if (name.Length == 0) continue;
+            await WriteSse(name, payload, ct);
+        }
+    }
+
+    private async Task WriteSse(string evName, string data, CancellationToken ct)
+    {
+        await Response.WriteAsync($"event: {evName}\ndata: {data}\n\n", ct);
+        await Response.Body.FlushAsync(ct);
     }
 
     // ───────────────────────── CONSULTATIONS ─────────────────────────
