@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import EYLockup from "../common/EYLockup";
+import ThemeToggle from "../common/ThemeToggle";
 export default function Navbar() {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -62,6 +63,7 @@ export default function Navbar() {
               </span>
             </Link>
           )}
+          <ThemeToggle />
           <div className="relative" ref={ref}>
             <button
               onClick={() => setOpen(!open)}

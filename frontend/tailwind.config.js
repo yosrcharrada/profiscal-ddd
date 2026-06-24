@@ -1,27 +1,25 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: "class",
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
       colors: {
         /* ── Profiscal × EY design system ──
-           brand  → EY yellow, the single accent (highlights, chips, primary CTAs — always with dark text)
-           dark   → EY ink, primary text & dark sections
-           cream  → page background (white)
-           sand   → alternate section background (cool gray)
-           light  → hover surface
-        */
+           brand → EY yellow accent (fixed in both themes — always dark text on it).
+           The other tokens are driven by CSS variables (see index.css :root / .dark)
+           so light/dark swap automatically for every variant (hover, focus, alpha). */
         brand: "#FFE600",
-        dark: "#2E2E38",
+        dark:   "rgb(var(--c-dark) / <alpha-value>)",   /* primary text / strong ink */
+        body:   "rgb(var(--c-body) / <alpha-value>)",   /* secondary text */
+        muted:  "rgb(var(--c-muted) / <alpha-value>)",  /* tertiary text */
+        cream:  "rgb(var(--c-cream) / <alpha-value>)",  /* card surface */
+        sand:   "rgb(var(--c-sand) / <alpha-value>)",   /* page background */
+        light:  "rgb(var(--c-light) / <alpha-value>)",  /* hover / elevated surface */
+        border: "rgb(var(--c-border) / <alpha-value>)",
         YellowLight: "#fffefa",
         YellowDrak: "#e6e3de",
         YellowMidLight: "#f5f5f0",
-        body: "#585865",
-        muted: "#9A9AA5",
-        cream: "#FFFFFF",
-        sand: "#fffffc",
-        light: "#F2F2F6",
-        border: "#E5E5EC",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

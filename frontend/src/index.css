@@ -5,17 +5,57 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap');
 
 @layer base {
+  /* ── Theme tokens (space-separated RGB channels so Tailwind alpha works) ── */
+  :root {
+    --c-dark:   46 46 56;     /* #2E2E38  primary text / strong ink */
+    --c-body:   88 88 101;    /* #585865  secondary text */
+    --c-muted:  154 154 165;  /* #9A9AA5  tertiary text */
+    --c-cream:  255 255 255;  /* #FFFFFF  card surface */
+    --c-sand:   255 255 252;  /* #FFFFFC  page background */
+    --c-light:  242 242 246;  /* #F2F2F6  hover / elevated surface */
+    --c-border: 229 229 236;  /* #E5E5EC  borders */
+  }
+  .dark {
+    --c-dark:   236 236 240;  /* light text on dark */
+    --c-body:   197 197 206;
+    --c-muted:  143 143 156;  /* still readable on dark */
+    --c-cream:  30 30 38;     /* #1E1E26  card surface */
+    --c-sand:   21 21 27;     /* #15151B  page background */
+    --c-light:  42 42 52;     /* #2A2A34  hover / elevated surface */
+    --c-border: 49 49 58;     /* #31313A  borders */
+  }
+
   html { scroll-behavior: smooth; }
   body {
     font-family: 'Inter', system-ui, sans-serif;
     font-feature-settings: 'liga' 1, 'calt' 1, 'cv11' 1;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    color: #2E2E38;
-    background: #FFFFFF;
+    color: rgb(var(--c-dark));
+    background: rgb(var(--c-sand));
+    transition: background-color .2s ease, color .2s ease;
   }
-  ::selection {
-    background: rgba(255, 230, 0, 0.4);
-    color: #2E2E38;
-  }
+  ::selection { background: rgba(255, 230, 0, 0.4); color: #2E2E38; }
 }
+
+/* ── Dark-mode fixes for color *roles* this palette couples together. ──
+   These win by specificity (.dark .x) so no component markup changes are needed. */
+
+/* "white" is used both as card surface AND as text-on-dark; flip only the surface. */
+.dark .bg-white { background-color: rgb(var(--c-cream)); }
+.dark .border-white { border-color: rgb(var(--c-border)); }
+
+/* "dark" is the ink token (now light). Keep genuinely dark surfaces dark. */
+.dark .bg-dark { background-color: #34343f; }
+.dark .border-dark { border-color: #4a4a57; }
+.dark .bg-black { background-color: #0c0c10; }
+
+/* The yellow brand surface always needs dark text (yellow is light in both modes). */
+.dark .bg-brand { color: #2e2e38; }
+.dark .bg-brand .text-dark,
+.dark .bg-brand.text-dark { color: #2e2e38; }
+
+/* Scrollbars in dark. */
+.dark ::-webkit-scrollbar { width: 10px; height: 10px; }
+.dark ::-webkit-scrollbar-track { background: rgb(var(--c-sand)); }
+.dark ::-webkit-scrollbar-thumb { background: #3a3a44; border-radius: 6px; }
