@@ -358,38 +358,55 @@ public sealed class GenerateConsultationCommandHandler(
             new AcceptanceRequest(cmd.FiscalQuestion, BuildEtendue(etendueItems, ""),
                 analysesRaw, sourcesList), ct);
 
-        if (!verdict.Accept && verdict.NeedsMoreSources && verdict.MissingTopics.Any())
+        // Revise on ANY rejection (missing rate, hallucination, hedged verdict, draft tone,
+        // contradiction, generic analysis, skipped ES step…), not only missing rates.
+        if (!verdict.Accept)
         {
-            logger.LogInformation("► [STEP 6b] acceptance=REVISE — targeted re-retrieval for: {T}",
-                string.Join(", ", verdict.MissingTopics));
+            var addedCount = 0;
 
-            // Targeted re-retrieval driven by the judge's missing topics (rule layer + keyword fetch).
-            var extra = await ruleRetrieval.RetrieveAsync(
-                new RuleContext(branches, isIntl, countries, cmd.FiscalQuestion, cmd.Situation,
-                    verdict.MissingTopics), ct);
-            var more = await retrievalAgent.FetchTargetedAsync(
-                "", Array.Empty<string>(), verdict.MissingTopics.ToArray(), ct);
-
-            var existing = new HashSet<string>(sources.Select(s => s.ChunkId)
-                .Where(id => !string.IsNullOrEmpty(id)));
-            var addable = extra.Concat(more)
-                .Where(s => string.IsNullOrEmpty(s.ChunkId) || existing.Add(s.ChunkId))
-                .ToList();
-            if (addable.Any())
+            // (a) Only re-retrieve when the fix genuinely needs sources we don't have.
+            if (verdict.NeedsMoreSources && verdict.MissingTopics.Any())
             {
-                sources.InsertRange(0, addable);
-                for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
+                logger.LogInformation("► [STEP 6b] REVISE — targeted re-retrieval for: {T}",
+                    string.Join(", ", verdict.MissingTopics));
+                var extra = await ruleRetrieval.RetrieveAsync(
+                    new RuleContext(branches, isIntl, countries, cmd.FiscalQuestion, cmd.Situation,
+                        verdict.MissingTopics), ct);
+                var more = await retrievalAgent.FetchTargetedAsync(
+                    "", Array.Empty<string>(), verdict.MissingTopics.ToArray(), ct);
+
+                var existing = new HashSet<string>(sources.Select(s => s.ChunkId)
+                    .Where(id => !string.IsNullOrEmpty(id)));
+                var addable = extra.Concat(more)
+                    .Where(s => string.IsNullOrEmpty(s.ChunkId) || existing.Add(s.ChunkId))
+                    .ToList();
+                if (addable.Any())
+                {
+                    sources.InsertRange(0, addable);
+                    for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
+                    addedCount = addable.Count;
+                }
             }
 
-            // One revision pass of the analyses with the augmented sources (bounded — no loop).
-            var revisedRaw = await llmAgent.CompleteAsync(SystemPrompt,
-                BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan),
-                "Phase2-Revise", 3800, ct);
+            // (b) One bounded revision pass with the judge's concrete corrective guidance,
+            //     fixing tone/grounding/decision/coverage with whatever sources we now have.
+            var guidance = string.IsNullOrWhiteSpace(verdict.RevisionGuidance)
+                ? (verdict.Issues.Any() ? "Corrige: " + string.Join(" ; ", verdict.Issues)
+                                        : "Corrige les faiblesses de qualité.")
+                : verdict.RevisionGuidance;
+            logger.LogInformation("► [STEP 6b] REVISE — {N} issue(s); +{A} sources",
+                verdict.Issues.Count, addedCount);
+
+            var revisePrompt =
+                BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan) +
+                "\n\n═══ CORRECTIONS DEMANDÉES (relecture qualité) ═══\n" + guidance +
+                "\nCorrige ces points en conservant strictement le format et le niveau de détail demandé.";
+            var revisedRaw = await llmAgent.CompleteAsync(SystemPrompt, revisePrompt, "Phase2-Revise", 3800, ct);
             var revised = revisedRaw is not null ? ParseJsonDict(revisedRaw) : null;
             if (revised is not null && !string.IsNullOrWhiteSpace(GetStr(revised, "analyses")))
                 analysesRaw = GetStr(revised, "analyses");
 
-            logger.LogInformation("└─ [STEP 6b] revised with +{N} sources", addable.Count);
+            logger.LogInformation("└─ [STEP 6b] revised");
         }
         sw6b.Stop();
         timings.Add(new("6b. Acceptance + revise", sw6b.Elapsed.TotalMilliseconds,

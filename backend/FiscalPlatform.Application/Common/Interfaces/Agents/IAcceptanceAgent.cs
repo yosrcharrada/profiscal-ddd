@@ -11,9 +11,10 @@ public sealed record AcceptanceRequest(
 public sealed record AcceptanceVerdict(
     bool         Accept,
     double       Score,            // 0..1 quality estimate
-    List<string> Issues,           // human-readable problems
-    bool         NeedsMoreSources, // a rate/article is asked but missing from the sources
-    List<string> MissingTopics);   // e.g. ["taux retenue à la source", "Art. 52 CIRPPIS"]
+    List<string> Issues,           // weaknesses found (any category)
+    bool         NeedsMoreSources, // true only if a fix requires retrieving more sources
+    List<string> MissingTopics,    // e.g. ["taux retenue à la source", "Art. 52 CIRPPIS"]
+    string       RevisionGuidance); // concrete corrective instructions for the revision pass
 
 /// <summary>
 /// Acceptance agent — an LLM-as-judge that validates a generated consultation against the
