@@ -342,7 +342,7 @@ public sealed class GenerateConsultationCommandHandler(
         var output = new ConsultationOutput
         {
             ContexteFaits   = GetStr(p1, "contexte_faits"),
-            Etendue         = GetStr(p1, "etendue"),
+            Etendue         = BuildEtendue(etendueItems, GetStr(p1, "etendue")),
             Abbreviations   = GetStr(p1, "abbreviations").Trim(),
             SommairExecutif = R(sommaire),
             Analyses        = R(GetStr(p2, "analyses")),
@@ -439,12 +439,14 @@ public sealed class GenerateConsultationCommandHandler(
             attachedNote + "\n\n" +
             SourcesBlock(sources) +
             "\nRÈGLES:\n" +
-            "- etendue_items: UNIQUEMENT les points demandés explicitement par le client. ZÉRO ajout.\n" +
+            "- etendue_items: reprends EXACTEMENT et UNIQUEMENT les questions explicitement posées " +
+            "par le client — une entrée courte par question posée. N'AJOUTE AUCUN point dérivé ou " +
+            "connexe : établissement stable, TVA, obligations déclaratives, prix de transfert NE " +
+            "figurent PAS dans l'étendue s'ils ne sont pas explicitement demandés (ils seront " +
+            "traités dans l'analyse, jamais dans l'étendue).\n" +
             "- contexte_faits: faits purs, ZÉRO citation. Début: \"Nous comprenons que :\"\n" +
-            "- etendue: section 1.2. DOIT commencer par \"Notre analyse portera sur\" suivi des " +
-            "points listés. INTERDICTION ABSOLUE de \"Analyse limitée à\" ou de toute phrase " +
-            "disant que d'autres aspects ne sont pas couverts (pas de \"Aucun autre aspect... " +
-            "n'est couvert\").\n" +
+            "- etendue: laisse \"\" — la section 1.2 est construite automatiquement (liste à puces) " +
+            "à partir de etendue_items.\n" +
             "- abbreviations: SIGLE : Définition\n" +
             "- sommaire_executif: verdicts concis, max 1 [Sn] par point, tout taux justifié.\n" +
             "- pays_non_resident: pays de résidence de la partie étrangère (ex: france, maroc). " +
@@ -454,72 +456,80 @@ public sealed class GenerateConsultationCommandHandler(
             "\"abbreviations\":\"\",\"sommaire_executif\":\"\",\"pays_non_resident\":\"\"}";
     }
 
+    // Section 1.2 — built in code as a bullet list of ONLY the asked questions.
+    private static string BuildEtendue(List<string> items, string fallback)
+    {
+        var clean = items.Select(i => i.Trim()).Where(i => i.Length > 0).ToList();
+        if (clean.Count == 0) return fallback;
+        return "Notre analyse portera sur les points suivants :\n" +
+               string.Join("\n", clean.Select(i => $"- {i}"));
+    }
+
     private static string BuildPhase2Prompt(GenerateConsultationCommand cmd,
         List<LegalSourceDto> sources, List<string> etendueItems, string sommaire,
         string contexteFaits, bool isIntl, HashSet<string> branches, RetrievalPlan plan)
     {
         var n  = etendueItems.Count;
         var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i+1}. {x}"));
+        var concise = string.Equals(cmd.Mode, "concise", StringComparison.OrdinalIgnoreCase);
 
         var bg = new StringBuilder();
         if (isIntl || plan.EsRiskPossible)
         {
-            bg.AppendLine("  CAS INTERNATIONAL — SÉQUENCE OBLIGATOIRE PAR POINT:");
-            bg.AppendLine("  1. ES — DEUX tests distincts à trancher séparément, chacun avec un verdict explicite:");
-            bg.AppendLine("     a) Présence directe du prestataire étranger en Tunisie (lieu fixe d'affaires, " +
-                          "personnel propre stationné, durée de présence) → conclure ES propre OUI/NON.");
-            bg.AppendLine("     b) Si le prestataire étranger est actionnaire/associé/société mère du client " +
-                          "tunisien : RAPPELER EXPLICITEMENT que le simple lien de contrôle ou d'actionnariat " +
-                          "NE constitue PAS en soi un ES (le client tunisien n'est pas automatiquement un ES de " +
-                          "sa société mère étrangère), SAUF si les locaux du client tunisien sont mis à la " +
-                          "disposition du prestataire étranger pour l'exercice de SA PROPRE activité, ou si le " +
-                          "client tunisien agit comme agent dépendant concluant habituellement des contrats au " +
-                          "nom du prestataire étranger. Conclure explicitement OUI/NON sur ce second test aussi.");
-            bg.AppendLine("  2. Si AUCUN ES (les deux tests négatifs) : service = redevance ? " +
-                         $"(Convention Art.12 — type identifié: {plan.IncomeType}) → trancher OUI/NON.");
-            bg.AppendLine("  3. TVA : analyser applicabilité et trancher.");
+            bg.AppendLine("  CAS INTERNATIONAL — séquence d'analyse:");
+            bg.AppendLine("  1. ÉTABLISSEMENT STABLE — deux tests distincts, chacun tranché par un verdict:");
+            bg.AppendLine("     a) Présence directe du prestataire étranger en Tunisie (lieu fixe, personnel " +
+                          "propre, durée) → ES propre OUI/NON.");
+            bg.AppendLine("     b) Lien d'actionnariat/société mère : rappeler que le simple contrôle NE crée PAS " +
+                          "un ES (la filiale n'est pas un ES de sa mère), sauf locaux mis à disposition ou agent " +
+                          "dépendant concluant des contrats au nom de l'étranger → verdict OUI/NON.");
+            bg.AppendLine("  2. En l'absence d'ES : le service est-il une redevance ? " +
+                         $"(Art.12 convention — type: {plan.IncomeType}) → verdict.");
+            bg.AppendLine("  3. TVA : applicabilité → verdict.");
         }
         if (plan.NoteCommune2Used)
-            bg.AppendLine("  Note Commune N°2/2015 disponible → utiliser ses tableaux Annexe 1 pour taux par pays");
-        if (branches.Contains("IS"))
-            bg.AppendLine("  IS → citer Art.45/47 CIRPPIS (personnes morales, bénéfices passibles)");
-        if (branches.Contains("TVA"))
-            bg.AppendLine("  TVA → citer CTVA (soumises, affaires, activités en Tunisie)");
-        if (branches.Contains("IRPP"))
-            bg.AppendLine("  IRPP → citer CIRPPIS (revenu, personne physique)");
-        if (branches.Contains("Retenue"))
-            bg.AppendLine("  Retenue → CIRPPIS Art.52 + convention si intl");
-        if (branches.Contains("PrixTransfert"))
-            bg.AppendLine("  PrixTransfert → Art.48 septies CIRPPIS + CDPF 17 bis/ter");
+            bg.AppendLine("  Note Commune N°2/2015 disponible → utiliser ses tableaux Annexe 1 pour les taux par pays.");
+        if (branches.Contains("IS"))     bg.AppendLine("  IS → CIRPPIS Art.45/47 (personnes morales, bénéfices).");
+        if (branches.Contains("TVA"))    bg.AppendLine("  TVA → CTVA (opérations soumises en Tunisie).");
+        if (branches.Contains("IRPP"))   bg.AppendLine("  IRPP → CIRPPIS (revenu, personne physique).");
+        if (branches.Contains("Retenue"))bg.AppendLine("  Retenue → CIRPPIS Art.52 + convention si international.");
+        if (branches.Contains("PrixTransfert")) bg.AppendLine("  Prix de transfert → Art.48 septies CIRPPIS + CDPF.");
+
+        var antiDraft =
+            "═══ TON — DOCUMENT FINAL, PAS UN BROUILLON ═══\n" +
+            "Rédige comme un mémo de cabinet REMIS au client. INTERDICTION d'exposer ton raisonnement " +
+            "ou un dialogue interne : jamais de \"Détermination\", \"le scénario applicable\", " +
+            "\"sur la base du fait établi\", ni de \"Si X alors Y\". Affirme directement la position " +
+            "retenue, avec UN SEUL verdict par point (aucun verdict conditionnel). " +
+            "NON DOCUMENTÉ uniquement pour un sous-point réellement indéterminé.\n";
+
+        var styleAndFormat = concise
+            ? "═══ STYLE — VERSION CONCISE ═══\n" +
+              "Mémo TRÈS court, droit au but. Pas d'introduction, pas de rappel des faits ni de la question.\n" +
+              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue):\n" +
+              "  4.X [Titre court]\n" +
+              "  [VERDICT direct en 1 à 3 phrases maximum, justifié par [Sn].]\n" +
+              "Tu peux ajouter de très courtes sous-sections (ES, TVA, obligations) si indispensables, " +
+              "même hors étendue.\n"
+            : "═══ STYLE — VERSION DÉTAILLÉE ═══\n" +
+              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue):\n" +
+              "  4.X [Titre]\n" +
+              "  Principe applicable : [Sn] : \"citation exacte du texte\".\n" +
+              "  Application au cas : analyse appliquée aux faits du client, en prose professionnelle (sans \"si\").\n" +
+              "  Conclusion : VERDICT unique, taux cité depuis [Sn].\n" +
+              "Ajoute les sous-analyses juridiques nécessaires (ES, redevance, TVA, obligations) comme " +
+              "sous-sections, même si elles ne figurent pas dans l'étendue.\n";
 
         return
             $"PHASE 2 — JSON avec 1 clé: analyses.\n\n" +
             $"Client : {cmd.ClientName} | Question : {cmd.FiscalQuestion}\n\n" +
-            $"FAITS ÉTABLIS EN SECTION 1.1 (à utiliser pour trancher, ne pas re-discuter en \"Si...\"):\n" +
-            $"{contexteFaits}\n\n" +
-            $"ÉTENDUE ({n} points):\n{et}\n\n" +
+            $"FAITS ÉTABLIS (section 1.1) — utilise-les pour trancher:\n{contexteFaits}\n\n" +
+            $"ÉTENDUE ({n} points demandés):\n{et}\n\n" +
             SourcesBlock(sources) +
             $"\nORDRE: {(isIntl ? "Convention → Codes → LdF → Doctrine" : "Codes → LdF → Doctrine")}\n" +
-            bg +
-            $"\n═══ RÈGLE ABSOLUE — PRISE DE POSITION OBLIGATOIRE ═══\n" +
-            "INTERDIT d'écrire \"Si X alors Y, Si A alors B\" comme contenu de \"Application au cas\" " +
-            "ou \"Conclusion\". C'est un générateur de scénarios génériques, PAS une analyse de CE cas. " +
-            "Tu DOIS: (1) lire les FAITS ÉTABLIS ci-dessus, (2) déclarer explicitement quel scénario " +
-            "s'applique à CE client en citant le fait précis qui le détermine " +
-            "(ex: \"Le fait établi que [citer] permet de déterminer que...\"), (3) dérouler l'analyse " +
-            "UNIQUEMENT pour le scénario retenu, (4) donner UN SEUL verdict en conclusion — jamais " +
-            "plusieurs verdicts conditionnels. NON DOCUMENTÉ s'applique UNIQUEMENT à un sous-point " +
-            "réellement indéterminé (ex: taux exact si le pays n'est pas connu) — cela ne doit JAMAIS " +
-            "transformer l'ensemble de la conclusion en liste de scénarios.\n\n" +
-            $"FORMAT {n} blocs 4.1 à 4.{n}:\n" +
-            "  4.X [Titre]\n" +
-            "  Principe applicable : [Sn] : \"citation exacte du texte\".\n" +
-            "  Détermination : sur la base du fait établi [citer], le scénario applicable à ce cas est... " +
-            "(une seule phrase déclarative, pas de \"si\").\n" +
-            "  Application au cas : dérouler l'analyse pour CE scénario uniquement.\n" +
-            "  Conclusion : UN SEUL VERDICT — justification avec taux cité depuis [Sn]. " +
-            "Si un sous-point précis (ex: taux exact) est indéterminé, le signaler avec NON DOCUMENTÉ " +
-            "sans remettre en cause le reste du verdict.\n\n" +
+            bg + "\n" +
+            antiDraft + "\n" +
+            styleAndFormat + "\n" +
             "[Sn] OBLIGATOIRE par bloc. Tout taux doit citer sa source [Sn].\n\n" +
             "{\"analyses\":\"4. ANALYSES\\n\\n[blocs]\"}";
     }

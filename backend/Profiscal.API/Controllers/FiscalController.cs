@@ -153,10 +153,14 @@ public sealed class FiscalController(
         var reference  = string.IsNullOrWhiteSpace(req.Reference)  ? $"CONS-{DateTime.Now:yyyy-MMdd}" : req.Reference!;
         var clientName = string.IsNullOrWhiteSpace(req.ClientName) ? "Client" : req.ClientName!;
 
+        var mode = string.Equals(req.Mode?.Trim(), "concise", StringComparison.OrdinalIgnoreCase)
+            ? "concise" : "detaillee";
+
         var dto = await mediator.Send(new GenerateConsultationCommand(
             reference, clientName, req.Situation, req.FiscalQuestion,
             req.Documents ?? new(),
-            (req.AttachedDocumentTexts ?? new()).Where(t => !string.IsNullOrEmpty(t)).ToList()), ct);
+            (req.AttachedDocumentTexts ?? new()).Where(t => !string.IsNullOrEmpty(t)).ToList(),
+            mode), ct);
 
         await store.SaveAsync(dto.ConsultationId, reference, clientName,
             req.Situation, req.FiscalQuestion, dto.Output, CurrentUserId, ct);

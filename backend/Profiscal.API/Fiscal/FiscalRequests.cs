@@ -10,6 +10,8 @@ public sealed class GenerateConsultationApiRequest
     public string  FiscalQuestion { get; set; } = "";
     public List<string>? Documents { get; set; }
     public List<string>? AttachedDocumentTexts { get; set; }
+    /// <summary>"concise" or "detaillee" (default).</summary>
+    public string? Mode { get; set; }
 }
 
 public sealed class ChatApiRequest

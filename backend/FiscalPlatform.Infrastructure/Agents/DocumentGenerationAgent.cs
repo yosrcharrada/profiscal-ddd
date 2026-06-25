@@ -206,6 +206,9 @@ public sealed class DocumentGenerationAgent(
             else if (line.StartsWith("## "))   result.Add(new DocParagraph(line[3..], DocStyle.Heading2));
             else if (line.StartsWith("**") && line.EndsWith("**") && line.Length > 4)
                 result.Add(new DocParagraph(line[2..^2], DocStyle.Bold));
+            else if (line.StartsWith("- ") || line.StartsWith("* ") || line.StartsWith("• "))
+                // bullet line → its own paragraph with a bullet glyph
+                result.Add(new DocParagraph("•  " + line[2..].TrimStart(), DocStyle.Normal));
             else
                 result.Add(new DocParagraph(line, DocStyle.Normal));
         }

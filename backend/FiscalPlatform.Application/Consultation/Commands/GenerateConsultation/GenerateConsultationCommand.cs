@@ -9,5 +9,7 @@ public sealed record GenerateConsultationCommand(
     string        Situation,
     string        FiscalQuestion,
     List<string>  Documents,
-    List<string>? AttachedDocumentTexts = null
+    List<string>? AttachedDocumentTexts = null,
+    // "concise" = verdict-first, straight to the point; "detaillee" = full reasoning (default).
+    string        Mode = "detaillee"
 ) : IRequest<ConsultationGeneratedDto>;

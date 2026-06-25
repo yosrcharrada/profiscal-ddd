@@ -152,6 +152,7 @@ export default function Consultations() {
     reference: "",
     situation: "",
     fiscalQuestion: "",
+    mode: "detaillee",
   });
   const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
@@ -434,6 +435,62 @@ export default function Consultations() {
                         {q.length > 52 ? `${q.slice(0, 49)}…` : q}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* mode — concise vs détaillée */}
+                <div
+                  className="mt-7 animate-fade-up opacity-0"
+                  style={{ animationDelay: "210ms" }}
+                >
+                  <label className="block text-sm font-bold text-dark mb-2.5">
+                    Format de la consultation
+                  </label>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {[
+                      {
+                        v: "detaillee",
+                        t: "Version détaillée",
+                        d: "Principe, application aux faits et conclusion pour chaque point.",
+                      },
+                      {
+                        v: "concise",
+                        t: "Version concise",
+                        d: "Droit au but : le verdict et sa source, sans développement.",
+                      },
+                    ].map((o) => {
+                      const active = form.mode === o.v;
+                      return (
+                        <button
+                          key={o.v}
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, mode: o.v }))}
+                          className={`text-left rounded-xl border p-3.5 transition-all ${
+                            active
+                              ? "border-brand bg-brand/10 ring-2 ring-brand"
+                              : "border-border bg-white hover:border-dark/30"
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                active ? "border-dark" : "border-muted"
+                              }`}
+                            >
+                              {active && (
+                                <span className="w-2 h-2 rounded-full bg-dark" />
+                              )}
+                            </span>
+                            <span className="text-[13.5px] font-bold text-dark">
+                              {o.t}
+                            </span>
+                          </span>
+                          <span className="block text-[12px] text-muted mt-1.5 pl-6">
+                            {o.d}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
