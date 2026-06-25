@@ -27,6 +27,11 @@ public static class DependencyInjection
         services.AddSingleton<IRetrievalAgent,          RetrievalAgent>();
         services.AddSingleton<IDocumentGenerationAgent, DocumentGenerationAgent>();
         services.AddSingleton<IRetrievalPlannerAgent,   RetrievalPlannerAgent>();
+        services.AddSingleton<IAcceptanceAgent,         AcceptanceAgent>();
+
+        // ── Rule-based retrieval policy (config-driven routing, not hardcoded answers) ──
+        services.AddSingleton<IRuleBasedRetrieval,
+            FiscalPlatform.Infrastructure.Retrieval.FiscalRetrievalPolicy>();
 
         // ── Domain services (pure logic, no AI) ───────────────────────────────
         services.AddSingleton<IBranchDetector,   BranchDetector>();

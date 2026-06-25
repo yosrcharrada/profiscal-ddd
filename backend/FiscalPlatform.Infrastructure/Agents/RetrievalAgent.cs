@@ -511,6 +511,75 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
     // TARGETED FETCH METHODS — called by RetrievalPlannerPlugin (TRUE SK Agent)
     // ─────────────────────────────────────────────────────────────────────────
 
+    // Precise fetch by document family + article references and/or keywords.
+    // Used by the rule-based retrieval policy to guarantee specific rate-bearing
+    // articles (e.g. Art. 52 CIRPPIS) and notes (e.g. Note Commune N°3/2015) are retrieved.
+    public async Task<List<LegalSourceDto>> FetchTargetedAsync(
+        string docNameFragment, string[] articleRefs, string[] keywords,
+        CancellationToken ct = default)
+    {
+        var results = new List<LegalSourceDto>();
+        var seen    = new HashSet<string>();
+        var frag    = ToDocFragment(docNameFragment ?? "");
+        try
+        {
+            await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
+
+            // 1) by explicit article reference (or the bare number inside the text)
+            foreach (var aref in (articleRefs ?? Array.Empty<string>()).Take(5))
+            {
+                if (results.Count >= 10) break;
+                var num = new string((aref ?? "").Where(char.IsDigit).ToArray());
+                try
+                {
+                    var res = await session.RunAsync($@"
+                        MATCH (c:Chunk)
+                        WHERE ($frag = '' OR toLower(c.doc_name) CONTAINS toLower($frag))
+                          AND c.chunk_type = 'text'
+                          AND ( toLower(c.article_ref) CONTAINS toLower($aref)
+                                OR ($num <> '' AND toLower(c.text) CONTAINS ('article ' + $num)) )
+                        RETURN {F}, 0.96 AS score
+                        ORDER BY c.annee DESC LIMIT 3",
+                        new { frag, aref = aref ?? "", num });
+                    await foreach (var r in res)
+                    {
+                        var t = r["text"]?.As<string>() ?? "";
+                        if (!ContainsArabic(t)) TryAdd(results, seen, r, 0.96);
+                    }
+                }
+                catch (Exception ex) { _logger.LogDebug(ex, "FetchTargeted aref {A}", aref); }
+            }
+
+            // 2) by keyword within the document family
+            foreach (var kw in (keywords ?? Array.Empty<string>()).Take(5))
+            {
+                if (results.Count >= 12) break;
+                try
+                {
+                    var res = await session.RunAsync($@"
+                        MATCH (c:Chunk)
+                        WHERE ($frag = '' OR toLower(c.doc_name) CONTAINS toLower($frag))
+                          AND c.chunk_type = 'text'
+                          AND toLower(c.text) CONTAINS toLower($kw)
+                        RETURN {F}, 0.90 AS score
+                        ORDER BY c.annee DESC LIMIT 3",
+                        new { frag, kw });
+                    await foreach (var r in res)
+                    {
+                        var t = r["text"]?.As<string>() ?? "";
+                        if (!ContainsArabic(t)) TryAdd(results, seen, r, 0.90);
+                    }
+                }
+                catch (Exception ex) { _logger.LogDebug(ex, "FetchTargeted kw {K}", kw); }
+            }
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "FetchTargeted {D}", docNameFragment); }
+
+        _logger.LogInformation("FetchTargeted doc='{D}' refs={R}: {N} chunks",
+            docNameFragment, articleRefs?.Length ?? 0, results.Count);
+        return results;
+    }
+
     public async Task<List<LegalSourceDto>> FetchConventionArticleAsync(
         string country, string[] keywords, CancellationToken ct = default)
     {

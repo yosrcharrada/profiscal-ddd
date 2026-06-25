@@ -33,6 +33,12 @@ public interface IRetrievalAgent
     Task<List<LegalSourceDto>> FetchDomesticTaxRulesAsync(
         string taxType, string[] keywords, CancellationToken ct = default);
 
+    // Precise targeted fetch used by the rule-based retrieval policy: pulls chunks from a
+    // given document family (doc_name fragment) matching specific article references
+    // (e.g. "Art. 52") and/or keywords. Lets us guarantee a rate-bearing article is in context.
+    Task<List<LegalSourceDto>> FetchTargetedAsync(
+        string docNameFragment, string[] articleRefs, string[] keywords,
+        CancellationToken ct = default);
 }
 
 // ─── EMBED SEARCH AGENT ──────────────────────────────────────────────────────

@@ -48,6 +48,8 @@ public sealed class GenerateConsultationCommandHandler(
     IRetrievalPlannerAgent   plannerAgent,
     IEmbedSearchAgent        embedAgent,
     IRetrievalAgent          retrievalAgent,
+    IRuleBasedRetrieval      ruleRetrieval,
+    IAcceptanceAgent         acceptanceAgent,
     ILlmAgent                llmAgent,
     IDocumentGenerationAgent docAgent,
     IConsultationRepository  repository,
@@ -222,9 +224,19 @@ public sealed class GenerateConsultationCommandHandler(
         logger.LogInformation("└─ [STEP 4] ✓ ({Ms:F0}ms) | {N} sources via {M}",
             sw4.Elapsed.TotalMilliseconds, neo4jSources.Count, method);
 
-        // ── Step 4b: Merge all sources ────────────────────────────────────────
-        // Priority: Planner sources (targeted) > Embed > Neo4j
-        var sources = MergeAllSources(plan.Sources, filteredEmbed, neo4jSources, 30);
+        // ── Step 4b: Rule-based retrieval policy (precise, config-driven routing) ──
+        var ruleSw = Stopwatch.StartNew();
+        var ruleSources = await ruleRetrieval.RetrieveAsync(
+            new RuleContext(branches, isIntl, countries, cmd.FiscalQuestion, cmd.Situation), ct);
+        ruleSw.Stop();
+        timings.Add(new("4b. Rule-based retrieval", ruleSw.Elapsed.TotalMilliseconds,
+            $"{ruleSources.Count} src"));
+        logger.LogInformation("► [STEP 4b] rule-based policy → {N} targeted sources", ruleSources.Count);
+
+        // ── Step 4c: Merge all sources ────────────────────────────────────────
+        // Priority: Rule-based (precise) > Planner > Embed > Neo4j
+        var sources = MergeAllSources(
+            ruleSources.Concat(plan.Sources).ToList(), filteredEmbed, neo4jSources, 30);
         CorrectArticleRefs(sources);
 
         if (sources.Count == 0)
@@ -337,6 +349,52 @@ public sealed class GenerateConsultationCommandHandler(
             sw6.Elapsed.TotalMilliseconds, sw6.Elapsed.TotalMinutes,
             table.Count, etendueItems.Count);
 
+        // ── Step 6b: Acceptance agent (validate generation) + bounded self-correction ──
+        var analysesRaw = GetStr(p2, "analyses");
+        var sw6b = Stopwatch.StartNew();
+        var sourcesList = string.Join("\n", sources.Take(18)
+            .Select(s => $"[S{s.Index}] {s.DocType} {s.DocName} {s.ArticleRef}"));
+        var verdict = await acceptanceAgent.ReviewAsync(
+            new AcceptanceRequest(cmd.FiscalQuestion, BuildEtendue(etendueItems, ""),
+                analysesRaw, sourcesList), ct);
+
+        if (!verdict.Accept && verdict.NeedsMoreSources && verdict.MissingTopics.Any())
+        {
+            logger.LogInformation("► [STEP 6b] acceptance=REVISE — targeted re-retrieval for: {T}",
+                string.Join(", ", verdict.MissingTopics));
+
+            // Targeted re-retrieval driven by the judge's missing topics (rule layer + keyword fetch).
+            var extra = await ruleRetrieval.RetrieveAsync(
+                new RuleContext(branches, isIntl, countries, cmd.FiscalQuestion, cmd.Situation,
+                    verdict.MissingTopics), ct);
+            var more = await retrievalAgent.FetchTargetedAsync(
+                "", Array.Empty<string>(), verdict.MissingTopics.ToArray(), ct);
+
+            var existing = new HashSet<string>(sources.Select(s => s.ChunkId)
+                .Where(id => !string.IsNullOrEmpty(id)));
+            var addable = extra.Concat(more)
+                .Where(s => string.IsNullOrEmpty(s.ChunkId) || existing.Add(s.ChunkId))
+                .ToList();
+            if (addable.Any())
+            {
+                sources.InsertRange(0, addable);
+                for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
+            }
+
+            // One revision pass of the analyses with the augmented sources (bounded — no loop).
+            var revisedRaw = await llmAgent.CompleteAsync(SystemPrompt,
+                BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan),
+                "Phase2-Revise", 3800, ct);
+            var revised = revisedRaw is not null ? ParseJsonDict(revisedRaw) : null;
+            if (revised is not null && !string.IsNullOrWhiteSpace(GetStr(revised, "analyses")))
+                analysesRaw = GetStr(revised, "analyses");
+
+            logger.LogInformation("└─ [STEP 6b] revised with +{N} sources", addable.Count);
+        }
+        sw6b.Stop();
+        timings.Add(new("6b. Acceptance + revise", sw6b.Elapsed.TotalMilliseconds,
+            verdict.Accept ? "accepted" : $"revised: {string.Join(",", verdict.MissingTopics)}"));
+
         // ── Step 7: Build output ──────────────────────────────────────────────
         string R(string t) => ResolveCitations(t, sources);
         var output = new ConsultationOutput
@@ -345,7 +403,7 @@ public sealed class GenerateConsultationCommandHandler(
             Etendue         = BuildEtendue(etendueItems, GetStr(p1, "etendue")),
             Abbreviations   = GetStr(p1, "abbreviations").Trim(),
             SommairExecutif = R(sommaire),
-            Analyses        = R(GetStr(p2, "analyses")),
+            Analyses        = R(analysesRaw),
             Documents       = R(p3 is not null ? GetStr(p3, "documents") : ""),
             AnalysisTable   = table.Select(r =>
                 new AnalysisRow(R(r.Sujet), R(r.Analyse), R(r.Conclusion))).ToList(),
