@@ -55,7 +55,12 @@ public sealed class ElasticsearchSearchAgent(
 
     public async Task<bool> IsAliveAsync()
     {
-        try { var r = await _http.GetAsync($"{_host}/_cluster/health?timeout=3s"); return r.IsSuccessStatusCode; }
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var r = await _http.GetAsync($"{_host}/_cluster/health?timeout=2s", cts.Token);
+            return r.IsSuccessStatusCode;
+        }
         catch { return false; }
     }
 

@@ -33,11 +33,12 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
         "\"le scénario applicable\", \"sur la base du fait établi\") ?\n" +
         "8. ÉTAPES OBLIGATOIRES: pour un prestataire étranger, le risque d'établissement stable " +
         "est-il traité avant la conclusion ?\n\n" +
-        "Réponds UNIQUEMENT en JSON:\n" +
-        "{\"accept\":true|false,\"score\":0.0-1.0,\"issues\":[\"faiblesse concrète\"]," +
+        "Réponds UNIQUEMENT en JSON (COMPACT, pas de prose) — max 800 tokens:\n" +
+        "{\"accept\":true|false,\"score\":0.0-1.0,\"issues\":[\"faiblesse courte\",...]," +
         "\"needs_more_sources\":true|false," +
-        "\"missing_topics\":[\"ex: taux retenue à la source\",\"ex: Art. 52 CIRPPIS\"]," +
-        "\"revision_instructions\":\"consignes précises pour corriger le projet\"}\n" +
+        "\"missing_topics\":[\"ex: Art. 52 CIRPPIS\",...]," +
+        "\"revision_instructions\":\"<= 3 consignes numérotées, chacune <= 20 mots\"}\n" +
+        "MAX 8 issues (les plus critiques seulement). MAX 5 missing_topics.\n" +
         "accept=false dès qu'il existe une faiblesse réelle (pas seulement un taux manquant). " +
         "needs_more_sources=true UNIQUEMENT si la correction exige une source absente; sinon false " +
         "(la faiblesse est corrigeable avec les sources déjà fournies).";
@@ -47,12 +48,12 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
         var user =
             $"QUESTION:\n{req.FiscalQuestion}\n\n" +
             $"ÉTENDUE:\n{req.Etendue}\n\n" +
-            $"PROJET D'ANALYSE:\n{Trunc(req.Analyses, 6000)}\n\n" +
-            $"SOURCES DISPONIBLES:\n{Trunc(req.SourcesList, 1500)}\n\n" +
+            $"PROJET D'ANALYSE:\n{Trunc(req.Analyses, 4000)}\n\n" +
+            $"SOURCES DISPONIBLES:\n{Trunc(req.SourcesList, 800)}\n\n" +
             "Évalue ce projet. Réponds en JSON.";
 
         string? raw;
-        try { raw = await llm.CompleteAsync(JudgeSystem, user, "Acceptance", 600, ct); }
+        try { raw = await llm.CompleteAsync(JudgeSystem, user, "Acceptance", 900, ct); }
         catch (Exception ex) { logger.LogWarning(ex, "[ACCEPT] judge call failed — accepting"); return Pass(); }
 
         if (string.IsNullOrWhiteSpace(raw)) return Pass();

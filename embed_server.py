@@ -242,17 +242,28 @@ def vector_search(query_emb: List[float], top_k: int,
 
 @app.route("/health", methods=["GET"])
 def health():
-    """Quick health check. C# EmbedSearchService does NOT call this — just for debugging."""
+    """Health check called by the C# aggregate health endpoint every ~20s.
+    Returns 200 as soon as the embedding model is loaded, even if Neo4j isn't
+    reachable yet (Neo4j routing errors are transient at startup and do not
+    prevent embed_search from working once the driver retries)."""
     try:
-        driver = get_driver()
-        driver.verify_connectivity()
-        model  = load_model()
+        model = load_model()
+        neo4j_ok = False
+        neo4j_err = ""
+        try:
+            driver = get_driver()
+            driver.verify_connectivity()
+            neo4j_ok = True
+        except Exception as e:
+            neo4j_err = str(e)
         return jsonify({
             "status":    "ok",
-            "neo4j":     NEO4J_URI,
+            "neo4j":     neo4j_ok,
+            "neo4j_uri": NEO4J_URI,
             "database":  NEO4J_DB,
             "model":     EMBED_MODEL,
-            "dim":       model.get_sentence_embedding_dimension(),
+            "dim":       model.get_embedding_dimension(),
+            **({"neo4j_error": neo4j_err[:120]} if neo4j_err else {}),
         })
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 503
