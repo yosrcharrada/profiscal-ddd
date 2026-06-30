@@ -36,33 +36,37 @@ public sealed class FiscalRetrievalPolicy : IRuleBasedRetrieval
     // ── The routing map (maintained policy — edit here as the law changes) ──────────
     private static readonly Rule[] Rules =
     {
-        // Domestic withholding tax — the rate table lives in Art. 52/53 CIRPPIS.
+        // Art. 52/53 CIRPPIS — retenue à la source sur paiements à des non-résidents.
+        // Fetches the non-resident withholding regime (droit commun, sans CNDI).
         new Rule(
-            "RAS domestique — taux (Art. 52/53 CIRPPIS)",
-            ctx => ctx.Branches.Contains("Retenue") || Mentions(ctx, "retenue", "ras", "taux"),
+            "RAS non-résidents — Art. 52/53 CIRPPIS (droit commun)",
+            ctx => ctx.Branches.Contains("Retenue") || ctx.IsInternational ||
+                   Mentions(ctx, "retenue", "ras", "non résident", "non-résident", "étranger"),
             "irpp", new[] { "Art. 52", "Art. 53" },
-            new[] { "retenue à la source", "honoraires", "1%", "1,5%", "3%", "10%", "15%" }),
+            new[] { "non domicilié", "non établi", "retenue libératoire", "personnes non résidentes" }),
 
-        // Honoraires vs commercial services — defined in Note Commune N°3/2015 (Annexe 2).
+        // NC 3/2015 — définit la distinction honoraires / non-honoraires et l'assiette RS (TTC).
+        // Used for: (a) assiette calcul RS (TTC rule), (b) qualification honoraires vs services.
+        // NOT for applying rates to non-residents — that belongs to Art. 52 CIRPPIS.
         new Rule(
-            "Honoraires — Note Commune N°3/2015",
-            ctx => Mentions(ctx, "honoraires", "assistance", "conseil", "prestation", "retenue"),
+            "NC 3/2015 — qualification honoraires & assiette RS",
+            ctx => Mentions(ctx, "honoraires", "assistance", "conseil", "prestation", "retenue", "assiette"),
             "note-commune-numero-3", Array.Empty<string>(),
-            new[] { "honoraires", "professions", "retenue à la source", "assistance" }),
+            new[] { "honoraires", "professions", "retenue à la source", "assiette", "toutes taxes" }),
 
-        // IS — base & rate.
+        // IS — base imposable & taux (personnes morales résidentes ou ES).
         new Rule(
             "IS — base imposable & taux (CIRPPIS)",
             ctx => ctx.Branches.Contains("IS"),
             "irpp", new[] { "Art. 45", "Art. 47", "Art. 49" },
             new[] { "taux de l'impôt", "personnes morales", "bénéfices" }),
 
-        // TVA — scope & rate.
+        // TVA — champ d'application (Art. 1 + Art. 3 CTVA: affaires faites en Tunisie).
         new Rule(
-            "TVA — champ & taux (CTVA)",
+            "TVA — territorialité & champ (CTVA Art. 1/3/6/7)",
             ctx => ctx.Branches.Contains("TVA") || Mentions(ctx, "tva"),
-            "taxe-sur-la-valeur", new[] { "Art. 6", "Art. 7" },
-            new[] { "taux", "assujetti", "soumises", "affaires" }),
+            "taxe-sur-la-valeur", new[] { "Art. 1", "Art. 3", "Art. 6", "Art. 7" },
+            new[] { "affaires faites en Tunisie", "utilisés", "exploités", "soumises", "assujetti" }),
 
         // Transfer pricing.
         new Rule(
@@ -71,27 +75,13 @@ public sealed class FiscalRetrievalPolicy : IRuleBasedRetrieval
             "irpp", new[] { "Art. 48 septies" },
             new[] { "pleine concurrence", "entreprises associées", "prix de transfert" }),
 
-        // RAS non-residents — Art. 52 CIRPPIS 15% libératoire (international cases).
-        // Distinct from the "RAS domestique" rule above which targets the resident-rate table.
+        // CDPF Art. 112 + BCT circulaire 9/2016 — formalisme transfert de fonds à l'étranger.
+        // Mandatory whenever a cross-border payment with RS libératoire is identified.
         new Rule(
-            "RAS non-résidents — Art. 52 CIRPPIS 15% (cas international)",
-            ctx => ctx.IsInternational || Mentions(ctx, "non résident", "non-résident", "étranger", "hong kong", "maroc", "france", "offshore"),
-            "irpp", new[] { "Art. 52", "Art. 53" },
-            new[] { "non domicilié", "non établi", "15%", "retenue libératoire", "personnes non résidentes" }),
-
-        // CDPF Art. 112 — formalisme transfert de fonds à l'étranger (attestation RS).
-        new Rule(
-            "Formalisme transfert fonds à l'étranger (CDPF Art. 112 + BCT circulaire 9/2016)",
-            ctx => ctx.IsInternational || Mentions(ctx, "transfert", "virement", "paiement étranger", "non résident", "non-résident"),
+            "Formalisme transfert fonds à l'étranger (CDPF Art. 112)",
+            ctx => ctx.IsInternational || Mentions(ctx, "transfert", "virement", "non résident", "non-résident"),
             "cdpf", new[] { "Art. 112" },
-            new[] { "transfert", "attestation", "situation fiscale", "retenue libératoire", "banque centrale" }),
-
-        // TVA territorialité — Art. 1 + Art. 3 CTVA (used/exploited in Tunisia rule).
-        new Rule(
-            "TVA territorialité — Art. 1 + Art. 3 CTVA (prestataire étranger)",
-            ctx => ctx.IsInternational && (ctx.Branches.Contains("TVA") || Mentions(ctx, "tva")),
-            "taxe-sur-la-valeur", new[] { "Art. 1", "Art. 3" },
-            new[] { "affaires faites en Tunisie", "utilisés", "exploités", "autoliquidation", "retenue à la source tva" }),
+            new[] { "transfert", "attestation", "situation fiscale", "banque centrale", "retenue libératoire" }),
     };
 
     public async Task<List<LegalSourceDto>> RetrieveAsync(RuleContext ctx, CancellationToken ct = default)

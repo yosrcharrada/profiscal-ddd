@@ -575,35 +575,42 @@ public sealed class GenerateConsultationCommandHandler(
         if (branches.Contains("Retenue"))bg.AppendLine("  Retenue → CIRPPIS Art.52 + convention si international.");
         if (branches.Contains("PrixTransfert")) bg.AppendLine("  Prix de transfert → Art.48 septies CIRPPIS + CDPF.");
 
-        // ── Mandatory guidance for international payments with withholding tax ────────
+        // ── Routing guidance for international cases (articles to use, NOT rates) ────
         if (isIntl)
         {
             bg.AppendLine();
-            bg.AppendLine("═══ RÈGLES IMPÉRATIVES — PAIEMENTS À UN NON-RÉSIDENT ═══");
-            bg.AppendLine("  A. TAUX DE RETENUE À LA SOURCE (Art. 52 CIRPPIS):");
-            bg.AppendLine("     → Rémunérations servies à des personnes NON DOMICILIÉES / NON ÉTABLIES en Tunisie");
-            bg.AppendLine("       = 15% (retenue libératoire de l'IS/IRPP), sauf taux réduit conventionnel.");
-            bg.AppendLine("     → NE PAS CONFONDRE avec 2,5% NC 3/2015 Annexe 1 : ce taux ne concerne que");
-            bg.AppendLine("       les entreprises TOTALEMENT EXPORTATRICES payant des RÉSIDENTS — hors champ ici.");
-            bg.AppendLine("     → Si aucune convention de non-double imposition avec le pays étranger :");
-            bg.AppendLine("       appliquer le taux interne de 15% sans réduction.");
-            bg.AppendLine("  B. PAYS À RÉGIME FISCAL PRIVILÉGIÉ (arrêté Ministre des Finances 26/09/2022):");
-            bg.AppendLine("     → Vérifier si le pays du bénéficiaire figure sur cette liste.");
-            bg.AppendLine("     → Si oui et si le taux IS tunisien applicable est 15% → seuil de comparaison 7,5%.");
-            bg.AppendLine("     → La majoration à 25% ne s'applique QUE si le taux IS tunisien de référence");
-            bg.AppendLine("       est celui auquel la société est soumise et l'arrêté n'a pas été mis à jour");
-            bg.AppendLine("       depuis le relèvement des taux IS → analyser l'applicabilité.");
-            bg.AppendLine("  C. TVA — PRESTATAIRE ÉTRANGER:");
-            bg.AppendLine("     → Art. 1 + Art. 3 CTVA: service 'fait en Tunisie' si utilisé/exploité en Tunisie.");
-            bg.AppendLine("     → Taux TVA normal = 19%. Mécanisme = retenue à la source 100% de la TVA par le");
-            bg.AppendLine("       preneur tunisien (autoliquidation). Droit à déduction si conditions remplies.");
-            bg.AppendLine("  D. ASSIETTE RS (NC 3/2015 — Art. 52 et 53 CIRPPIS):");
-            bg.AppendLine("     → Base de calcul de la retenue = montant brut TOUTES TAXES COMPRISES.");
-            bg.AppendLine("  E. FORMALISME TRANSFERT DE FONDS (Art. 112 CDPF + BCT circulaire 9/2016):");
-            bg.AppendLine("     → Avant tout transfert à l'étranger de revenus soumis à RS libératoire:");
-            bg.AppendLine("       présenter une attestation justifiant la liquidation de la RS.");
-            bg.AppendLine("     → Obligation de mentionner ce formalisme dans l'analyse si un paiement");
-            bg.AppendLine("       transfrontalier avec RS libératoire est identifié.");
+            bg.AppendLine("═══ CADRE D'ANALYSE — CAS INTERNATIONAL ═══");
+            bg.AppendLine("  A. IMPÔT DIRECT — DEUX RÉGIMES SELON EXISTENCE D'UNE CNDI:");
+            bg.AppendLine("     1. SANS CNDI avec le pays du bénéficiaire:");
+            bg.AppendLine("        → Appliquer le DROIT COMMUN: Art. 52 CIRPPIS (retenue libératoire).");
+            bg.AppendLine("          Le taux et les conditions sont dans le texte de cet article [Sn] — le citer.");
+            bg.AppendLine("        → NE PAS utiliser les taux de la NC 3/2015 Annexe 1 pour les non-résidents:");
+            bg.AppendLine("          ces taux concernent un régime distinct (entreprises totalement exportatrices");
+            bg.AppendLine("          payant des prestataires RÉSIDENTS) — sans rapport avec Art. 52.");
+            bg.AppendLine("     2. AVEC CNDI avec le pays du bénéficiaire:");
+            bg.AppendLine("        → Vérifier si le revenu relève de la définition 'redevance' (Art. 12 CNDI).");
+            bg.AppendLine("          Si OUI (usage brevet, marque, procédé secret, équipement…) → taux réduit");
+            bg.AppendLine("          conventionnel [Sn]. Si NON (services techniques, assistance technique,");
+            bg.AppendLine("          supervision, installation…) → 'bénéfices d'entreprise' (Art. 7 CNDI)");
+            bg.AppendLine("          → imposable uniquement dans l'État de résidence si pas d'ES en Tunisie.");
+            bg.AppendLine("        → Citer les articles de la CNDI depuis les sources [Sn].");
+            bg.AppendLine("     3. PAYS À RÉGIME FISCAL PRIVILÉGIÉ: vérifier si le pays figure sur la liste");
+            bg.AppendLine("        de l'arrêté du Ministre des Finances du 26/09/2022 et analyser");
+            bg.AppendLine("        l'applicabilité de la majoration prévue — le taux et les seuils sont");
+            bg.AppendLine("        dans l'arrêté; noter que l'arrêté n'a pas été mis à jour depuis le");
+            bg.AppendLine("        relèvement des taux IS, ce qui affecte l'opérabilité de la comparaison.");
+            bg.AppendLine("  B. TVA — PRESTATAIRE ÉTRANGER:");
+            bg.AppendLine("     → Art. 1 + Art. 3 CTVA déterminent la territorialité (service 'fait en Tunisie'");
+            bg.AppendLine("       = utilisé/exploité en Tunisie). Le taux et le mécanisme sont dans le CTVA [Sn].");
+            bg.AppendLine("     → Préciser le taux cité depuis [Sn] et le mécanisme (retenue TVA 100% ou");
+            bg.AppendLine("       autoliquidation) conformément au texte récupéré.");
+            bg.AppendLine("  C. ASSIETTE RS (NC 3/2015 — Art. 52 et 53 CIRPPIS):");
+            bg.AppendLine("     → L'assiette de calcul de la retenue est définie dans NC 3/2015 [Sn].");
+            bg.AppendLine("       Si la source est disponible, citer la règle sur la base de calcul (TTC ou HT).");
+            bg.AppendLine("  D. FORMALISME TRANSFERT DE FONDS:");
+            bg.AppendLine("     → Si une RS libératoire s'applique, analyser Art. 112 CDPF [Sn] et la");
+            bg.AppendLine("       circulaire BCT n°9/2016 [Sn] sur l'attestation requise avant tout transfert.");
+            bg.AppendLine("       Si les sources ne sont pas disponibles, signaler l'obligation formellement.");
         }
 
         var antiDraft =
