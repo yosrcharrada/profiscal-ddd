@@ -56,6 +56,10 @@ public sealed class CountryDetector : ICountryDetector
         "canada", "etats-unis", "etats unis", "usa", "chine", "japon",
         "coree", "inde", "iran", "pakistan", "turquie", "vietnam",
         "syrie", "liban", "irak", "indonesie",
+        // Common no-convention / privileged-regime jurisdictions (drive the droit-commun + 25%
+        // majoration branch). Distinct strings — no clash with "hongrie".
+        "hong kong", "hong-kong", "iles caimans", "îles caïmans", "panama", "seychelles",
+        "iles vierges", "bermudes", "jersey", "guernesey", "bahamas",
     };
 
     private static readonly string[] InternationalSignals =

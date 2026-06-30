@@ -441,18 +441,20 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         try
         {
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
-            foreach (var kw in keywords.Take(4))
+            foreach (var kw in keywords.Take(6))
             {
-                if (results.Count >= 8) break;
+                if (results.Count >= 12) break;
                 try
                 {
+                    // Treaty article numbering is convention-specific, so match on the article
+                    // SUBJECT (its title — e.g. 'Redevances', 'Etablissement stable'), title first.
                     var res = await session.RunAsync($@"
                         MATCH (c:Chunk)
-                        WHERE c.corpus = 'Conventions'
+                        WHERE c.corpus = 'Conventions' AND c.chunk_type = 'article'
                           AND toLower(c.doc_id) CONTAINS toLower($frag)
-                          AND toLower(c.content) CONTAINS toLower($kw)
-                        RETURN {F}, 0.92 AS score
-                        ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END)
+                          AND (toLower(c.title) CONTAINS toLower($kw) OR toLower(c.content) CONTAINS toLower($kw))
+                        RETURN {F}, (CASE WHEN toLower(c.title) CONTAINS toLower($kw) THEN 0.95 ELSE 0.85 END) AS score
+                        ORDER BY (CASE WHEN toLower(c.title) CONTAINS toLower($kw) THEN 0 ELSE 1 END), size(c.title)
                         LIMIT 3",
                         new { frag, kw });
                     await foreach (var r in res)
@@ -574,7 +576,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                         MATCH (c:Chunk)
                         WHERE ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
                           AND c.chunk_type = 'article' AND c.content <> ''
-                          AND ($num <> '' AND (c.article_number = $num OR c.article_display CONTAINS $num))
+                          AND ($num <> '' AND (toString(c.article_number) = $num OR c.article_display CONTAINS $num))
                         RETURN {F}, 0.96 AS score
                         ORDER BY c.doc_id DESC LIMIT 3",
                         new { frag, num });
@@ -604,6 +606,97 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         catch (Exception ex) { _logger.LogWarning(ex, "FetchTargeted {D}", docNameFragment); }
         _logger.LogInformation("FetchTargeted doc='{D}' refs={R}: {N} chunks",
             docNameFragment, articleRefs?.Length ?? 0, results.Count);
+        return results;
+    }
+
+    // Number-free: locate a provision by anchor phrase → Topic → keyword → BM25 (all scoped to a
+    // doc family). No article numbers — robust to convention/code renumbering.
+    public async Task<List<LegalSourceDto>> FetchBySubjectAsync(
+        string docFragment, string[] anchorPhrases, string[] topics, string[] keywords,
+        CancellationToken ct = default)
+    {
+        var results = new List<LegalSourceDto>();
+        var seen    = new HashSet<string>();
+        var frag    = ToDocFragment(docFragment ?? "");
+        try
+        {
+            await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
+
+            // 1) anchor phrases via BM25 (tokenised — robust to the PDF line-breaks/accents that
+            //    break exact substring matching). Pinpoints the provision without article numbers.
+            if ((anchorPhrases ?? Array.Empty<string>()).Any(p => !string.IsNullOrWhiteSpace(p)))
+            {
+                try
+                {
+                    var q = SanitizeLucene(string.Join(" ", anchorPhrases!));
+                    var res = await session.RunAsync($@"
+                        CALL db.index.fulltext.queryNodes('chunk_content', $q) YIELD node AS c, score
+                        WHERE c.content <> '' AND ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                        RETURN {F}, 0.92 AS score
+                        ORDER BY score DESC LIMIT 3",
+                        new { frag, q });
+                    await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.92); }
+                }
+                catch (Exception ex) { _logger.LogDebug(ex, "FetchBySubject anchors BM25"); }
+            }
+
+            // 2) Topic-mediated (taxmind HAS_TOPIC taxonomy).
+            foreach (var topic in (topics ?? Array.Empty<string>()).Take(6))
+            {
+                if (results.Count >= 14 || string.IsNullOrWhiteSpace(topic)) continue;
+                try
+                {
+                    var res = await session.RunAsync($@"
+                        MATCH (t:Topic) WHERE toLower(t.label) CONTAINS toLower($topic)
+                        MATCH (t)<-[:HAS_TOPIC]-(c:Chunk)
+                        WHERE c.content <> '' AND ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                        RETURN {F}, 0.85 AS score
+                        ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END) LIMIT 2",
+                        new { frag, topic });
+                    await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.85); }
+                }
+                catch (Exception ex) { _logger.LogDebug(ex, "FetchBySubject topic {T}", topic); }
+            }
+
+            // 3) keyword content match.
+            foreach (var kw in (keywords ?? Array.Empty<string>()).Take(5))
+            {
+                if (results.Count >= 14 || string.IsNullOrWhiteSpace(kw)) continue;
+                try
+                {
+                    var res = await session.RunAsync($@"
+                        MATCH (c:Chunk)
+                        WHERE ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                          AND c.content <> '' AND toLower(c.content) CONTAINS toLower($kw)
+                        RETURN {F}, 0.8 AS score
+                        ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), c.doc_id DESC LIMIT 2",
+                        new { frag, kw });
+                    await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.8); }
+                }
+                catch (Exception ex) { _logger.LogDebug(ex, "FetchBySubject kw {K}", kw); }
+            }
+
+            // 4) BM25 safety net within the doc family if still thin.
+            if (results.Count < 3)
+            {
+                try
+                {
+                    var q = SanitizeLucene(string.Join(" ", (anchorPhrases ?? Array.Empty<string>())
+                        .Concat(topics ?? Array.Empty<string>()).Concat(keywords ?? Array.Empty<string>())));
+                    var res = await session.RunAsync($@"
+                        CALL db.index.fulltext.queryNodes('chunk_content', $q) YIELD node AS c, score
+                        WHERE c.content <> '' AND ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                        RETURN {F}, 0.75 AS score
+                        ORDER BY score DESC LIMIT 4",
+                        new { frag, q });
+                    await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.75); }
+                }
+                catch (Exception ex) { _logger.LogDebug(ex, "FetchBySubject BM25"); }
+            }
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "FetchBySubject {D}", docFragment); }
+        _logger.LogInformation("FetchBySubject doc='{D}' phrases={P} topics={T}: {N} chunks",
+            docFragment, anchorPhrases?.Length ?? 0, topics?.Length ?? 0, results.Count);
         return results;
     }
 

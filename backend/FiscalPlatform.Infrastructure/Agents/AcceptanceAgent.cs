@@ -32,7 +32,13 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
         "7. TON: document final professionnel, sans raisonnement à voix haute (\"Détermination\", " +
         "\"le scénario applicable\", \"sur la base du fait établi\") ?\n" +
         "8. ÉTAPES OBLIGATOIRES: pour un prestataire étranger, le risque d'établissement stable " +
-        "est-il traité avant la conclusion ?\n\n" +
+        "est-il traité (droit commun PUIS Art.5 convention) avant la conclusion ?\n" +
+        "9. TAUX LE PLUS FAVORABLE: le taux/traitement retenu est-il le PLUS FAVORABLE légalement " +
+        "applicable (convention vs droit commun) dont toutes les conditions sont remplies ? Si la " +
+        "convention réduit/exonère et que le projet applique quand même le taux de droit commun (ex: " +
+        "RS 15% Art.52) sans écarter la convention par une justification = faiblesse. En l'absence d'ES " +
+        "et hors redevance, le revenu est un bénéfice d'entreprise imposable seulement dans l'État de " +
+        "résidence (pas de RS en Tunisie) : vérifier que cette issue n'a pas été manquée.\n\n" +
         "Réponds UNIQUEMENT en JSON:\n" +
         "{\"accept\":true|false,\"score\":0.0-1.0,\"issues\":[\"faiblesse concrète\"]," +
         "\"needs_more_sources\":true|false," +

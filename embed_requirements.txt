@@ -1,6 +1,7 @@
 # Python deps for the semantic-search embedding server (embed_server.py).
-# Encodes the search query into a 768-dim vector and queries the Neo4j
-# `chunk_embeddings` vector index. Install into a venv:
+# Encodes the search query into a 384-dim vector (taxmind graph) and queries the
+# Neo4j `chunk_embeddings` vector index. Install into a venv (use Python 3.10–3.11,
+# NOT 3.14 — no prebuilt wheels). Install into a venv:
 #
 #   python3 -m venv venv && source venv/bin/activate
 #   pip install -r embed_requirements.txt

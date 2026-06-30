@@ -39,6 +39,13 @@ public interface IRetrievalAgent
     Task<List<LegalSourceDto>> FetchTargetedAsync(
         string docNameFragment, string[] articleRefs, string[] keywords,
         CancellationToken ct = default);
+
+    // Number-free targeted fetch used by the rule-based policy. Instead of article numbers,
+    // it locates a provision by (1) distinctive anchor phrases in the text, (2) taxmind Topic
+    // nodes (HAS_TOPIC), and (3) BM25 full-text as a safety net — all scoped to a doc family.
+    Task<List<LegalSourceDto>> FetchBySubjectAsync(
+        string docFragment, string[] anchorPhrases, string[] topics, string[] keywords,
+        CancellationToken ct = default);
 }
 
 // ─── EMBED SEARCH AGENT ──────────────────────────────────────────────────────

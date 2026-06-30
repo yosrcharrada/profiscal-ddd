@@ -65,15 +65,28 @@ public sealed class GenerateConsultationCommandHandler(
         "CITATIONS: [S1],[S2]... uniquement. Jamais de document en clair. Jamais inventer un article.\n" +
         "TAUX: tout taux (15%,5%,2.5%...) DOIT citer [Sn]. Jamais de taux de mémoire.\n" +
         "ART.92 CIRPPIS: si source contient 'Art 92-X LF' = référence LF, pas article autonome.\n" +
+        "PRINCIPE DIRECTEUR — TAUX LE PLUS FAVORABLE: parmi TOUS les fondements applicables, retenir le\n" +
+        "  traitement le plus favorable au contribuable (taux le plus bas, voire exonération) qui respecte\n" +
+        "  TOUTES les conditions légales. La convention prime toujours le droit commun et peut réduire ou\n" +
+        "  supprimer l'imposition tunisienne. Ne jamais retenir un taux plus élevé s'il existe un fondement\n" +
+        "  plus favorable dont les conditions sont remplies.\n" +
         "PRESTATAIRE ÉTRANGER — séquence obligatoire:\n" +
-        "  1. ES: analyser risque établissement stable (durée, présence, lieu fixe).\n" +
-        "     Si ES → taux IS. Si pas ES → étape 2.\n" +
-        "  2. Redevance: service = redevance selon Art.12 convention? (définition propre à chaque conv.)\n" +
-        "     Si oui → taux convention. Si non → Art.52 CIRPPIS.\n" +
-        "  3. TVA: toujours analyser.\n" +
+        "  1. ES (établissement stable): trancher OUI/NON, d'abord SELON LE DROIT COMMUN (Art.45/47 CIRPPIS\n" +
+        "     + doctrine: interprétation extensive, règle des 6 mois même pour une seule prestation), PUIS\n" +
+        "     SELON L'ART.5 de la convention. Si ES en Tunisie → imposition (IS/RS) selon le régime de l'ES.\n" +
+        "  2. EN L'ABSENCE D'ES — qualifier le revenu AU REGARD DE LA CONVENTION:\n" +
+        "     • REDEVANCE au sens de l'Art.12 (vérifier la définition propre à la convention) → RS au TAUX\n" +
+        "       RÉDUIT de la convention (le plus favorable).\n" +
+        "     • NON redevance (assistance technique, étude, service) → BÉNÉFICE D'ENTREPRISE (Art.7) →\n" +
+        "       imposable UNIQUEMENT dans l'État de résidence → PAS de RS en Tunisie. NE PAS appliquer\n" +
+        "       Art.52 CIRPPIS quand la convention écarte l'imposition tunisienne.\n" +
+        "  3. PAS DE CONVENTION → Art.52 CIRPPIS: RS libératoire 15% (et vérifier la majoration 'régime\n" +
+        "     fiscal privilégié', arrêté 26/09/2022, si le bénéficiaire y est listé).\n" +
+        "  4. TVA: toujours (Art.1 & 3 CTVA → service utilisé en Tunisie = TVA 19% par RS 100%).\n" +
+        "  5. ASSIETTE RS: NC 3/2015 (montant brut, TVA comprise, Art.52/53). FORMALISME: Art.112 CDPF.\n" +
         "CONVENTION: Art.5=ES, Art.7=bénéfices, Art.10=dividendes, Art.11=intérêts,\n" +
         "  Art.12=redevances, Art.14=prof.indép., Art.15=salaires.\n" +
-        "NOTE COMMUNE N°2/2015: utiliser Annexe 1 pour taux par pays (sauf Allemagne).\n" +
+        "NOTE COMMUNE N°2/2015: l'utiliser pour interpréter les conventions (taux/qualification par pays, sauf Allemagne).\n" +
         "HIÉRARCHIE: International: Convention→Codes→LdF→Doctrine. Local: Codes→LdF→Doctrine.\n" +
         "ÉTENDUE: UNIQUEMENT ce que le client demande. ZÉRO ajout.\n" +
         "VERDICTS: OUI/NON/X%/EXONÉRÉ/SOUMIS. NON DOCUMENTÉ si aucune source.\n" +
@@ -548,22 +561,55 @@ public sealed class GenerateConsultationCommandHandler(
         var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i+1}. {x}"));
         var concise = string.Equals(cmd.Mode, "concise", StringComparison.OrdinalIgnoreCase);
 
+        // Data-driven flags (no hardcoded country lists):
+        //  • hasConvention — did retrieval actually surface a convention for this case?
+        //  • groupLink     — do the facts mention a same-group capital link (société mère/filiale)?
+        var hay = ((cmd.Situation ?? "") + " " + (cmd.FiscalQuestion ?? "") + " " + (contexteFaits ?? "")).ToLowerInvariant();
+        bool hasConvention = sources.Any(s => string.Equals(s.DocType, "Convention", StringComparison.OrdinalIgnoreCase));
+        bool groupLink = new[]
+        {
+            "société mère", "societe mere", "maison mère", "maison mere", "filiale", "même groupe",
+            "meme groupe", "intra-groupe", "intragroupe", "lien capitalist", "capitalistique",
+            "actionnariat", "participation", "détention", "groupe"
+        }.Any(hay.Contains);
+
         var bg = new StringBuilder();
         if (isIntl || plan.EsRiskPossible)
         {
             bg.AppendLine("  CAS INTERNATIONAL — séquence d'analyse:");
-            bg.AppendLine("  1. ÉTABLISSEMENT STABLE — deux tests distincts, chacun tranché par un verdict:");
-            bg.AppendLine("     a) Présence directe du prestataire étranger en Tunisie (lieu fixe, personnel " +
-                          "propre, durée) → ES propre OUI/NON.");
-            bg.AppendLine("     b) Lien d'actionnariat/société mère : rappeler que le simple contrôle NE crée PAS " +
-                          "un ES (la filiale n'est pas un ES de sa mère), sauf locaux mis à disposition ou agent " +
-                          "dépendant concluant des contrats au nom de l'étranger → verdict OUI/NON.");
-            bg.AppendLine("  2. En l'absence d'ES : le service est-il une redevance ? " +
-                         $"(Art.12 convention — type: {plan.IncomeType}) → verdict.");
-            bg.AppendLine("  3. TVA : applicabilité → verdict.");
+            bg.AppendLine("  1. ÉTABLISSEMENT STABLE — trancher OUI/NON, d'abord selon le DROIT COMMUN " +
+                          "(Art.45/47 CIRPPIS + doctrine: interprétation extensive, règle des 6 mois même pour " +
+                          "une seule prestation), puis selon l'ART.5 de la convention si elle existe.");
+            bg.AppendLine("     a) Présence directe du prestataire étranger (lieu fixe, personnel propre, durée) → ES OUI/NON.");
+            if (groupLink)
+                bg.AppendLine("     b) Lien capitalistique (sociétés du MÊME GROUPE) : le simple contrôle NE crée PAS " +
+                              "un ES (la filiale n'est pas un ES de sa mère), sauf locaux mis à disposition ou agent " +
+                              "dépendant concluant des contrats au nom de l'étranger → verdict OUI/NON.");
+            // (Pas de lien capitalistique → ne PAS évoquer la société mère / le groupe.)
+
+            if (hasConvention)
+            {
+                bg.AppendLine($"  2. EN L'ABSENCE D'ES — qualifier le revenu au regard de la convention (type: {plan.IncomeType}):");
+                bg.AppendLine("     • REDEVANCE (définition propre à la convention) → RS au TAUX RÉDUIT de la convention [Sn].");
+                bg.AppendLine("     • NON redevance (assistance technique, étude, service) → BÉNÉFICE D'ENTREPRISE → " +
+                              "imposable UNIQUEMENT dans l'État de résidence → PAS de RS en Tunisie. Ne pas appliquer Art.52 CIRPPIS.");
+            }
+            else
+            {
+                bg.AppendLine("  2. AUCUNE CONVENTION applicable avec ce pays → DROIT COMMUN:");
+                bg.AppendLine("     • Art.52 CIRPPIS → RS libératoire de 15% sur les rémunérations servies aux non-résidents non établis [Sn].");
+                bg.AppendLine("     • RÉGIME FISCAL PRIVILÉGIÉ : vérifier si le bénéficiaire réside dans un État/territoire " +
+                              "à régime fiscal privilégié (Art.52 CIRPPIS modifié + arrêté du Ministre des Finances). " +
+                              "Si listé ET conditions réunies → majoration de la RS à 25% [Sn]. À défaut de source " +
+                              "confirmant l'inscription du pays ou l'applicabilité (arrêté non actualisé) → retenir le " +
+                              "droit commun et signaler la majoration comme point à vérifier, sans l'affirmer.");
+            }
+            bg.AppendLine("  3. TAUX LE PLUS FAVORABLE : retenir le taux le plus bas (ou l'exonération) dont toutes les conditions sont remplies.");
+            bg.AppendLine("  4. TVA : applicabilité (Art.1 & 3 CTVA) → verdict.");
         }
-        if (plan.NoteCommune2Used)
-            bg.AppendLine("  Note Commune N°2/2015 disponible → utiliser ses tableaux Annexe 1 pour les taux par pays.");
+        if (plan.NoteCommune2Used && hasConvention)
+            bg.AppendLine("  Note Commune N°2/2015 disponible → l'utiliser pour interpréter la convention " +
+                          "(qualification du revenu et taux applicable par pays).");
         if (branches.Contains("IS"))     bg.AppendLine("  IS → CIRPPIS Art.45/47 (personnes morales, bénéfices).");
         if (branches.Contains("TVA"))    bg.AppendLine("  TVA → CTVA (opérations soumises en Tunisie).");
         if (branches.Contains("IRPP"))   bg.AppendLine("  IRPP → CIRPPIS (revenu, personne physique).");
