@@ -1,0 +1,189 @@
+using FiscalPlatform.Application.Common.Interfaces.Agents;
+using Neo4j.Driver;
+
+namespace Profiscal.API.Fiscal;
+
+/// <summary>
+/// Neo4j-backed legal search agent for the taxmind graph. Uses Neo4j's native
+/// full-text (BM25/Lucene) index `chunk_content` over (Chunk.content, Chunk.title) —
+/// real BM25 ranking, no Elasticsearch required. Falls back to CONTAINS scoring if the
+/// full-text index is unavailable.
+/// </summary>
+public sealed class Neo4jSearchAgent : ISearchAgent, IDisposable
+{
+    private readonly IDriver _driver;
+    private readonly string  _db;
+    private readonly ILogger<Neo4jSearchAgent> _logger;
+
+    public Neo4jSearchAgent(IConfiguration config, ILogger<Neo4jSearchAgent> logger)
+    {
+        _logger = logger;
+        // Read config first, then fall back to the single-underscore NEO4J_* env vars
+        // (same convention the engine's RetrievalAgent uses, so one root .env drives both).
+        var uri  = config["Neo4j:Uri"]      is { Length: > 0 } u ? u
+                 : Environment.GetEnvironmentVariable("NEO4J_URI")      ?? "neo4j://127.0.0.1:7687";
+        var user = config["Neo4j:Username"] is { Length: > 0 } n ? n
+                 : Environment.GetEnvironmentVariable("NEO4J_USERNAME") ?? "neo4j";
+        var pass = config["Neo4j:Password"] is { Length: > 0 } p ? p
+                 : Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "";
+        _db      = config["Neo4j:Database"] is { Length: > 0 } d ? d
+                 : Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "taxmind";
+        _driver  = GraphDatabase.Driver(uri, AuthTokens.Basic(user, pass));
+    }
+
+    // doc_type is derived from the corpus a chunk belongs to (taxmind has no Chunk.doc_type).
+    private const string DocTypeExpr =
+        "CASE c.corpus WHEN 'Conventions' THEN 'Convention' " +
+        "WHEN 'Lois_des_Finances' THEN 'LoiFinances' " +
+        "WHEN 'Notes_Communes' THEN 'Doctrine' ELSE 'Code' END";
+
+    private static string SanitizeLucene(List<string> terms) =>
+        terms.Count == 0 ? "*" : string.Join(" OR ", terms.Select(t => t.Replace("\"", " ")));
+
+    public async Task<SearchResultDto> SearchAsync(SearchRequestDto req, CancellationToken ct = default)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var result = new SearchResultDto();
+
+        var terms = req.Query.ToLower()
+            .Split(new[] { ' ', ',', '.', ';', ':', '?', '!', '"', '\'', '(', ')', '-', '/' },
+                   StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 3).Distinct().Take(12).ToList();
+        if (terms.Count == 0) terms.Add(req.Query.Trim().ToLower());
+
+        try
+        {
+            await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
+
+            // BM25 ranking via the native full-text index; doc_type filter applied on the
+            // corpus-derived value; falls back to CONTAINS scoring if the index is missing.
+            var size = req.Size <= 0 ? 50 : Math.Min(req.Size, 100);
+            var args = new
+            {
+                terms,
+                q         = SanitizeLucene(terms),
+                docType   = string.IsNullOrEmpty(req.DocType)   ? "all" : req.DocType,
+                chunkType = string.IsNullOrEmpty(req.ChunkType) ? "all" : req.ChunkType,
+                size,
+            };
+
+            var bm25 = $@"
+                CALL db.index.fulltext.queryNodes('chunk_content', $q) YIELD node AS c, score
+                WHERE c.content <> ''
+                  AND ($docType = 'all' OR {DocTypeExpr} = $docType)
+                  AND ($chunkType = 'all' OR c.chunk_type = $chunkType)
+                RETURN c.chunk_id AS id, c.content AS text, c.doc_id AS doc_name,
+                       {DocTypeExpr} AS doc_type,
+                       coalesce(c.article_display, c.article_number, '') AS article_ref,
+                       c.title AS section_title, c.chunk_type AS chunk_type,
+                       null AS page_num, score AS hits
+                ORDER BY score DESC
+                LIMIT $size";
+
+            var contains = $@"
+                MATCH (c:Chunk)
+                WHERE c.content <> '' AND c.chunk_type IS NOT NULL
+                  AND ($docType = 'all' OR {DocTypeExpr} = $docType)
+                  AND ($chunkType = 'all' OR c.chunk_type = $chunkType)
+                  AND ANY(t IN $terms WHERE toLower(c.content) CONTAINS t)
+                WITH c, SIZE([t IN $terms WHERE toLower(c.content) CONTAINS t]) AS hits
+                RETURN c.chunk_id AS id, c.content AS text, c.doc_id AS doc_name,
+                       {DocTypeExpr} AS doc_type,
+                       coalesce(c.article_display, c.article_number, '') AS article_ref,
+                       c.title AS section_title, c.chunk_type AS chunk_type,
+                       null AS page_num, toFloat(hits) AS hits
+                ORDER BY hits DESC, (CASE WHEN c.chunk_type = 'article' THEN 0 ELSE 1 END)
+                LIMIT $size";
+
+            IResultCursor cursor;
+            try { cursor = await session.RunAsync(bm25, args); _ = await cursor.PeekAsync(); }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "full-text index unavailable — using CONTAINS fallback");
+                cursor = await session.RunAsync(contains, args);
+            }
+
+            var docTypeCounts   = new Dictionary<string, long>();
+            var chunkTypeCounts = new Dictionary<string, long>();
+            double maxHits = 1;
+
+            await foreach (var r in cursor)
+            {
+                var text    = r["text"].As<string>() ?? "";
+                var hits    = r["hits"].As<double>();
+                var docType = r["doc_type"].As<string>() ?? "";
+                var chkType = r["chunk_type"].As<string>() ?? "";
+                maxHits = Math.Max(maxHits, hits);
+
+                var hit = new SearchHitDto
+                {
+                    Id            = r["id"].As<string>() ?? "",
+                    Score         = hits,
+                    Content       = text,
+                    Filename      = r["doc_name"].As<string>() ?? "",
+                    ArticleNumber = r["article_ref"].As<string>() ?? "",
+                    SectionTitle  = r["section_title"].As<string>() ?? "",
+                    ChunkType     = chkType,
+                    DocumentType  = docType,
+                    PageNumber    = r["page_num"]?.As<int?>(),
+                    Highlight     = Highlight(text, terms),
+                };
+                result.Hits.Add(hit);
+                if (!string.IsNullOrEmpty(docType)) docTypeCounts[docType] = docTypeCounts.GetValueOrDefault(docType) + 1;
+                if (!string.IsNullOrEmpty(chkType)) chunkTypeCounts[chkType] = chunkTypeCounts.GetValueOrDefault(chkType) + 1;
+            }
+
+            result.Total            = result.Hits.Count;
+            result.MaxScore         = maxHits;
+            result.DocTypeBuckets   = docTypeCounts.OrderByDescending(kv => kv.Value)
+                                          .Select(kv => new AggBucketDto(kv.Key, kv.Value)).ToList();
+            result.ChunkTypeBuckets = chunkTypeCounts.OrderByDescending(kv => kv.Value)
+                                          .Select(kv => new AggBucketDto(kv.Key, kv.Value)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Neo4j search failed for '{Q}'", req.Query);
+        }
+
+        sw.Stop();
+        result.ElapsedMs = sw.Elapsed.TotalMilliseconds;
+        return result;
+    }
+
+    public async Task<bool> IsAliveAsync()
+    {
+        try
+        {
+            await using var s = _driver.AsyncSession(o => o.WithDatabase(_db));
+            await s.RunAsync("RETURN 1");
+            return true;
+        }
+        catch { return false; }
+    }
+
+    public async Task<long> CountAsync()
+    {
+        try
+        {
+            await using var s = _driver.AsyncSession(o => o.WithDatabase(_db));
+            var r = await s.RunAsync("MATCH (c:Chunk) RETURN count(c) AS n");
+            var rec = await r.SingleAsync();
+            return rec["n"].As<long>();
+        }
+        catch { return 0; }
+    }
+
+    private static string Highlight(string text, List<string> terms)
+    {
+        var lower = text.ToLower();
+        var idx = -1;
+        foreach (var t in terms) { idx = lower.IndexOf(t, StringComparison.Ordinal); if (idx >= 0) break; }
+        if (idx < 0) return text.Length > 300 ? text[..300] + "…" : text;
+        var start = Math.Max(0, idx - 120);
+        var len = Math.Min(text.Length - start, 320);
+        var snippet = text.Substring(start, len);
+        return (start > 0 ? "…" : "") + snippet + (start + len < text.Length ? "…" : "");
+    }
+
+    public void Dispose() => _driver?.Dispose();
+}

@@ -1,0 +1,6 @@
+@Profiscal.API_HostAddress = http://localhost:5131
+
+GET {{Profiscal.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

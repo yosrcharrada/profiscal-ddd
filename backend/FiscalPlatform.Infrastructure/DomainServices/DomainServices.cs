@@ -1,0 +1,137 @@
+using System.Collections.Concurrent;
+using FiscalPlatform.Application.Common.Interfaces.Services;
+
+namespace FiscalPlatform.Infrastructure.DomainServices;
+
+public sealed class BranchDetector : IBranchDetector
+{
+    public HashSet<string> Detect(string situation, string question)
+    {
+        var t = (situation + " " + question).ToLower();
+        var b = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (Any(t, "impôt sur les sociétés", " is ", "bénéfice", "résultat fiscal",
+                   "déductib", "société", "distribution", "dividende", "capital social",
+                   "holding", "filiale", "participation"))
+            b.Add("IS");
+
+        if (Any(t, "irpp", "revenu", "personne physique", "directeur", "dirigeant",
+                   "mandataire", "salaire", "rémunération", "catégorie", "gérant",
+                   "associé", "traitement"))
+            b.Add("IRPP");
+
+        if (Any(t, "tva", "taxe sur la valeur", "prestation", "assujetti",
+                   "exonér", "soumises", "affaires", "activités", "facturation"))
+            b.Add("TVA");
+
+        if (Any(t, "retenue à la source", "retenue source", "non-résident",
+                   "non résident", "non établi", "prestataire étranger",
+                   "fournisseur étranger", "management fee", "assistance technique",
+                   "redevance", "rémunération versée"))
+            b.Add("Retenue");
+
+        if (Any(t, "prix de transfert", "management fees", "pleine concurrence",
+                   "intragroupe", "48 septies", "frais de siège", "parties liées",
+                   "dépendance", "contrôle", "entreprises associées"))
+            b.Add("PrixTransfert");
+
+        return b;
+    }
+
+    private static bool Any(string t, params string[] terms) =>
+        terms.Any(x => t.Contains(x, StringComparison.OrdinalIgnoreCase));
+}
+
+public sealed class CountryDetector : ICountryDetector
+{
+    private static readonly string[] Known =
+    {
+        "maroc", "algerie", "libye", "egypte", "jordanie", "emirats",
+        "arabie saoudite", "arabie", "qatar", "koweit", "bahrain", "oman",
+        "mauritanie", "senegal", "mali", "niger", "cameroun", "gabon",
+        "france", "allemagne", "italie", "belgique", "suisse", "espagne",
+        "pays-bas", "pays bas", "luxembourg", "portugal", "autriche",
+        "royaume-uni", "royaume uni", "angleterre", "pologne", "roumanie",
+        "bulgarie", "danemark", "suede", "norvege", "finlande", "grece",
+        "canada", "etats-unis", "etats unis", "usa", "chine", "japon",
+        "coree", "inde", "iran", "pakistan", "turquie", "vietnam",
+        "syrie", "liban", "irak", "indonesie",
+    };
+
+    private static readonly string[] InternationalSignals =
+    {
+        "non-résident", "non résident", "non établi",
+        "convention", "convention fiscale", "double imposition",
+        "étranger", "étrangère", "devises",
+        "associé unique", "société mère", "holding",
+        "management fee", "frais de siège", "redevance",
+        "prestataire étranger", "fournisseur étranger",
+        "filiale tunisienne", "résidence fiscale",
+    };
+
+    public (List<string> Countries, bool IsInternational) Detect(string text)
+    {
+        var lower = text.ToLower();
+        var found = Known.Where(c =>
+            lower.Contains(c, StringComparison.OrdinalIgnoreCase))
+            .Distinct().ToList();
+
+        bool intlSignals = found.Any() ||
+            InternationalSignals.Any(sig =>
+                lower.Contains(sig, StringComparison.OrdinalIgnoreCase));
+
+        return (found, intlSignals);
+    }
+}
+
+public sealed class KeywordExtractor : IKeywordExtractor
+{
+    private static readonly HashSet<string> Stop = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "le","la","les","de","du","des","à","au","aux","un","une","que","qui",
+        "est","sont","en","par","pour","avec","dans","sur","ce","ces","cet",
+        "cette","entre","même","aussi","selon","fiscal","impôt","taxe","tunisie",
+        "tunisien","tunisienne","société","client","question","analyse","cas"
+    };
+
+    private static readonly char[] Sp =
+        {' ','?','.',',',';',':','!','"','\'','(',')','[',']','-','/','\\','\n','\r','\t'};
+
+    public (List<string> Keywords, List<string> Entities) Extract(
+        string situation, string question)
+    {
+        IEnumerable<string> Tokenize(string src) =>
+            src.Split(Sp, StringSplitOptions.RemoveEmptyEntries)
+               .Where(w => w.Length >= 3 && !Stop.Contains(w.ToLower()))
+               .Select(w => w.ToLower()).Distinct();
+
+        var fromQ = Tokenize(question).Take(12).ToList();
+        var fromS = Tokenize(situation).Except(fromQ).Take(10).ToList();
+        var kws   = fromQ.Concat(fromS).Take(22).ToList();
+
+        var combined = (question + " " + situation).ToLower();
+        var ents     = new List<string>();
+
+        foreach (var p in new[]
+        {
+            "retenue à la source", "prix de transfert", "pleine concurrence",
+            "double imposition", "résidence fiscale", "établissement stable",
+            "management fee", "frais de siège", "note commune",
+            "prestation de services", "assistance technique"
+        })
+            if (combined.Contains(p)) ents.Add(p);
+
+        ents.AddRange(fromQ.Where(k => k.Length >= 4).Take(4));
+        return (kws, ents.Distinct().Take(8).ToList());
+    }
+}
+
+// InMemorySessionStore must stay in DomainServices.cs — it's registered in DependencyInjection.cs
+public sealed class InMemorySessionStore : ISessionStore
+{
+    private readonly ConcurrentDictionary<string, ConversationSession> _store = new();
+    public void Set(string id, ConversationSession s) => _store[id] = s;
+    public ConversationSession? Get(string id) => _store.TryGetValue(id, out var s) ? s : null;
+    public void Remove(string id) => _store.TryRemove(id, out _);
+    public bool Exists(string id) => _store.ContainsKey(id);
+}
