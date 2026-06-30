@@ -317,40 +317,45 @@ public sealed class GenerateConsultationCommandHandler(
             }
         }
 
-        // ── Step 6: LLM Phase 2 + 3 — PARALLEL ───────────────────────────────
-        logger.LogInformation("┌─ [PHASE 2+3] analyses ‖ table — parallel…");
-        var sw6   = Stopwatch.StartNew();
-        var task2 = llmAgent.CompleteAsync(SystemPrompt,
+        // ── Step 6: LLM Phase 2 (analyses), then Phase 3 (table derived from Phase 2) ──
+        // Phase 3 runs AFTER Phase 2 so the synthesis table is derived from the actual analysis,
+        // not generated independently from sources (which caused tables about the wrong case).
+        logger.LogInformation("┌─ [PHASE 2] analyses…");
+        var sw6 = Stopwatch.StartNew();
+        var raw2 = await llmAgent.CompleteAsync(SystemPrompt,
             BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan),
             "Phase2", 3800, ct);
-        var task3 = llmAgent.CompleteAsync(SystemPrompt,
-            BuildPhase3Prompt(cmd, sources, etendueItems),
-            "Phase3", 3500, ct);
-        await Task.WhenAll(task2, task3);
 
-        if (task2.Result is null)
+        if (raw2 is null)
         {
             sw6.Stop();
-            timings.Add(new("6. LLM Phase 2+3", sw6.Elapsed.TotalMilliseconds, "PHASE 2 FAILED"));
+            timings.Add(new("6. LLM Phase 2", sw6.Elapsed.TotalMilliseconds, "PHASE 2 FAILED"));
             throw new ConsultationGenerationException("LLM Phase 2 returned null");
         }
 
-        var p2    = ParseJsonDict(task2.Result) ?? new Dictionary<string, JsonElement>();
-        var p3    = task3.Result is not null ? ParseJsonDict(task3.Result) : null;
-        var table = ParseTable(p3);
-
-        if (task3.Result is null)
-            logger.LogWarning("│  [PHASE 3] returned null — table will be empty");
-
+        var p2       = ParseJsonDict(raw2) ?? new Dictionary<string, JsonElement>();
+        var analyses2 = GetStr(p2, "analyses");
         sw6.Stop();
-        timings.Add(new("6. LLM Phase 2+3 (‖)", sw6.Elapsed.TotalMilliseconds,
+        timings.Add(new("6. LLM Phase 2", sw6.Elapsed.TotalMilliseconds, $"{analyses2.Length} chars"));
+        logger.LogInformation("└─ [PHASE 2] ✓ ({Ms:F0}ms / {Min:F2}min) | {C} chars",
+            sw6.Elapsed.TotalMilliseconds, sw6.Elapsed.TotalMinutes, analyses2.Length);
+
+        logger.LogInformation("┌─ [PHASE 3] synthesis table from analysis…");
+        var sw6c = Stopwatch.StartNew();
+        var raw3 = await llmAgent.CompleteAsync(SystemPrompt,
+            BuildPhase3Prompt(cmd, sources, etendueItems, analyses2),
+            "Phase3", 3500, ct);
+        var p3    = raw3 is not null ? ParseJsonDict(raw3) : null;
+        var table = ParseTable(p3);
+        if (raw3 is null) logger.LogWarning("│  [PHASE 3] returned null — table will be empty");
+        sw6c.Stop();
+        timings.Add(new("6. LLM Phase 3 (table)", sw6c.Elapsed.TotalMilliseconds,
             $"table={table.Count}/{etendueItems.Count}"));
-        logger.LogInformation("└─ [PHASE 2+3] ✓ ({Ms:F0}ms / {Min:F2}min) | table={T}/{N}",
-            sw6.Elapsed.TotalMilliseconds, sw6.Elapsed.TotalMinutes,
-            table.Count, etendueItems.Count);
+        logger.LogInformation("└─ [PHASE 3] ✓ ({Ms:F0}ms) | table={T}/{N}",
+            sw6c.Elapsed.TotalMilliseconds, table.Count, etendueItems.Count);
 
         // ── Step 6b: Acceptance agent (validate generation) + bounded self-correction ──
-        var analysesRaw = GetStr(p2, "analyses");
+        var analysesRaw = analyses2;
         var sw6b = Stopwatch.StartNew();
         var sourcesList = string.Join("\n", sources.Take(18)
             .Select(s => $"[S{s.Index}] {s.DocType} {s.DocName} {s.ArticleRef}"));
@@ -570,6 +575,37 @@ public sealed class GenerateConsultationCommandHandler(
         if (branches.Contains("Retenue"))bg.AppendLine("  Retenue → CIRPPIS Art.52 + convention si international.");
         if (branches.Contains("PrixTransfert")) bg.AppendLine("  Prix de transfert → Art.48 septies CIRPPIS + CDPF.");
 
+        // ── Mandatory guidance for international payments with withholding tax ────────
+        if (isIntl)
+        {
+            bg.AppendLine();
+            bg.AppendLine("═══ RÈGLES IMPÉRATIVES — PAIEMENTS À UN NON-RÉSIDENT ═══");
+            bg.AppendLine("  A. TAUX DE RETENUE À LA SOURCE (Art. 52 CIRPPIS):");
+            bg.AppendLine("     → Rémunérations servies à des personnes NON DOMICILIÉES / NON ÉTABLIES en Tunisie");
+            bg.AppendLine("       = 15% (retenue libératoire de l'IS/IRPP), sauf taux réduit conventionnel.");
+            bg.AppendLine("     → NE PAS CONFONDRE avec 2,5% NC 3/2015 Annexe 1 : ce taux ne concerne que");
+            bg.AppendLine("       les entreprises TOTALEMENT EXPORTATRICES payant des RÉSIDENTS — hors champ ici.");
+            bg.AppendLine("     → Si aucune convention de non-double imposition avec le pays étranger :");
+            bg.AppendLine("       appliquer le taux interne de 15% sans réduction.");
+            bg.AppendLine("  B. PAYS À RÉGIME FISCAL PRIVILÉGIÉ (arrêté Ministre des Finances 26/09/2022):");
+            bg.AppendLine("     → Vérifier si le pays du bénéficiaire figure sur cette liste.");
+            bg.AppendLine("     → Si oui et si le taux IS tunisien applicable est 15% → seuil de comparaison 7,5%.");
+            bg.AppendLine("     → La majoration à 25% ne s'applique QUE si le taux IS tunisien de référence");
+            bg.AppendLine("       est celui auquel la société est soumise et l'arrêté n'a pas été mis à jour");
+            bg.AppendLine("       depuis le relèvement des taux IS → analyser l'applicabilité.");
+            bg.AppendLine("  C. TVA — PRESTATAIRE ÉTRANGER:");
+            bg.AppendLine("     → Art. 1 + Art. 3 CTVA: service 'fait en Tunisie' si utilisé/exploité en Tunisie.");
+            bg.AppendLine("     → Taux TVA normal = 19%. Mécanisme = retenue à la source 100% de la TVA par le");
+            bg.AppendLine("       preneur tunisien (autoliquidation). Droit à déduction si conditions remplies.");
+            bg.AppendLine("  D. ASSIETTE RS (NC 3/2015 — Art. 52 et 53 CIRPPIS):");
+            bg.AppendLine("     → Base de calcul de la retenue = montant brut TOUTES TAXES COMPRISES.");
+            bg.AppendLine("  E. FORMALISME TRANSFERT DE FONDS (Art. 112 CDPF + BCT circulaire 9/2016):");
+            bg.AppendLine("     → Avant tout transfert à l'étranger de revenus soumis à RS libératoire:");
+            bg.AppendLine("       présenter une attestation justifiant la liquidation de la RS.");
+            bg.AppendLine("     → Obligation de mentionner ce formalisme dans l'analyse si un paiement");
+            bg.AppendLine("       transfrontalier avec RS libératoire est identifié.");
+        }
+
         var antiDraft =
             "═══ TON — DOCUMENT FINAL, PAS UN BROUILLON ═══\n" +
             "Rédige comme un mémo de cabinet REMIS au client. INTERDICTION d'exposer ton raisonnement " +
@@ -610,15 +646,31 @@ public sealed class GenerateConsultationCommandHandler(
     }
 
     private static string BuildPhase3Prompt(GenerateConsultationCommand cmd,
-        List<LegalSourceDto> sources, List<string> etendueItems)
+        List<LegalSourceDto> sources, List<string> etendueItems, string analyses)
     {
         var lst = string.Join("\n", sources.Take(18)
             .Select(s => $"  [S{s.Index}] {s.DocType} | {s.DocName} ({s.Year}) — {s.ArticleRef}"));
+
+        // Pass the étendue items numbered so the table maps 1-to-1
+        var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i+1}. {x}"));
+
+        // Truncate analyses to ~2000 chars for the table prompt (enough to extract verdicts)
+        var analysesSnippet = analyses.Length > 2000 ? analyses[..2000] + "…" : analyses;
+
         return
-            $"PHASE 3 — JSON: documents + analysis_table ({etendueItems.Count} objets).\n\n" +
-            $"Client: {cmd.ClientName}\nSOURCES:\n{lst}\n\n" +
-            "{\"documents\":\"5. RÉFÉRENCES\\n\\n[sources citées]\"," +
-            "\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"OUI/NON\"}]}";
+            $"PHASE 3 — JSON: documents + analysis_table.\n\n" +
+            $"Client: {cmd.ClientName}\n" +
+            $"Question: {cmd.FiscalQuestion}\n\n" +
+            $"ÉTENDUE ({etendueItems.Count} points demandés):\n{et}\n\n" +
+            $"ANALYSE (extraits) — UTILISE CES VERDICTS pour la table:\n{analysesSnippet}\n\n" +
+            $"SOURCES CITÉES:\n{lst}\n\n" +
+            "RÈGLES TABLE:\n" +
+            "- Génère EXACTEMENT {etendueItems.Count} lignes, une par point d'étendue.\n".Replace("{etendueItems.Count}", etendueItems.Count.ToString()) +
+            "- sujet: le point d'étendue exact.\n" +
+            "- analyse: la base légale retenue dans l'analyse ci-dessus ([Sn] + article).\n" +
+            "- conclusion: verdict UNIQUE (OUI/NON/15%/SOUMIS/EXONÉRÉ/etc.) — EXTRAIT de l'analyse, jamais inventé.\n" +
+            "{\"documents\":\"5. RÉFÉRENCES\\n\\n[liste des sources citées dans l'analyse]\"," +
+            "\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"\"}]}";
     }
 
     // ── Source merging ────────────────────────────────────────────────────────

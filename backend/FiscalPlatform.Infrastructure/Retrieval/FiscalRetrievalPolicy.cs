@@ -70,6 +70,28 @@ public sealed class FiscalRetrievalPolicy : IRuleBasedRetrieval
             ctx => ctx.Branches.Contains("PrixTransfert") || Mentions(ctx, "prix de transfert", "pleine concurrence", "marge"),
             "irpp", new[] { "Art. 48 septies" },
             new[] { "pleine concurrence", "entreprises associées", "prix de transfert" }),
+
+        // RAS non-residents — Art. 52 CIRPPIS 15% libératoire (international cases).
+        // Distinct from the "RAS domestique" rule above which targets the resident-rate table.
+        new Rule(
+            "RAS non-résidents — Art. 52 CIRPPIS 15% (cas international)",
+            ctx => ctx.IsInternational || Mentions(ctx, "non résident", "non-résident", "étranger", "hong kong", "maroc", "france", "offshore"),
+            "irpp", new[] { "Art. 52", "Art. 53" },
+            new[] { "non domicilié", "non établi", "15%", "retenue libératoire", "personnes non résidentes" }),
+
+        // CDPF Art. 112 — formalisme transfert de fonds à l'étranger (attestation RS).
+        new Rule(
+            "Formalisme transfert fonds à l'étranger (CDPF Art. 112 + BCT circulaire 9/2016)",
+            ctx => ctx.IsInternational || Mentions(ctx, "transfert", "virement", "paiement étranger", "non résident", "non-résident"),
+            "cdpf", new[] { "Art. 112" },
+            new[] { "transfert", "attestation", "situation fiscale", "retenue libératoire", "banque centrale" }),
+
+        // TVA territorialité — Art. 1 + Art. 3 CTVA (used/exploited in Tunisia rule).
+        new Rule(
+            "TVA territorialité — Art. 1 + Art. 3 CTVA (prestataire étranger)",
+            ctx => ctx.IsInternational && (ctx.Branches.Contains("TVA") || Mentions(ctx, "tva")),
+            "taxe-sur-la-valeur", new[] { "Art. 1", "Art. 3" },
+            new[] { "affaires faites en Tunisie", "utilisés", "exploités", "autoliquidation", "retenue à la source tva" }),
     };
 
     public async Task<List<LegalSourceDto>> RetrieveAsync(RuleContext ctx, CancellationToken ct = default)
