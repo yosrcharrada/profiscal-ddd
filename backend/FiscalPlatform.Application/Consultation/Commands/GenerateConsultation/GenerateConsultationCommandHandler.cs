@@ -480,14 +480,14 @@ public sealed class GenerateConsultationCommandHandler(
     private static string SourcesBlock(List<LegalSourceDto> sources)
     {
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
-        foreach (var s in sources.Take(18))
+        foreach (var s in sources.Take(25))
         {
             var label   = s.IsExpert ? "COMMENTAIRE — Faiez Choyakh" : s.DocType;
             var preview = s.Text.Length > 300 ? s.Text[..300] + "…" : s.Text;
             sb.AppendLine($"[S{s.Index}] {label} | {s.DocName} | {s.Year} | {s.ArticleRef}");
             sb.AppendLine($"       {preview}\n");
         }
-        sb.AppendLine($"!! Cite UNIQUEMENT [S1]..[S{Math.Min(sources.Count, 18)}].");
+        sb.AppendLine($"!! Cite UNIQUEMENT [S1]..[S{Math.Min(sources.Count, 25)}].");
         return sb.ToString();
     }
 
@@ -580,14 +580,22 @@ public sealed class GenerateConsultationCommandHandler(
         {
             bg.AppendLine();
             bg.AppendLine("═══ CADRE D'ANALYSE — CAS INTERNATIONAL ═══");
-            bg.AppendLine("  A. IMPÔT DIRECT — DEUX RÉGIMES SELON EXISTENCE D'UNE CNDI:");
-            bg.AppendLine("     1. SANS CNDI avec le pays du bénéficiaire:");
-            bg.AppendLine("        → Appliquer le DROIT COMMUN: Art. 52 CIRPPIS (retenue libératoire).");
-            bg.AppendLine("          Le taux et les conditions sont dans le texte de cet article [Sn] — le citer.");
-            bg.AppendLine("        → NE PAS utiliser les taux de la NC 3/2015 Annexe 1 pour les non-résidents:");
-            bg.AppendLine("          ces taux concernent un régime distinct (entreprises totalement exportatrices");
-            bg.AppendLine("          payant des prestataires RÉSIDENTS) — sans rapport avec Art. 52.");
-            bg.AppendLine("     2. AVEC CNDI avec le pays du bénéficiaire:");
+            bg.AppendLine("  RÈGLE FONDAMENTALE CONVENTION:");
+            bg.AppendLine("  Une CNDI s'applique UNIQUEMENT si une source [Sn] de type 'Convention' pour le");
+            bg.AppendLine("  pays EXACT du bénéficiaire figure dans les sources ci-dessus.");
+            bg.AppendLine("  → NE JAMAIS supposer ou inventer l'existence d'une convention non citée en [Sn].");
+            bg.AppendLine("  → NE PAS appliquer une convention d'un autre pays (ex: Liban, France) si le");
+            bg.AppendLine("    bénéficiaire est dans un pays différent.");
+            bg.AppendLine();
+            bg.AppendLine("  A. IMPÔT DIRECT — DEUX RÉGIMES:");
+            bg.AppendLine("     1. SANS CNDI (aucune source 'Convention' du pays bénéficiaire dans [S1]..[Sn]):");
+            bg.AppendLine("        → Appliquer EXCLUSIVEMENT le DROIT COMMUN: Art. 52 CIRPPIS.");
+            bg.AppendLine("          Le taux est dans le texte [Sn] — le citer. Si Art. 52 n'est pas dans les");
+            bg.AppendLine("          sources, indiquer: 'L'Art. 52 CIRPPIS prévoit une retenue libératoire sur");
+            bg.AppendLine("          les rémunérations des non-résidents — se référer au texte en vigueur.'");
+            bg.AppendLine("          NE PAS conclure NON DOCUMENTÉ pour la RS quand le droit commun s'applique.");
+            bg.AppendLine("        → NE PAS utiliser NC 3/2015 Annexe 1 pour non-résidents (régime distinct).");
+            bg.AppendLine("     2. AVEC CNDI (source 'Convention' du pays exact du bénéficiaire présente en [Sn]):");
             bg.AppendLine("        → Vérifier si le revenu relève de la définition 'redevance' (Art. 12 CNDI).");
             bg.AppendLine("          Si OUI (usage brevet, marque, procédé secret, équipement…) → taux réduit");
             bg.AppendLine("          conventionnel [Sn]. Si NON (services techniques, assistance technique,");
@@ -655,7 +663,7 @@ public sealed class GenerateConsultationCommandHandler(
     private static string BuildPhase3Prompt(GenerateConsultationCommand cmd,
         List<LegalSourceDto> sources, List<string> etendueItems, string analyses)
     {
-        var lst = string.Join("\n", sources.Take(18)
+        var lst = string.Join("\n", sources.Take(25)
             .Select(s => $"  [S{s.Index}] {s.DocType} | {s.DocName} ({s.Year}) — {s.ArticleRef}"));
 
         // Pass the étendue items numbered so the table maps 1-to-1

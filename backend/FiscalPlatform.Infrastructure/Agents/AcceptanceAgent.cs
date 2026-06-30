@@ -32,10 +32,14 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
         "7. TON: document final professionnel, sans raisonnement à voix haute (\"Détermination\", " +
         "\"le scénario applicable\", \"sur la base du fait établi\") ?\n" +
         "8. ÉTAPES OBLIGATOIRES (cas international): (a) ES analysé avant la conclusion RS/retenue; " +
-        "(b) si CNDI: vérification explicite si le revenu est une 'redevance' (Art.12 CNDI) ou des " +
-        "'bénéfices d'entreprise' (Art.7 CNDI) — les deux ont des traitements opposés; " +
-        "(c) si RS libératoire: formalisme CDPF Art.112 mentionné; " +
-        "(d) le taux appliqué est cité depuis une SOURCE [Sn] — jamais affirmé sans référence.\n\n" +
+        "(b) CONVENTION: une CNDI est invoquée UNIQUEMENT si une source [Sn] 'Convention' du MÊME PAYS " +
+        "que le bénéficiaire est présente — invoquer une convention d'un autre pays ou une convention non " +
+        "citée en [Sn] est une HALLUCINATION; " +
+        "(c) si CNDI valide: vérification explicite si redevance (Art.12) ou bénéfices d'entreprise (Art.7); " +
+        "(d) si SANS CNDI: Art.52 CIRPPIS doit être appliqué — NON DOCUMENTÉ pour la RS non-résidents " +
+        "sans CNDI = faiblesse critique (le droit commun s'applique de plein droit); " +
+        "(e) si RS libératoire: formalisme CDPF Art.112 mentionné; " +
+        "(f) le taux appliqué est cité depuis une SOURCE [Sn] — jamais affirmé sans référence.\n\n" +
         "Réponds UNIQUEMENT en JSON (COMPACT, pas de prose) — max 800 tokens:\n" +
         "{\"accept\":true|false,\"score\":0.0-1.0,\"issues\":[\"faiblesse courte\",...]," +
         "\"needs_more_sources\":true|false," +
