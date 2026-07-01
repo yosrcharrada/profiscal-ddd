@@ -8,11 +8,15 @@ const fiscalService = {
   statsHealth:  () => api.get('/fiscal/stats/health'),
   searchHealth: () => api.get('/fiscal/search/health'),
 
-  // Semantic search engine
+  // Semantic search engine (+ JORT-style corpus filters)
   search: (body) => api.post('/fiscal/search', {
     query: body.query,
     docType: body.docType || 'all',
     chunkType: body.chunkType || 'all',
+    corpus: body.corpus || 'all',
+    number: body.number || '',
+    dateText: body.dateText || '',
+    year: body.year || 0,
     yearMin: body.yearMin || 2000,
     yearMax: body.yearMax || 2030,
     size: body.size || 30,
@@ -86,7 +90,11 @@ const fiscalService = {
 
   // Consultations
   generate: (body) => api.post('/fiscal/consultations/generate', body),
-  list:     (search = '', all = false) => api.get('/fiscal/consultations', { params: { search: search || undefined, all } }),
+  list:     (search = '', all = false, dateFrom = '', dateTo = '') =>
+              api.get('/fiscal/consultations', { params: {
+                search: search || undefined, all,
+                dateFrom: dateFrom || undefined, dateTo: dateTo || undefined,
+              } }),
   get:      (id) => api.get(`/fiscal/consultations/${id}`),
   saveOutput: (id, output) => api.put(`/fiscal/consultations/${id}/output`, output),
   rate:     (consultationId, reference, stars, comment) =>

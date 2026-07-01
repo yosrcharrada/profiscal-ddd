@@ -64,20 +64,48 @@ public sealed class Neo4jSearchAgent : ISearchAgent, IDisposable
                 q         = SanitizeLucene(terms),
                 docType   = string.IsNullOrEmpty(req.DocType)   ? "all" : req.DocType,
                 chunkType = string.IsNullOrEmpty(req.ChunkType) ? "all" : req.ChunkType,
+                corpus    = string.IsNullOrEmpty(req.Corpus)    ? "all" : req.Corpus,
+                number    = req.Number   ?? "",
+                dateText  = req.DateText ?? "",
+                year      = req.Year,
                 size,
             };
+
+            // JORT-style metadata filters (Numéro/Année/Date) join the chunk's parent :Document
+            // (every Convention/LoiFinances/NoteCommune/CodeFiscal is also a :Document, doc_id-indexed).
+            //   • law_number is 'YYYY-NN' → the NUMÉRO is the part AFTER the year (last segment),
+            //     the YYYY belongs to ANNÉE. NoteCommune numéro lives in the doc_id suffix (NC_YYYY_NN).
+            const string metaFilter = @"
+                WITH c, score
+                OPTIONAL MATCH (m:Document {doc_id: c.doc_id})
+                WITH c, score, m
+                WHERE ($number = ''
+                       OR last(split(coalesce(m.law_number,''),'-')) CONTAINS $number
+                       OR coalesce(m.nc_number,'') CONTAINS $number
+                       OR (c.corpus = 'Notes_Communes' AND last(split(c.doc_id,'_')) CONTAINS $number))
+                  AND ($year = 0 OR (
+                       toString(coalesce(m.fiscal_year, m.year, '')) CONTAINS toString($year)
+                       OR head(split(coalesce(m.law_number,''),'-')) = toString($year)
+                       OR coalesce(m.law_date,'') CONTAINS toString($year)
+                       OR coalesce(m.date_signature,'') CONTAINS toString($year)))
+                  AND ($dateText = '' OR coalesce(m.date, m.law_date, m.date_signature, '') CONTAINS $dateText)";
+
+            const string proj = @"
+                RETURN c.chunk_id AS id, c.content AS text, c.doc_id AS doc_name,
+                       {0} AS doc_type,
+                       coalesce(c.article_display, c.article_number, '') AS article_ref,
+                       c.title AS section_title, c.chunk_type AS chunk_type,
+                       null AS page_num, {1} AS hits";
 
             var bm25 = $@"
                 CALL db.index.fulltext.queryNodes('chunk_content', $q) YIELD node AS c, score
                 WHERE c.content <> ''
                   AND ($docType = 'all' OR {DocTypeExpr} = $docType)
                   AND ($chunkType = 'all' OR c.chunk_type = $chunkType)
-                RETURN c.chunk_id AS id, c.content AS text, c.doc_id AS doc_name,
-                       {DocTypeExpr} AS doc_type,
-                       coalesce(c.article_display, c.article_number, '') AS article_ref,
-                       c.title AS section_title, c.chunk_type AS chunk_type,
-                       null AS page_num, score AS hits
-                ORDER BY score DESC
+                  AND ($corpus = 'all' OR c.corpus = $corpus)
+                {metaFilter}
+                {string.Format(proj, DocTypeExpr, "score")}
+                ORDER BY hits DESC
                 LIMIT $size";
 
             var contains = $@"
@@ -85,13 +113,11 @@ public sealed class Neo4jSearchAgent : ISearchAgent, IDisposable
                 WHERE c.content <> '' AND c.chunk_type IS NOT NULL
                   AND ($docType = 'all' OR {DocTypeExpr} = $docType)
                   AND ($chunkType = 'all' OR c.chunk_type = $chunkType)
+                  AND ($corpus = 'all' OR c.corpus = $corpus)
                   AND ANY(t IN $terms WHERE toLower(c.content) CONTAINS t)
-                WITH c, SIZE([t IN $terms WHERE toLower(c.content) CONTAINS t]) AS hits
-                RETURN c.chunk_id AS id, c.content AS text, c.doc_id AS doc_name,
-                       {DocTypeExpr} AS doc_type,
-                       coalesce(c.article_display, c.article_number, '') AS article_ref,
-                       c.title AS section_title, c.chunk_type AS chunk_type,
-                       null AS page_num, toFloat(hits) AS hits
+                WITH c, toFloat(SIZE([t IN $terms WHERE toLower(c.content) CONTAINS t])) AS score
+                {metaFilter}
+                {string.Format(proj, DocTypeExpr, "score")}
                 ORDER BY hits DESC, (CASE WHEN c.chunk_type = 'article' THEN 0 ELSE 1 END)
                 LIMIT $size";
 

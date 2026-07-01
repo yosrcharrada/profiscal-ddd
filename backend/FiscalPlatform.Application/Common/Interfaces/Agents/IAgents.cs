@@ -123,11 +123,16 @@ public sealed class SourceChunkDto
 public sealed class SearchRequestDto
 {
     public string Query     { get; set; } = "";
-    public string DocType   { get; set; } = "all";
+    public string DocType   { get; set; } = "all";   // Convention | LoiFinances | Doctrine | Code
     public string ChunkType { get; set; } = "all";
     public int    YearMin   { get; set; } = 2000;
     public int    YearMax   { get; set; } = 2030;
     public int    Size      { get; set; } = 50;
+    // JORT-style corpus filters (taxmind-backed).
+    public string Corpus    { get; set; } = "all";    // Conventions | Lois_des_Finances | Notes_Communes | Recueils_textes_fiscaux
+    public string Number    { get; set; } = "";       // law_number / nc_number
+    public string DateText  { get; set; } = "";       // date / law_date / date_signature (substring)
+    public int    Year      { get; set; } = 0;         // 0 = all
 }
 
 public sealed class SearchResultDto

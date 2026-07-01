@@ -18,6 +18,15 @@ const DOC_TYPES = [
   { key: "Commentaire", label: "Commentaires", dot: "bg-[#F97316]" },
 ];
 
+/* JORT-style "Codes et recueils" / corpus filter (taxmind corpora). */
+const CORPORA = [
+  { key: "all", label: "Tous les corpus" },
+  { key: "Conventions", label: "Conventions fiscales" },
+  { key: "Lois_des_Finances", label: "Lois des finances" },
+  { key: "Notes_Communes", label: "Notes communes" },
+  { key: "Recueils_textes_fiscaux", label: "Codes et recueils" },
+];
+
 const TYPE_BADGE = {
   Code: "bg-dark text-white",
   Convention: "bg-brand text-dark",
@@ -121,6 +130,18 @@ function FiltersPanel({
   yearMin,
   yearMax,
   onYears,
+  corpus,
+  onCorpus,
+  number,
+  onNumber,
+  dateText,
+  onDateText,
+  onApplyText,
+  consFrom,
+  consTo,
+  onConsFrom,
+  onConsTo,
+  onApplyCons,
   buckets,
   recent,
   onRecent,
@@ -199,14 +220,81 @@ function FiltersPanel({
                 ))}
               </div>
             </div>
+
+            {/* corpus — "Codes et recueils" */}
+            <div>
+              <p className="px-2 mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em]">Corpus</p>
+              <div className="px-2">
+                <select
+                  value={corpus}
+                  onChange={(e) => onCorpus(e.target.value)}
+                  className="w-full bg-white border border-border rounded-xl px-3 py-2 text-[13px] font-semibold text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+                >
+                  {CORPORA.map((c) => (
+                    <option key={c.key} value={c.key}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* JORT reference: numéro + date */}
+            <div>
+              <p className="px-2 mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em]">Référence du texte</p>
+              <div className="px-2 space-y-2">
+                <label className="block">
+                  <span className="block text-[10px] font-bold text-muted mb-1">Numéro</span>
+                  <input
+                    value={number}
+                    onChange={(e) => onNumber(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") onApplyText(); }}
+                    onBlur={onApplyText}
+                    placeholder="ex : 2015-36"
+                    className="w-full bg-white border border-border rounded-xl px-3 py-2 text-[13px] font-semibold text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-[10px] font-bold text-muted mb-1">Date du texte</span>
+                  <input
+                    value={dateText}
+                    onChange={(e) => onDateText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") onApplyText(); }}
+                    onBlur={onApplyText}
+                    placeholder="ex : 2015 ou 15/09/2015"
+                    className="w-full bg-white border border-border rounded-xl px-3 py-2 text-[13px] font-semibold text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+                  />
+                </label>
+              </div>
+            </div>
           </>
         ) : (
-          <div className="px-2 animate-fade-in">
+          <div className="px-2 animate-fade-in space-y-5">
             <div className="bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl p-3.5">
               <p className="text-[12.5px] font-bold text-[#047857]">Recherche dans vos mémos</p>
               <p className="text-[12px] text-[#059669] mt-1 leading-relaxed">
                 Nom de client, référence ou mots de la question fiscale — quelques lettres suffisent.
               </p>
+            </div>
+
+            {/* date range for consultation search */}
+            <div>
+              <p className="mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em]">Période (date de création)</p>
+              <div className="flex items-center gap-2">
+                {[
+                  { v: consFrom, set: onConsFrom, label: "Du" },
+                  { v: consTo, set: onConsTo, label: "Au" },
+                ].map((f) => (
+                  <label key={f.label} className="flex-1 min-w-0">
+                    <span className="block text-[10px] font-bold text-muted mb-1">{f.label}</span>
+                    <input
+                      type="date"
+                      value={f.v}
+                      onChange={(e) => f.set(e.target.value)}
+                      onBlur={onApplyCons}
+                      className="w-full bg-white border border-border rounded-xl px-2.5 py-2 text-[12.5px] font-semibold text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -245,6 +333,11 @@ export default function Search() {
   const [docType, setDocType] = useState("all");
   const [yearMin, setYearMin] = useState(YEARS.min);
   const [yearMax, setYearMax] = useState(YEARS.max);
+  const [corpus, setCorpus] = useState("all");
+  const [number, setNumber] = useState("");
+  const [dateText, setDateText] = useState("");
+  const [consFrom, setConsFrom] = useState(""); // consultation search: date range
+  const [consTo, setConsTo] = useState("");
   const [lawRes, setLawRes] = useState(null);
   const [consRes, setConsRes] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -265,7 +358,9 @@ export default function Search() {
     localStorage.setItem("taxmind.search.filters", filtersOpen ? "1" : "0");
   }, [filtersOpen]);
 
-  const filtersActive = docType !== "all" || yearMin !== YEARS.min || yearMax !== YEARS.max;
+  const filtersActive =
+    docType !== "all" || yearMin !== YEARS.min || yearMax !== YEARS.max ||
+    corpus !== "all" || number.trim() !== "" || dateText.trim() !== "";
 
   const remember = (q, m) => {
     setRecent((prev) => {
@@ -276,7 +371,10 @@ export default function Search() {
   };
 
   /* explicit params so facet/recent clicks never race state updates */
-  const run = async ({ q = query, m = mode, dt = docType, ymin = yearMin, ymax = yearMax } = {}) => {
+  const run = async ({
+    q = query, m = mode, dt = docType, ymin = yearMin, ymax = yearMax,
+    cp = corpus, nb = number, dtx = dateText,
+  } = {}) => {
     const text = q.trim();
     if (!text || loading) return;
     setLoading(true);
@@ -286,10 +384,13 @@ export default function Search() {
     scrollRef.current?.scrollTo({ top: 0 });
     try {
       if (m === "law") {
-        const { data } = await fiscalService.search({ query: text, docType: dt, yearMin: ymin, yearMax: ymax, size: 30 });
+        const { data } = await fiscalService.search({
+          query: text, docType: dt, corpus: cp, number: nb, dateText: dtx,
+          yearMin: ymin, yearMax: ymax, size: 30,
+        });
         setLawRes(data.data);
       } else {
-        const { data } = await fiscalService.list(text);
+        const { data } = await fiscalService.list(text, false, consFrom, consTo);
         setConsRes(data.data);
       }
       remember(text, m);
@@ -324,11 +425,31 @@ export default function Search() {
     if (searched && query.trim()) run({ ymin, ymax });
   };
 
+  const pickCorpus = (cp) => {
+    setCorpus(cp);
+    setMobileFilters(false);
+    if (searched && query.trim()) run({ cp });
+  };
+
+  /* number/date are free-text — apply on Enter/blur using current state */
+  const applyText = () => {
+    if (searched && query.trim()) run();
+  };
+
+  /* consultation date-range applies on blur */
+  const applyCons = () => {
+    if (mode === "consultations" && searched && query.trim()) run();
+  };
+
   const resetFilters = () => {
     setDocType("all");
     setYearMin(YEARS.min);
     setYearMax(YEARS.max);
-    if (searched && query.trim()) run({ dt: "all", ymin: YEARS.min, ymax: YEARS.max });
+    setCorpus("all");
+    setNumber("");
+    setDateText("");
+    if (searched && query.trim())
+      run({ dt: "all", ymin: YEARS.min, ymax: YEARS.max, cp: "all", nb: "", dtx: "" });
   };
 
   const pickRecent = (r) => {
@@ -353,6 +474,18 @@ export default function Search() {
       yearMin={yearMin}
       yearMax={yearMax}
       onYears={pickYears}
+      corpus={corpus}
+      onCorpus={pickCorpus}
+      number={number}
+      onNumber={setNumber}
+      dateText={dateText}
+      onDateText={setDateText}
+      onApplyText={applyText}
+      consFrom={consFrom}
+      consTo={consTo}
+      onConsFrom={setConsFrom}
+      onConsTo={setConsTo}
+      onApplyCons={applyCons}
       buckets={lawRes?.docTypeBuckets}
       recent={recent}
       onRecent={pickRecent}

@@ -178,10 +178,11 @@ public sealed class FiscalController(
 
     /// <summary>List consultations (mine, or all for admins).</summary>
     [HttpGet("consultations")]
-    public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] bool all = false, CancellationToken ct = default)
+    public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] bool all = false,
+        [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, CancellationToken ct = default)
     {
         var owner = (all && User.IsInRole("Admin")) ? (Guid?)null : CurrentUserId;
-        var rows  = await store.ListAsync(owner, search, ct);
+        var rows  = await store.ListAsync(owner, search, dateFrom, dateTo, ct);
         return Ok(ApiResponse<object>.Ok(rows.Select(c => new
         {
             id = c.Id, c.Reference, c.ClientName, c.FiscalQuestion,
