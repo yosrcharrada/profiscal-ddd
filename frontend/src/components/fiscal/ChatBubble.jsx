@@ -1,24 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import fiscalService from "../../services/fiscalService";
+import { useLanguage } from "../../context/LanguageContext";
 import Markdown from "../common/Markdown";
 import SourceChips from "./SourceChips";
 import SourceDrawer, { normalizeSource } from "./SourceDrawer";
 
 const QUICK = [
   "Taux de retenue à la source sur honoraires ?",
-  "TVA sur services rendus à l’étranger ?",
+  "TVA sur services rendus à l'étranger ?",
   "Délai de dépôt de la déclaration IS ?",
 ];
 
-/* Floating quick-ask assistant — a corner bubble that expands into a mini chat,
-   so users can ask the fiscal corpus from anywhere without leaving the page. */
 export default function ChatBubble() {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [viewing, setViewing] = useState(null); // normalized source
+  const [viewing, setViewing] = useState(null);
   const [viewList, setViewList] = useState([]);
   const endRef = useRef();
   const inputRef = useRef();
@@ -55,7 +55,7 @@ export default function ChatBubble() {
           role: "assistant",
           content:
             err.response?.data?.message ||
-            "Je n’ai pas pu répondre — vérifiez que le moteur est connecté.",
+            "Je n'ai pas pu répondre — vérifiez que le moteur est connecté.",
           error: true,
         },
       ]);
@@ -72,16 +72,14 @@ export default function ChatBubble() {
 
   return (
     <>
-      {/* collapsed bubble */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
           aria-label="Quick ask AI"
-          className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-2xl bg-dark text-white shadow-xl shadow-dark/25 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform group"
+          className="fixed bottom-5 right-5 z-40 w-10 h-10 rounded-full bg-brand text-dark shadow-lg shadow-brand/30 ring-4 ring-brand/15 flex items-center justify-center hover:scale-110 hover:shadow-xl hover:shadow-brand/40 active:scale-95 transition-all duration-200"
         >
-          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-brand border-2 border-white" />
           <svg
-            className="w-6 h-6 group-hover:rotate-12 transition-transform"
+            className="w-[18px] h-[18px]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -90,22 +88,20 @@ export default function ChatBubble() {
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
-              d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
+              d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"
             />
           </svg>
         </button>
       )}
 
-      {/* expanded panel */}
       {open && (
-        <div className="fixed bottom-6 right-6 z-40 w-[min(400px,calc(100vw-2.5rem))] h-[min(580px,calc(100vh-6rem))] bg-white rounded-2xl border border-border shadow-2xl shadow-dark/20 flex flex-col overflow-hidden animate-pop origin-bottom-right">
-          {/* header */}
-          <div className="px-4 py-3 bg-dark flex items-center justify-between gap-3 relative">
+        <div className="fixed bottom-5 right-5 z-40 w-[min(380px,calc(100vw-2.5rem))] h-[min(520px,calc(100vh-5rem))] bg-white rounded-2xl border border-border/60 shadow-2xl shadow-dark/15 flex flex-col overflow-hidden animate-pop origin-bottom-right">
+          <div className="px-3.5 py-2.5 bg-dark flex items-center justify-between gap-3 relative">
             <div className="absolute bottom-0 left-0 w-full h-[2px] bg-brand" />
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-7 h-7 rounded-full bg-brand flex items-center justify-center shrink-0">
                 <svg
-                  className="w-4 h-4 text-dark"
+                  className="w-3.5 h-3.5 text-dark"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -119,23 +115,23 @@ export default function ChatBubble() {
                 </svg>
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-bold text-white leading-tight">
-                  Assistant fiscal
+                <p className="text-[13px] font-bold text-white leading-tight">
+                  {t("chat.title")}
                 </p>
-                <p className="text-[10.5px] text-white/50 truncate">
-                  Réponses sourcées sur le corpus
+                <p className="text-[10px] text-white/50 truncate">
+                  {t("chat.subtitle")}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-0.5 shrink-0">
               <Link
                 to="/app/chat"
                 onClick={() => setOpen(false)}
-                title="Ouvrir le chat complet"
-                className="w-8 h-8 rounded-lg text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors"
+                title="Ouvrir en plein écran"
+                className="w-7 h-7 rounded-lg text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-3.5 h-3.5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -151,10 +147,10 @@ export default function ChatBubble() {
               <button
                 onClick={() => setOpen(false)}
                 title="Réduire"
-                className="w-8 h-8 rounded-lg text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors"
+                className="w-7 h-7 rounded-lg text-white/60 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-3.5 h-3.5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -170,23 +166,21 @@ export default function ChatBubble() {
             </div>
           </div>
 
-          {/* thread */}
-          <div className="flex-1 px-4 py-4 space-y-4 bg-sand/50">
+          <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-3 bg-sand/50">
             {messages.length === 0 && (
-              <div className="pt-4">
-                <p className="text-sm font-bold text-dark mb-1">
-                  Une question rapide ?
+              <div className="pt-2">
+                <p className="text-[13px] font-bold text-dark mb-0.5">
+                  {t("chat.intro")}
                 </p>
-                <p className="text-xs text-muted mb-4">
-                  Posez votre question sans quitter la page — chaque réponse
-                  cite ses sources.
+                <p className="text-[11px] text-muted mb-3">
+                  {t("chat.introHint")}
                 </p>
                 <div className="space-y-1.5">
                   {QUICK.map((s) => (
                     <button
                       key={s}
                       onClick={() => send(s)}
-                      className="w-full text-left text-[12.5px] text-body bg-white hover:bg-brand/10 border border-border hover:border-brand/60 rounded-xl px-3 py-2 transition-colors"
+                      className="w-full text-left text-[12px] text-body bg-white hover:bg-brand/10 border border-border/60 hover:border-brand/50 rounded-xl px-3 py-2 transition-colors"
                     >
                       {s}
                     </button>
@@ -197,13 +191,13 @@ export default function ChatBubble() {
             {messages.map((m, i) =>
               m.role === "user" ? (
                 <div key={i} className="flex justify-end">
-                  <div className="max-w-[85%] bg-dark text-white rounded-2xl rounded-br-md px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap">
+                  <div className="max-w-[85%] bg-dark text-white rounded-2xl rounded-br-md px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap">
                     {m.content}
                   </div>
                 </div>
               ) : (
-                <div key={i} className="flex gap-2.5">
-                  <span className="shrink-0 w-6 h-6 rounded-lg bg-brand flex items-center justify-center mt-0.5">
+                <div key={i} className="flex gap-2">
+                  <span className="shrink-0 w-6 h-6 rounded-full bg-brand flex items-center justify-center mt-0.5">
                     <svg
                       className="w-3 h-3 text-dark"
                       fill="none"
@@ -219,7 +213,7 @@ export default function ChatBubble() {
                     </svg>
                   </span>
                   <div
-                    className={`min-w-0 flex-1 text-[13px] ${m.error ? "text-red-600" : "text-dark"}`}
+                    className={`min-w-0 flex-1 text-[12px] ${m.error ? "text-red-600" : "text-dark"}`}
                   >
                     <Markdown
                       text={m.content}
@@ -235,8 +229,8 @@ export default function ChatBubble() {
               ),
             )}
             {busy && (
-              <div className="flex gap-2.5">
-                <span className="shrink-0 w-6 h-6 rounded-lg bg-brand flex items-center justify-center animate-pulse" />
+              <div className="flex gap-2">
+                <span className="shrink-0 w-6 h-6 rounded-full bg-brand flex items-center justify-center animate-pulse" />
                 <div className="flex items-center gap-1.5 pt-1.5">
                   {[0, 150, 300].map((d) => (
                     <span
@@ -251,28 +245,27 @@ export default function ChatBubble() {
             <div ref={endRef} />
           </div>
 
-          {/* composer */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               send();
             }}
-            className="border-t border-border bg-white p-3 flex items-center gap-2"
+            className="border-t border-border/40 bg-white p-2.5 flex items-center gap-2"
           >
             <input
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Question fiscale rapide…"
-              className="flex-1 bg-light border border-border rounded-xl px-3.5 py-2.5 text-[13px] text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+              placeholder={t("chat.placeholder")}
+              className="flex-1 bg-light/80 border border-border/90 rounded-xl px-3 py-2 text-[12px] text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
             />
             <button
               type="submit"
               disabled={busy || !input.trim()}
-              className="w-10 h-10 bg-brand rounded-xl flex items-center justify-center hover:shadow-md hover:shadow-brand/40 disabled:opacity-40 transition-all shrink-0"
+              className="w-8 h-8 bg-brand rounded-full flex items-center justify-center hover:shadow-md hover:shadow-brand/40 disabled:opacity-40 transition-all shrink-0"
             >
               <svg
-                className="w-4 h-4 text-dark"
+                className="w-3.5 h-3.5 text-dark"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"

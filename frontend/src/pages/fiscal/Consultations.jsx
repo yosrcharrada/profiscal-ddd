@@ -1,41 +1,101 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useLanguage } from "../../context/LanguageContext";
 import fiscalService from "../../services/fiscalService";
 import { useToast } from "../../components/common/Toast";
 import ConsultationsRail from "../../components/fiscal/ConsultationsRail";
 
 const EASE = "ease-[cubic-bezier(.16,1,.3,1)]";
 
-const PIPELINE = [
+const PIPELINE_KEYS = [
   {
-    label: "Détection des branches & de la juridiction",
-    detail: "IS · IRPP · TVA · Retenue · Prix de transfert",
+    label: "cons.pipeline1",
+    detail: "cons.pipeline1d",
+    icon: "search",
+    color: "from-indigo-500 to-indigo-600",
   },
   {
-    label: "Recherche sémantique du corpus",
-    detail: "Embeddings multilingues sur 67k passages",
+    label: "cons.pipeline2",
+    detail: "cons.pipeline2d",
+    icon: "doc",
+    color: "from-violet-500 to-purple-600",
   },
   {
-    label: "Récupération des sources (Neo4j)",
-    detail: "Conventions → codes → lois de finances → doctrine",
-  },
-  { label: "Rédaction du contexte, étendue & sommaire", detail: "Phase 1" },
-  {
-    label: "Analyses & tableau de synthèse",
-    detail: "Phases 2 ‖ 3 — en parallèle",
+    label: "cons.pipeline3",
+    detail: "cons.pipeline3d",
+    icon: "brain",
+    color: "from-emerald-500 to-teal-600",
   },
   {
-    label: "Résolution des citations & finalisation",
-    detail: "Chaque affirmation tracée à sa source",
+    label: "cons.pipeline4",
+    detail: "cons.pipeline4d",
+    icon: "scale",
+    color: "from-amber-500 to-orange-500",
+  },
+  {
+    label: "cons.pipeline5",
+    detail: "cons.pipeline5d",
+    icon: "check",
+    color: "from-blue-500 to-cyan-600",
+  },
+  {
+    label: "cons.pipeline6",
+    detail: "cons.pipeline6d",
+    icon: "sparkle",
+    color: "from-brand to-[#F59E0B]",
   },
 ];
 
-/* Real pipeline phases, auto-advancing on an estimate; completes when the API returns. */
-function GeneratingView({ done, clientName }) {
+const STEP_ICONS = {
+  search: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+    />
+  ),
+  doc: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+    />
+  ),
+  brain: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+    />
+  ),
+  scale: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.97A48.416 48.416 0 0012 4.5c-2.291 0-4.545.16-6.75.47m13.5 0c1.01.143 2.01.317 3 .52m-3-.52l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.031.352 5.988 5.988 0 01-2.031-.352c-.483-.174-.711-.703-.59-1.202L18.75 4.971zm-16.5.52c.99-.203 1.99-.377 3-.52m0 0l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.989 5.989 0 01-2.031.352 5.989 5.989 0 01-2.031-.352c-.483-.174-.711-.703-.59-1.202L5.25 4.971z"
+    />
+  ),
+  check: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z"
+    />
+  ),
+  sparkle: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
+    />
+  ),
+};
+
+function GeneratingView({ done, clientName, t }) {
   const [step, setStep] = useState(0);
   useEffect(() => {
     if (done) {
-      setStep(PIPELINE.length);
+      setStep(PIPELINE_KEYS.length);
       return;
     }
     const timers = [2500, 9000, 16000, 24000, 38000].map((ms, i) =>
@@ -43,107 +103,158 @@ function GeneratingView({ done, clientName }) {
     );
     return () => timers.forEach(clearTimeout);
   }, [done]);
-  const pct = Math.min(100, Math.round((step / PIPELINE.length) * 100));
+  const pct = Math.min(100, Math.round((step / PIPELINE_KEYS.length) * 100));
 
   return (
-    <div className="max-w-lg mx-auto w-full animate-fade-up">
-      <div className="flex items-center gap-4 mb-2">
-        <span className="w-11 h-11 rounded-2xl bg-brand flex items-center justify-center shrink-0">
-          <span className="w-5 h-5 border-2 border-dark border-t-transparent rounded-full animate-spin" />
-        </span>
-        <div>
-          <h2 className="text-lg font-extrabold text-dark">
-            Rédaction de la consultation{clientName ? ` — ${clientName}` : ""}
-          </h2>
-          <p className="text-sm text-muted">Généralement moins d’une minute.</p>
-        </div>
-      </div>
-      <div className="h-1.5 bg-light rounded-full overflow-hidden my-6">
-        <div
-          className="h-full bg-brand rounded-full transition-all duration-1000"
-          style={{ width: `${Math.max(6, pct)}%` }}
-        />
-      </div>
-      <div className="space-y-1">
-        {PIPELINE.map((s, i) => {
-          const state = i < step ? "done" : i === step ? "active" : "todo";
-          return (
-            <div key={s.label} className="flex items-start gap-3 py-2">
-              <span
-                className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all ${state === "done" ? "bg-brand text-dark" : state === "active" ? "bg-dark text-white" : "bg-light text-muted"}`}
+    <div className="h-full flex items-center justify-center px-6">
+      <div className="max-w-2xl w-full animate-fade-up">
+        <div className="text-center mb-10">
+          <div className="relative inline-flex items-center justify-center w-20 h-20 mb-6">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-brand to-[#F59E0B] animate-pulse opacity-30" />
+            <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-dark to-[#3a3a4a] flex items-center justify-center shadow-2xl">
+              <svg
+                className="w-8 h-8 text-brand animate-spin"
+                style={{ animationDuration: "3s" }}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
               >
-                {state === "done" ? (
-                  <svg
-                    className="w-3 h-3"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={3}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M4.5 12.75l6 6 9-13.5"
-                    />
-                  </svg>
-                ) : state === "active" ? (
-                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                ) : (
-                  <span className="w-1.5 h-1.5 bg-muted/50 rounded-full" />
-                )}
-              </span>
-              <div>
-                <p
-                  className={`text-sm font-semibold transition-colors ${state === "todo" ? "text-muted" : "text-dark"}`}
-                >
-                  {s.label}
-                </p>
-                <p className="text-xs text-muted">{s.detail}</p>
-              </div>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
+                />
+              </svg>
             </div>
-          );
-        })}
+          </div>
+          <h2 className="font-display text-3xl text-dark mb-2">
+            {t("cons.generating")}
+            {clientName ? ` — ${clientName}` : ""}
+          </h2>
+          <p className="text-muted text-sm">{t("cons.generatingHint")}</p>
+        </div>
+
+        <div className="relative mb-8">
+          <div className="h-2 bg-light rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-brand via-[#F59E0B] to-emerald-400 rounded-full transition-all duration-1000 ease-out"
+              style={{ width: `${Math.max(4, pct)}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-2">
+            <span className="text-[11px] font-bold text-muted">{pct}%</span>
+            <span className="text-[11px] font-bold text-muted">
+              {step}/{PIPELINE_KEYS.length}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {PIPELINE_KEYS.map((s, i) => {
+            const state = i < step ? "done" : i === step ? "active" : "todo";
+            return (
+              <div
+                key={s.label}
+                className={`relative rounded-xl border p-4 transition-all duration-500 ${
+                  state === "done"
+                    ? "bg-white border-emerald-200 shadow-sm"
+                    : state === "active"
+                      ? "bg-white border-brand shadow-lg shadow-brand/10 scale-[1.02]"
+                      : "bg-light/50 border-border opacity-50"
+                }`}
+                style={{ animationDelay: `${i * 100}ms` }}
+              >
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 transition-all ${
+                    state === "done"
+                      ? "bg-emerald-100 text-emerald-600"
+                      : state === "active"
+                        ? `bg-gradient-to-br ${s.color} text-white shadow-md`
+                        : "bg-light text-muted"
+                  }`}
+                >
+                  {state === "done" ? (
+                    <svg
+                      className="w-4.5 h-4.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M4.5 12.75l6 6 9-13.5"
+                      />
+                    </svg>
+                  ) : state === "active" ? (
+                    <svg
+                      className="w-4.5 h-4.5 animate-pulse"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                    >
+                      {STEP_ICONS[s.icon]}
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                    >
+                      {STEP_ICONS[s.icon]}
+                    </svg>
+                  )}
+                </div>
+                <p
+                  className={`text-[12px] font-bold transition-colors ${state === "todo" ? "text-muted" : "text-dark"}`}
+                >
+                  {t(s.label)}
+                </p>
+                <p className="text-[10px] text-muted mt-0.5 line-clamp-2">
+                  {t(s.detail)}
+                </p>
+                {state === "active" && (
+                  <div className="absolute top-2 right-2">
+                    <span className="flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand" />
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-const SITUATION_TIPS = [
-  "Forme juridique et résidence fiscale des parties",
-  "Nature et montants des opérations concernées",
-  "Pays impliqués si le dossier est international",
-  "Dates et exercices fiscaux concernés",
+const SITUATION_TIP_KEYS = ["cons.tip1", "cons.tip2", "cons.tip3", "cons.tip4"];
+const QUESTION_EXAMPLE_KEYS = [
+  "cons.example1",
+  "cons.example2",
+  "cons.example3",
 ];
-
-const QUESTION_EXAMPLES = [
-  "Quel est le traitement fiscal de ces redevances versées au prestataire français ?",
-  "La société bénéficie-t-elle d’un avantage fiscal au titre de cet investissement ?",
-  "Quelles obligations de retenue à la source s’appliquent ?",
-];
-
-/* Soft pastel chips marking the three parts of the intake — same family as
-   the search facets: blue / green / pink next to the EY yellow. */
-const PART_CHIP = {
-  dossier: "bg-[#DBEAFE] text-[#1D4ED8]",
-  situation: "bg-[#ECFDF5] text-[#047857]",
-  question: "bg-[#FCE7F3] text-[#BE185D]",
-};
 
 function FieldCheck({ ok, children }) {
   return (
     <p
-      className={`text-xs mt-1.5 transition-colors ${ok ? "text-green-600 font-semibold" : "text-muted"}`}
+      className={`text-xs mt-1.5 transition-colors ${ok ? "text-emerald-600 font-semibold" : "text-muted"}`}
     >
       {children}
     </p>
   );
 }
 
-/* Create-consultation workspace — split screen like the chat:
-   previous consultations as a collapsible rail, one single intake form
-   (no steps), the generation pipeline inline, then the document opens. */
 export default function Consultations() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const { toast } = useToast();
   const year = new Date().getFullYear();
   const [items, setItems] = useState(null);
@@ -197,16 +308,14 @@ export default function Consultations() {
       };
       const { data } = await fiscalService.generate(body);
       setDone(true);
-      toast("Consultation générée.", "success");
+      toast(t("cons.generated"), "success");
       setTimeout(
         () => navigate(`/app/consultations/${data.data.consultationId}`),
         700,
       );
     } catch (err) {
       setGenerating(false);
-      const msg =
-        err.response?.data?.message ||
-        "La génération a échoué. Vérifiez le statut du moteur — Neo4j et le LLM doivent être connectés.";
+      const msg = err.response?.data?.message || t("cons.generateFailed");
       setError(msg);
       toast(msg, "error", 6000);
     }
@@ -214,11 +323,8 @@ export default function Consultations() {
 
   const openConsultation = (id) => {
     if (generating) {
-      if (!window.confirm("Génération en cours — quitter cette page ?")) return;
-    } else if (
-      dirty &&
-      !window.confirm("Le brouillon en cours sera perdu — continuer ?")
-    ) {
+      if (!window.confirm(t("cons.confirmLeave"))) return;
+    } else if (dirty && !window.confirm(t("cons.confirmDiscard"))) {
       return;
     }
     navigate(`/app/consultations/${id}`);
@@ -258,14 +364,14 @@ export default function Consultations() {
       )}
 
       {/* ② intake / pipeline */}
-      <section className="flex-1 min-w-0 flex flex-col">
+      <section className="flex-1 min-w-0 flex flex-col bg-white">
         {/* toolbar */}
-        <div className="h-12 shrink-0 flex items-center gap-2 px-3 border-b border-border/70 bg-white/70 backdrop-blur">
+        <div className="h-12 shrink-0 flex items-center gap-2 px-3 border-b border-border/70 bg-white backdrop-blur">
           <button
             onClick={() => setRailOpen((o) => !o)}
             className="hidden md:flex w-8 h-8 rounded-lg text-muted hover:text-dark hover:bg-light items-center justify-center transition-colors"
-            aria-label={railOpen ? "Masquer la liste" : "Afficher la liste"}
-            title={railOpen ? "Masquer la liste" : "Afficher la liste"}
+            aria-label={railOpen ? t("cons.hideList") : t("cons.showList")}
+            title={railOpen ? t("cons.hideList") : t("cons.showList")}
           >
             <svg
               className="w-[17px] h-[17px]"
@@ -285,7 +391,7 @@ export default function Consultations() {
           <button
             onClick={() => setMobileRail(true)}
             className="md:hidden flex w-8 h-8 rounded-lg text-muted hover:text-dark hover:bg-light items-center justify-center transition-colors"
-            aria-label="Consultations précédentes"
+            aria-label={t("cons.previousConsultations")}
           >
             <svg
               className="w-[17px] h-[17px]"
@@ -302,216 +408,318 @@ export default function Consultations() {
             </svg>
           </button>
           <p className="flex-1 min-w-0 text-[13px] font-bold text-dark truncate">
-            Nouvelle consultation
+            {t("cons.newConsultation")}
           </p>
           {items && (
             <p className="text-[12px] text-muted shrink-0">
               <span className="font-bold text-dark">{items.length}</span>{" "}
-              mémo{items.length !== 1 ? "s" : ""} généré
-              {items.length !== 1 ? "s" : ""}
+              {t("cons.memosGenerated")}
             </p>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {generating ? (
-            <div className="min-h-full flex items-center justify-center px-6 py-10">
-              <GeneratingView done={done} clientName={form.clientName} />
-            </div>
-          ) : (
-            <div className="max-w-4xl mx-auto w-full px-4 sm:px-8 py-8 grid lg:grid-cols-[1fr,290px] gap-10">
-              {/* the form — every field together, one click to generate */}
-              <form onSubmit={submit} className="max-w-xl min-w-0">
-                <div className="animate-fade-up">
-                  <h1 className="font-display text-[32px] text-dark leading-tight">
-                    Décrivez le dossier.
-                  </h1>
-                  <p className="text-muted mt-2 mb-8">
-                    L’IA rédige un mémo structuré et sourcé sur le corpus
-                    juridique — en une minute environ.
-                  </p>
+        {generating ? (
+          <GeneratingView done={done} clientName={form.clientName} t={t} />
+        ) : (
+          <div className="flex-1 flex overflow-hidden">
+            {/* left: form — takes full height, scrollable only if truly overflowing */}
+            <div className="flex-1 min-w-0 overflow-y-auto">
+              <form
+                onSubmit={submit}
+                className="max-w-2xl mx-auto px-4 sm:px-8 py-6 h-full flex flex-col"
+              >
+                {/* header */}
+                <div className="animate-fade-up mb-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div>
+                      <h1 className="font-display text-4xl text-dark leading-tight">
+                        {t("cons.describeCase")}
+                      </h1>
+                      <p className="text-muted text-sm">
+                        {t("cons.describeHint")}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* le dossier */}
-                <div
-                  className="animate-fade-up opacity-0"
-                  style={{ animationDelay: "60ms" }}
-                >
-                  <span
-                    className={`inline-block text-[10px] font-extrabold rounded-full px-2 py-0.5 mb-2.5 ${PART_CHIP.dossier}`}
+                {/* compact form grid */}
+                <div className="flex-1 space-y-5">
+                  {/* row 1: client + ref */}
+                  <div
+                    className="grid sm:grid-cols-2 gap-3 animate-fade-up opacity-0"
+                    style={{ animationDelay: "60ms" }}
                   >
-                    Le dossier
-                  </span>
-                  <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-bold text-dark mb-1.5">
-                        Nom du client
+                      <label className="flex items-center gap-2 text-sm font-bold text-dark mb-1.5">
+                        <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-600 text-[9px] font-extrabold flex items-center justify-center">
+                          1
+                        </span>
+                        {t("cons.clientName")}
                       </label>
                       <input
                         autoFocus
                         value={form.clientName}
                         onChange={set("clientName")}
-                        placeholder="Société X"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-white text-[14.5px] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+                        placeholder={t("cons.clientPlaceholder")}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-dark mb-1.5">
-                        Référence{" "}
+                      <label className="flex items-center gap-2 text-sm font-bold text-dark mb-1.5">
+                        <span className="w-5 h-5 rounded-md bg-indigo-100 text-indigo-600 text-[9px] font-extrabold flex items-center justify-center">
+                          #
+                        </span>
+                        {t("cons.reference")}{" "}
                         <span className="text-muted font-normal text-xs">
-                          (optionnel)
+                          ({t("cons.optional")})
                         </span>
                       </label>
                       <input
                         value={form.reference}
                         onChange={set("reference")}
                         placeholder={`CONS-${year}-001`}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-white text-[14.5px] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
                       />
                     </div>
                   </div>
-                </div>
 
-                {/* la situation */}
-                <div
-                  className="mt-7 animate-fade-up opacity-0"
-                  style={{ animationDelay: "120ms" }}
-                >
-                  <span
-                    className={`inline-block text-[10px] font-extrabold rounded-full px-2 py-0.5 mb-2.5 ${PART_CHIP.situation}`}
+                  {/* row 2: situation */}
+                  <div
+                    className="animate-fade-up opacity-0"
+                    style={{ animationDelay: "120ms" }}
                   >
-                    La situation
-                  </span>
-                  <label className="block text-sm font-bold text-dark mb-1.5">
-                    Contexte factuel
-                  </label>
-                  <textarea
-                    value={form.situation}
-                    onChange={set("situation")}
-                    rows={6}
-                    placeholder="Qui sont les parties, quelles opérations, quels montants, quels pays…"
-                    className="w-full px-3.5 py-3 rounded-xl border border-border bg-white text-[14.5px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none transition-all"
-                  />
-                  <FieldCheck ok={valid.situation}>
-                    {form.situation.trim().length} caractères{" "}
-                    {valid.situation ? "✓" : "(min. 20)"}
-                  </FieldCheck>
-                </div>
+                    <label className="flex items-center gap-2 text-sm font-bold text-dark mb-1.5">
+                      <span className="w-5 h-5 rounded-md bg-emerald-100 text-emerald-600 text-[9px] font-extrabold flex items-center justify-center">
+                        2
+                      </span>
+                      {t("cons.factualContext")}
+                    </label>
+                    <textarea
+                      value={form.situation}
+                      onChange={set("situation")}
+                      rows={4}
+                      placeholder={t("cons.situationPlaceholder")}
+                      className="w-full px-3.5 py-3 rounded-xl border border-border bg-white text-[14px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none transition-all"
+                    />
+                    <FieldCheck ok={valid.situation}>
+                      {form.situation.trim().length} {t("cons.characters")}{" "}
+                      {valid.situation ? "✓" : `(${t("cons.min20")})`}
+                    </FieldCheck>
+                  </div>
 
-                {/* la question */}
-                <div
-                  className="mt-7 animate-fade-up opacity-0"
-                  style={{ animationDelay: "180ms" }}
-                >
-                  <span
-                    className={`inline-block text-[10px] font-extrabold rounded-full px-2 py-0.5 mb-2.5 ${PART_CHIP.question}`}
+                  {/* row 3: question */}
+                  <div
+                    className="animate-fade-up opacity-0"
+                    style={{ animationDelay: "180ms" }}
                   >
-                    La question
-                  </span>
-                  <label className="block text-sm font-bold text-dark mb-1.5">
-                    Question fiscale à trancher
-                  </label>
-                  <textarea
-                    value={form.fiscalQuestion}
-                    onChange={set("fiscalQuestion")}
-                    rows={3}
-                    placeholder="Quelle est la question fiscale à traiter ?"
-                    className="w-full px-3.5 py-3 rounded-xl border border-border bg-white text-[14.5px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none transition-all"
-                  />
-                  <FieldCheck ok={valid.question}>
-                    {form.fiscalQuestion.trim().length} caractères{" "}
-                    {valid.question ? "✓" : "(min. 10)"}
-                  </FieldCheck>
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {QUESTION_EXAMPLES.map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        onClick={() =>
-                          setForm((f) => ({ ...f, fiscalQuestion: q }))
-                        }
-                        className="text-[12px] font-semibold text-body bg-white hover:bg-brand/10 border border-border hover:border-brand/60 hover:text-dark rounded-full px-3 py-1.5 transition-all hover:-translate-y-0.5"
+                    <label className="flex items-center gap-2 text-sm font-bold text-dark mb-1.5">
+                      <span className="w-5 h-5 rounded-md bg-purple-100 text-purple-600 text-[9px] font-extrabold flex items-center justify-center">
+                        3
+                      </span>
+                      {t("cons.fiscalQuestion")}
+                    </label>
+                    <textarea
+                      value={form.fiscalQuestion}
+                      onChange={set("fiscalQuestion")}
+                      rows={2}
+                      placeholder={t("cons.questionPlaceholder")}
+                      className="w-full px-3.5 py-3 rounded-xl border border-border bg-white text-[14px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none transition-all"
+                    />
+                    <FieldCheck ok={valid.question}>
+                      {form.fiscalQuestion.trim().length} {t("cons.characters")}{" "}
+                      {valid.question ? "✓" : `(${t("cons.min10")})`}
+                    </FieldCheck>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {QUESTION_EXAMPLE_KEYS.map((key, i) => {
+                        const q = t(key);
+                        const chipColors = [
+                          "hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700",
+                          "hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700",
+                          "hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700",
+                        ];
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() =>
+                              setForm((f) => ({ ...f, fiscalQuestion: q }))
+                            }
+                            className={`text-[11px] font-semibold text-body bg-white border border-border rounded-full px-3 py-1.5 transition-all hover:-translate-y-0.5 ${chipColors[i]}`}
+                          >
+                            {q.length > 48 ? `${q.slice(0, 45)}…` : q}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* row 4: mode + submit */}
+                  <div
+                    className="animate-fade-up opacity-0"
+                    style={{ animationDelay: "210ms" }}
+                  >
+                    <label className="flex items-center gap-2 text-sm font-bold text-dark mb-2">
+                      <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-600 text-[9px] font-extrabold flex items-center justify-center">
+                        4
+                      </span>
+                      {t("cons.consultationFormat")}
+                    </label>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {[
+                        {
+                          v: "detaillee",
+                          label: t("cons.detailed"),
+                          d: t("cons.detailedDesc"),
+                          accent: "border-yellow-400 bg-yellow-50/50 ",
+                        },
+                        {
+                          v: "concise",
+                          label: t("cons.concise"),
+                          d: t("cons.conciseDesc"),
+                          accent: "border-emerald-400 bg-emerald-50/50",
+                        },
+                      ].map((o) => {
+                        const active = form.mode === o.v;
+                        return (
+                          <button
+                            key={o.v}
+                            type="button"
+                            onClick={() =>
+                              setForm((f) => ({ ...f, mode: o.v }))
+                            }
+                            className={`text-left rounded-xl border p-3 transition-all ${
+                              active
+                                ? `${o.accent} `
+                                : "border-border bg-white hover:border-dark/30"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span
+                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${active ? "border-dark" : "border-muted"}`}
+                              >
+                                {active && (
+                                  <span className="w-2 h-2 rounded-full bg-dark" />
+                                )}
+                              </span>
+                              <span className="text-[13px] font-bold text-dark">
+                                {o.label}
+                              </span>
+                            </span>
+                            <span className="block text-[11px] text-muted mt-1 pl-6">
+                              {o.d}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm animate-pop opacity-0">
+                      {error}
+                    </div>
+                  )}
+
+                  {/* submit */}
+                  <div
+                    className="animate-fade-up opacity-0 pb-4"
+                    style={{ animationDelay: "240ms" }}
+                  >
+                    <button
+                      type="submit"
+                      disabled={!allValid}
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 text-sm font-bold rounded-lg px-3 py-2 bg-brand text-dark hover:shadow-xl hover:shadow-brand/30 hover:-translate-y-0.5 active:scale-[0.98] disabled:shadow-none disabled:translate-y-0 transition-all"
+                    >
+                      <svg
+                        className="w-4 4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
                       >
-                        {q.length > 52 ? `${q.slice(0, 49)}…` : q}
-                      </button>
-                    ))}
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                        />
+                      </svg>
+                      {t("cons.generate")}
+                    </button>
+                    {!allValid && (
+                      <p className="text-[11px] text-muted mt-2">
+                        {t("cons.fillFields")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            {/* right: preview & tips sidebar */}
+            <div className="hidden lg:block w-[300px] shrink-0 border-l border-border/70 overflow-y-auto p-5">
+              <div
+                className="sticky top-0 space-y-4 animate-fade-up opacity-0"
+                style={{ animationDelay: "150ms" }}
+              >
+                {/* mini doc preview */}
+                <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
+                  <div className="h-1.5 bg-gradient-to-r from-brand via-[#F59E0B] to-emerald-400" />
+                  <div className="p-4">
+                    <p className="text-[10px] font-bold text-muted uppercase tracking-[0.2em] mb-3">
+                      {t("cons.memoPreview")}
+                    </p>
+                    <p className="font-extrabold text-dark text-[14px] truncate">
+                      {form.clientName || "Client…"}
+                    </p>
+                    <p className="text-[11px] text-muted mb-3 truncate">
+                      {form.reference || `CONS-${year}-···`}
+                    </p>
+                    <div className="space-y-2">
+                      {[
+                        {
+                          s: t("cons.previewContext"),
+                          color: "bg-indigo-100 text-indigo-600",
+                        },
+                        {
+                          s: t("cons.previewScope"),
+                          color: "bg-violet-100 text-violet-600",
+                        },
+                        {
+                          s: t("cons.previewSummary"),
+                          color: "bg-emerald-100 text-emerald-600",
+                        },
+                        {
+                          s: t("cons.previewAnalysis"),
+                          color: "bg-amber-100 text-amber-600",
+                        },
+                        {
+                          s: t("cons.previewDocs"),
+                          color: "bg-blue-100 text-blue-600",
+                        },
+                      ].map((item, i) => (
+                        <div key={item.s} className="flex items-center gap-2.5">
+                          <span
+                            className={`w-5 h-5 rounded-md ${item.color} text-[9px] font-extrabold flex items-center justify-center shrink-0`}
+                          >
+                            {i + 1}
+                          </span>
+                          <span className="text-[12px] font-semibold text-body">
+                            {item.s}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted mt-4 pt-3 border-t border-border">
+                      {t("cons.previewFooter")}
+                    </p>
                   </div>
                 </div>
 
-                {/* mode — concise vs détaillée */}
-                <div
-                  className="mt-7 animate-fade-up opacity-0"
-                  style={{ animationDelay: "210ms" }}
-                >
-                  <label className="block text-sm font-bold text-dark mb-2.5">
-                    Format de la consultation
-                  </label>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {[
-                      {
-                        v: "detaillee",
-                        t: "Version détaillée",
-                        d: "Principe, application aux faits et conclusion pour chaque point.",
-                      },
-                      {
-                        v: "concise",
-                        t: "Version concise",
-                        d: "Droit au but : le verdict et sa source, sans développement.",
-                      },
-                    ].map((o) => {
-                      const active = form.mode === o.v;
-                      return (
-                        <button
-                          key={o.v}
-                          type="button"
-                          onClick={() => setForm((f) => ({ ...f, mode: o.v }))}
-                          className={`text-left rounded-xl border p-3.5 transition-all ${
-                            active
-                              ? "border-brand bg-brand/10 ring-2 ring-brand"
-                              : "border-border bg-white hover:border-dark/30"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2">
-                            <span
-                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                                active ? "border-dark" : "border-muted"
-                              }`}
-                            >
-                              {active && (
-                                <span className="w-2 h-2 rounded-full bg-dark" />
-                              )}
-                            </span>
-                            <span className="text-[13.5px] font-bold text-dark">
-                              {o.t}
-                            </span>
-                          </span>
-                          <span className="block text-[12px] text-muted mt-1.5 pl-6">
-                            {o.d}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="mt-6 p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm animate-pop opacity-0">
-                    {error}
-                  </div>
-                )}
-
-                {/* one click — no steps */}
-                <div
-                  className="mt-8 animate-fade-up opacity-0"
-                  style={{ animationDelay: "240ms" }}
-                >
-                  <button
-                    type="submit"
-                    disabled={!allValid}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 text-sm font-bold rounded-xl px-7 py-3.5 bg-brand text-dark hover:shadow-lg hover:shadow-brand/40 active:scale-[0.98] disabled:opacity-40 disabled:shadow-none transition-all"
-                  >
+                {/* tips */}
+                <div className="bg-gradient-to-br from-brand/10 to-violet-400/10 border border-brand/30 rounded-2xl p-4">
+                  <p className="text-[11px] font-bold text-dark uppercase tracking-[0.15em] mb-2.5 flex items-center gap-1.5">
                     <svg
-                      className="w-4 h-4"
+                      className="w-3.5 h-3.5 text-brand"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -520,78 +728,27 @@ export default function Consultations() {
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                        d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18"
                       />
                     </svg>
-                    Générer la consultation
-                  </button>
-                  {!allValid && (
-                    <p className="text-[11.5px] text-muted mt-2">
-                      Renseignez le client, la situation et la question pour
-                      lancer la génération.
-                    </p>
-                  )}
-                </div>
-              </form>
-
-              {/* live preview & tips */}
-              <div className="hidden lg:block">
-                <div className="sticky top-6 space-y-4 animate-fade-up opacity-0" style={{ animationDelay: "150ms" }}>
-                  <div className="bg-white border border-border rounded-2xl p-5 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-brand" />
-                    <p className="text-[10px] font-bold text-muted uppercase tracking-[0.2em] mb-3">
-                      Aperçu du mémo
-                    </p>
-                    <p className="font-extrabold text-dark text-[15px] truncate">
-                      {form.clientName || "Client…"}
-                    </p>
-                    <p className="text-[11px] text-muted mb-3 truncate">
-                      {form.reference || `CONS-${year}-···`}
-                    </p>
-                    <div className="space-y-2">
-                      {[
-                        "Contexte & faits",
-                        "Étendue des travaux",
-                        "Sommaire exécutif",
-                        "Analyses",
-                        "Documents & références",
-                      ].map((s, i) => (
-                        <div key={s} className="flex items-center gap-2.5">
-                          <span className="w-5 h-5 rounded-md bg-light text-muted text-[9px] font-extrabold flex items-center justify-center shrink-0">
-                            {i + 1}
-                          </span>
-                          <span className="text-[12.5px] font-semibold text-body">
-                            {s}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-muted mt-4 pt-3 border-t border-border">
-                      + tableau de synthèse et sources juridiques numérotées,
-                      le tout modifiable avec l’IA après génération.
-                    </p>
-                  </div>
-                  <div className="bg-brand/15 border border-brand/40 rounded-2xl p-5">
-                    <p className="text-[11px] font-bold text-dark uppercase tracking-[0.15em] mb-2.5">
-                      💡 À inclure si possible
-                    </p>
-                    <ul className="space-y-1.5">
-                      {SITUATION_TIPS.map((t) => (
-                        <li
-                          key={t}
-                          className="text-[12.5px] text-body flex gap-2"
-                        >
-                          <span className="text-dark font-bold">·</span>
-                          {t}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                    {t("cons.includeTips")}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {SITUATION_TIP_KEYS.map((key) => (
+                      <li
+                        key={key}
+                        className="text-[12px] text-body flex gap-2"
+                      >
+                        <span className="text-brand font-bold mt-0.5">•</span>
+                        {t(key)}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </section>
     </div>
   );

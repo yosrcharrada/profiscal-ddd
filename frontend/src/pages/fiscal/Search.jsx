@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useLanguage } from "../../context/LanguageContext";
 import fiscalService from "../../services/fiscalService";
 import SourcePanel, {
   normalizeSource,
@@ -7,34 +8,59 @@ import SourcePanel, {
 
 const EASE = "ease-[cubic-bezier(.16,1,.3,1)]";
 
-/* Soft pastel accents per document type — yellow stays the primary brand
-   accent, the rest sit quietly next to white. */
 const DOC_TYPES = [
-  { key: "all", label: "Tous les textes", dot: "bg-gradient-to-r from-brand to-[#FFB800]" },
-  { key: "Code", label: "Codes", dot: "bg-dark" },
-  { key: "Convention", label: "Conventions", dot: "bg-brand" },
-  { key: "LoiFinances", label: "Lois de finances", dot: "bg-[#8B5CF6]" },
-  { key: "Doctrine", label: "Doctrine", dot: "bg-[#3B82F6]" },
-  { key: "Commentaire", label: "Commentaires", dot: "bg-[#F97316]" },
+  { key: "all", tKey: "search.all", dot: "bg-gradient-to-r from-brand to-[#FFB800]" },
+  { key: "Code", tKey: "search.codes", dot: "bg-dark" },
+  { key: "Convention", tKey: "search.conventions", dot: "bg-brand" },
+  { key: "LoiFinances", tKey: "search.loisFinances", dot: "bg-[#8B5CF6]" },
+  { key: "Doctrine", tKey: "search.doctrine", dot: "bg-[#3B82F6]" },
+  { key: "Commentaire", tKey: "search.commentaires", dot: "bg-[#F97316]" },
 ];
 
 const TYPE_BADGE = {
-  Code: "bg-dark text-white",
-  Convention: "bg-brand text-dark",
-  LoiFinances: "bg-[#EDE9FE] text-[#5B21B6]",
-  Doctrine: "bg-[#DBEAFE] text-[#1D4ED8]",
-  Commentaire: "bg-[#FFEDD5] text-[#C2410C]",
+  Code: { bg: "bg-dark/10", text: "text-dark", border: "border-dark/20" },
+  Convention: {
+    bg: "bg-brand/20",
+    text: "text-dark",
+    border: "border-brand/40",
+  },
+  LoiFinances: {
+    bg: "bg-[#EDE9FE]",
+    text: "text-[#5B21B6]",
+    border: "border-[#C4B5FD]",
+  },
+  Doctrine: {
+    bg: "bg-[#DBEAFE]",
+    text: "text-[#1D4ED8]",
+    border: "border-[#93C5FD]",
+  },
+  Commentaire: {
+    bg: "bg-[#FFEDD5]",
+    text: "text-[#C2410C]",
+    border: "border-[#FDBA74]",
+  },
 };
 
-const EXAMPLES = {
-  law: [
-    "retenue à la source non-résident français",
-    "TVA prestations de services export",
-    "amortissement matériel informatique",
-    "convention Tunisie-France dividendes",
-  ],
-  consultations: ["nom du client", "référence du mémo", "question fiscale traitée"],
-};
+const COUNTRIES = [
+  "Tunisie",
+  "France",
+  "Allemagne",
+  "Italie",
+  "Belgique",
+  "Canada",
+  "Maroc",
+];
+const STANDARD_KEYWORDS = [
+  "TVA",
+  "IS",
+  "IRPP",
+  "Retenue à la source",
+  "Prix de transfert",
+  "Établissement stable",
+  "Dividendes",
+  "Redevances",
+  "Plus-value",
+];
 
 const YEARS = { min: 2000, max: 2030 };
 const RECENT_KEY = "taxmind.search.recent";
@@ -57,58 +83,46 @@ const loadRecent = () => {
   }
 };
 
-/* highlight <em> from the engine as brand-yellow marks, everything else escaped */
 const highlightHtml = (h) =>
   (h.highlight || h.content || "")
     .replace(/</g, "&lt;")
     .replace(/&lt;em>/g, '<mark class="bg-brand/40 rounded-sm px-0.5">')
     .replace(/&lt;\/em>/g, "</mark>");
 
-/* ───────────────────────── pieces ───────────────────────── */
-
-function SearchBar({ value, onChange, onSubmit, loading, inputRef, large }) {
+function FilterSection({ title, defaultOpen = true, count, children }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }}
-      className={`flex items-center gap-2 bg-white border border-border rounded-2xl shadow-lg shadow-dark/[0.05] focus-within:ring-2 focus-within:ring-brand focus-within:border-transparent transition-all ${large ? "pl-5 pr-2 py-2" : "pl-4 pr-1.5 py-1.5"}`}>
-      <svg className="w-[18px] h-[18px] text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-      </svg>
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="Décrivez votre question en langage naturel…"
-        className="flex-1 min-w-0 bg-transparent text-[15px] text-dark placeholder-muted focus:outline-none py-2"
-      />
+    <div className="border-b border-border/50 last:border-0">
       <button
-        type="submit"
-        disabled={loading || !value.trim()}
-        className={`bg-dark text-white text-sm font-semibold rounded-xl hover:bg-black active:scale-95 disabled:opacity-30 transition-all shrink-0 ${large ? "px-5 py-2.5" : "px-4 py-2"}`}
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-light/50 transition-colors"
       >
-        {loading ? (
-          <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-brand rounded-full animate-spin" />
-            <span className="hidden sm:inline">Recherche</span>
-          </span>
-        ) : (
-          "Rechercher"
-        )}
+        <span className="text-[13px] font-bold text-dark">{title}</span>
+        <div className="flex items-center gap-2">
+          {count != null && (
+            <span className="text-[10px] font-bold bg-brand/20 text-dark rounded-full px-1.5 py-0.5">
+              {count}
+            </span>
+          )}
+          <svg
+            className={`w-4 h-4 text-muted transition-transform duration-300 ${open ? "rotate-0" : "-rotate-90"}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+            />
+          </svg>
+        </div>
       </button>
-    </form>
-  );
-}
-
-function ResultSkeleton({ delay = 0 }) {
-  return (
-    <div className="bg-white border border-border rounded-2xl p-5 animate-pulse" style={{ animationDelay: `${delay}ms` }}>
-      <div className="flex items-center justify-between">
-        <div className="h-3.5 bg-light rounded w-1/3" />
-        <div className="h-4 bg-light rounded-full w-16" />
-      </div>
-      <div className="mt-4 space-y-2">
-        <div className="h-3 bg-light rounded w-full" />
-        <div className="h-3 bg-light rounded w-11/12" />
-        <div className="h-3 bg-light rounded w-2/3" />
+      <div
+        className={`overflow-hidden transition-all duration-300 ${EASE} ${open ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"}`}
+      >
+        <div className="px-4 py-3">{children}</div>
       </div>
     </div>
   );
@@ -122,129 +136,270 @@ function FiltersPanel({
   yearMax,
   onYears,
   buckets,
+  clientSearch,
+  onClientSearch,
+  dateFrom,
+  dateTo,
+  onDates,
+  country,
+  onCountry,
+  keywords,
+  onToggleKeyword,
   recent,
   onRecent,
   onReset,
   filtersActive,
   onClose,
+  t,
 }) {
   return (
     <div className="h-full flex flex-col bg-white">
-      <div className="h-12 shrink-0 flex items-center justify-between px-4 border-b border-border/70">
-        <p className="text-[11px] font-bold text-muted uppercase tracking-[0.18em]">Filtres</p>
+      <div className="h-11 shrink-0 flex items-center justify-between px-4 border-b border-border/70">
+        <div className="flex items-center gap-2">
+          <p className="text-[13px] font-bold text-dark">
+            {t("search.filters")}
+          </p>
+          {filtersActive && (
+            <span className="w-4 h-4 rounded-full bg-brand text-dark text-[9px] font-extrabold flex items-center justify-center">
+              !
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           {filtersActive && (
-            <button onClick={onReset}
-              className="text-[11px] font-bold text-body hover:text-dark rounded-lg px-2 py-1 hover:bg-light transition-colors">
-              Réinitialiser
+            <button
+              onClick={onReset}
+              className="text-[11px] font-semibold text-muted hover:text-dark transition-colors"
+            >
+              {t("search.clearAll")}
             </button>
           )}
           {onClose && (
-            <button onClick={onClose}
-              className="md:hidden w-8 h-8 rounded-lg text-muted hover:text-dark flex items-center justify-center transition-colors"
-              aria-label="Fermer les filtres">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            <button
+              onClick={onClose}
+              className="md:hidden w-7 h-7 rounded-lg text-muted hover:text-dark flex items-center justify-center transition-colors"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
             </button>
           )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+      <div className="flex-1 overflow-y-auto bg-white">
         {mode === "law" ? (
           <>
-            {/* document types */}
-            <div>
-              <p className="px-2 mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em]">Type de texte</p>
-              <div className="space-y-0.5">
+            <FilterSection
+              title={t("search.textType")}
+              count={docType !== "all" ? 1 : undefined}
+            >
+              <div className="space-y-px">
                 {DOC_TYPES.map((d) => {
                   const active = docType === d.key;
-                  const count = buckets?.find((b) => b.key === d.key)?.count;
+                  const cnt = buckets?.find((b) => b.key === d.key)?.count;
                   return (
-                    <button key={d.key} onClick={() => onDocType(d.key)}
-                      className={`w-full flex items-center gap-2.5 text-left rounded-xl px-2.5 py-2 text-[13px] font-semibold transition-colors ${
-                        active ? "bg-dark text-white shadow-sm" : "text-body hover:text-dark hover:bg-light"
-                      }`}>
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${d.dot} ${active ? "ring-2 ring-white/30" : ""}`} />
-                      <span className="flex-1 truncate">{d.label}</span>
-                      {count != null && (
-                        <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 ${active ? "bg-white/15 text-white" : "bg-light text-muted"}`}>
-                          {count}
+                    <button
+                      key={d.key}
+                      onClick={() => onDocType(d.key)}
+                      className={`w-full flex items-center gap-2.5 text-left rounded-lg px-2.5 py-2 text-[13px] transition-all duration-200 ${
+                        active
+                          ? "bg-brand/15 text-dark font-semibold"
+                          : "text-body hover:text-dark hover:bg-light/60 font-medium"
+                      }`}
+                    >
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${d.dot}`}
+                      />
+                      <span className="flex-1 truncate">{t(d.tKey)}</span>
+                      {cnt != null && (
+                        <span
+                          className={`text-[10px] font-semibold rounded-full px-1.5 ${active ? "text-dark" : "text-muted"}`}
+                        >
+                          {cnt}
                         </span>
                       )}
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </FilterSection>
 
-            {/* period */}
-            <div>
-              <p className="px-2 mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em]">Période</p>
-              <div className="flex items-center gap-2 px-2">
+            <FilterSection
+              title={t("search.period")}
+              defaultOpen={yearMin !== YEARS.min || yearMax !== YEARS.max}
+            >
+              <div className="flex items-center gap-2">
                 {[
-                  { v: yearMin, set: (y) => onYears(y, yearMax), label: "De" },
-                  { v: yearMax, set: (y) => onYears(yearMin, y), label: "À" },
+                  { v: yearMin, set: (y) => onYears(y, yearMax), label: t("search.from") },
+                  { v: yearMax, set: (y) => onYears(yearMin, y), label: t("search.to") },
                 ].map((f) => (
                   <label key={f.label} className="flex-1 min-w-0">
-                    <span className="block text-[10px] font-bold text-muted mb-1">{f.label}</span>
+                    <span className="block text-[11px] font-medium text-muted mb-1">
+                      {f.label}
+                    </span>
                     <input
                       type="number"
                       min={YEARS.min}
                       max={YEARS.max}
                       value={f.v}
-                      onChange={(e) => f.set(Number(e.target.value) || YEARS.min)}
-                      className="w-full bg-white border border-border rounded-xl px-3 py-2 text-[13px] font-semibold text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+                      onChange={(e) =>
+                        f.set(Number(e.target.value) || YEARS.min)
+                      }
+                      className="w-full bg-white border border-border rounded-lg px-2.5 py-1 text-[13px] text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
                     />
                   </label>
                 ))}
               </div>
-            </div>
+            </FilterSection>
           </>
         ) : (
-          <div className="px-2 animate-fade-in">
-            <div className="bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl p-3.5">
-              <p className="text-[12.5px] font-bold text-[#047857]">Recherche dans vos mémos</p>
-              <p className="text-[12px] text-[#059669] mt-1 leading-relaxed">
-                Nom de client, référence ou mots de la question fiscale — quelques lettres suffisent.
-              </p>
-            </div>
-          </div>
+          <>
+            <FilterSection title={t("search.client")}>
+              <input
+                value={clientSearch}
+                onChange={(e) => onClientSearch(e.target.value)}
+                placeholder={t("search.searchClient")}
+                className="w-full bg-white border border-border rounded-lg px-2.5 py-1 text-[13px] text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+              />
+            </FilterSection>
+
+            <FilterSection title={t("search.creationDate")} defaultOpen={false}>
+              <div className="flex items-center gap-2">
+                {[
+                  {
+                    v: dateFrom,
+                    set: (v) => onDates(v, dateTo),
+                    label: t("search.fromDate"),
+                  },
+                  {
+                    v: dateTo,
+                    set: (v) => onDates(dateFrom, v),
+                    label: t("search.toDate"),
+                  },
+                ].map((f) => (
+                  <label key={f.label} className="flex-1 min-w-0">
+                    <span className="block text-[11px] font-medium text-muted mb-1">
+                      {f.label}
+                    </span>
+                    <input
+                      type="date"
+                      value={f.v}
+                      onChange={(e) => f.set(e.target.value)}
+                      className="w-full bg-white border border-border rounded-lg px-2 py-1 text-[12px] text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+                    />
+                  </label>
+                ))}
+              </div>
+            </FilterSection>
+
+            <FilterSection title={t("search.country")} defaultOpen={false}>
+              <div className="space-y-px">
+                {COUNTRIES.map((c) => {
+                  const active = country === c;
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => onCountry(active ? "" : c)}
+                      className={`w-full flex items-center gap-2 text-left rounded-lg px-2.5 py-2 text-[13px] transition-all ${
+                        active
+                          ? "bg-brand/15 text-dark font-semibold"
+                          : "text-body hover:text-dark hover:bg-light/60"
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${active ? "bg-brand" : "bg-border"}`}
+                      />
+                      {c}
+                    </button>
+                  );
+                })}
+              </div>
+            </FilterSection>
+
+            <FilterSection title={t("search.keywords")}>
+              <div className="flex flex-wrap gap-1.5">
+                {STANDARD_KEYWORDS.map((kw) => {
+                  const active = keywords.includes(kw);
+                  return (
+                    <button
+                      key={kw}
+                      onClick={() => onToggleKeyword(kw)}
+                      className={`text-[11px] font-semibold rounded-full px-2.5 py-1 border transition-all duration-200 ${
+                        active
+                          ? "bg-brand/20 border-brand/50 text-dark"
+                          : "bg-white border-border text-muted hover:text-dark hover:border-dark/30"
+                      }`}
+                    >
+                      {kw}
+                    </button>
+                  );
+                })}
+              </div>
+            </FilterSection>
+          </>
         )}
 
-        {/* recent searches */}
         {recent.length > 0 && (
-          <div>
-            <p className="px-2 mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em]">Recherches récentes</p>
-            <div className="space-y-0.5">
+          <FilterSection
+            title={t("search.recent")}
+            count={recent.length}
+            defaultOpen={false}
+          >
+            <div className="space-y-px">
               {recent.map((r, i) => (
-                <button key={`${r.q}-${i}`} onClick={() => onRecent(r)}
-                  className="w-full flex items-center gap-2.5 text-left rounded-xl px-2.5 py-2 text-[13px] text-body hover:text-dark hover:bg-light transition-colors group">
-                  <svg className="w-3.5 h-3.5 text-muted shrink-0 group-hover:text-dark transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <button
+                  key={`${r.q}-${i}`}
+                  onClick={() => onRecent(r)}
+                  className="w-full flex items-center gap-2 text-left rounded-lg px-2.5 py-2 text-[13px] text-body hover:text-dark hover:bg-light/60 transition-all group"
+                >
+                  <svg
+                    className="w-3.5 h-3.5 text-muted shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                   <span className="flex-1 truncate">{r.q}</span>
                 </button>
               ))}
             </div>
-          </div>
+          </FilterSection>
         )}
       </div>
     </div>
   );
 }
 
-/* ───────────────────────── page ───────────────────────── */
-
-/* Semantic search workspace, three vertical panes (same shell as the chat):
-   filters | results | document. Clicking a result opens the passage inline
-   as a third column on desktop (overlay on mobile). */
 export default function Search() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState("law"); // 'law' | 'consultations'
+  const { t } = useLanguage();
+  const [mode, setMode] = useState("law");
   const [query, setQuery] = useState("");
   const [docType, setDocType] = useState("all");
   const [yearMin, setYearMin] = useState(YEARS.min);
   const [yearMax, setYearMax] = useState(YEARS.max);
+  const [clientSearch, setClientSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [country, setCountry] = useState("");
+  const [keywords, setKeywords] = useState([]);
   const [lawRes, setLawRes] = useState(null);
   const [consRes, setConsRes] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -260,23 +415,49 @@ export default function Search() {
   const inputRef = useRef();
   const scrollRef = useRef();
 
-  useEffect(() => { inputRef.current?.focus(); }, [mode]);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [mode]);
   useEffect(() => {
     localStorage.setItem("taxmind.search.filters", filtersOpen ? "1" : "0");
   }, [filtersOpen]);
 
-  const filtersActive = docType !== "all" || yearMin !== YEARS.min || yearMax !== YEARS.max;
+  const lawFiltersActive =
+    docType !== "all" || yearMin !== YEARS.min || yearMax !== YEARS.max;
+  const consFiltersActive =
+    clientSearch !== "" ||
+    dateFrom !== "" ||
+    dateTo !== "" ||
+    country !== "" ||
+    keywords.length > 0;
+  const filtersActive = mode === "law" ? lawFiltersActive : consFiltersActive;
 
   const remember = (q, m) => {
     setRecent((prev) => {
-      const next = [{ q, mode: m }, ...prev.filter((r) => r.q !== q)].slice(0, 8);
-      try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {}
+      const next = [{ q, mode: m }, ...prev.filter((r) => r.q !== q)].slice(
+        0,
+        8,
+      );
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+      } catch {}
       return next;
     });
   };
 
-  /* explicit params so facet/recent clicks never race state updates */
-  const run = async ({ q = query, m = mode, dt = docType, ymin = yearMin, ymax = yearMax } = {}) => {
+  const toggleKeyword = (kw) => {
+    setKeywords((prev) =>
+      prev.includes(kw) ? prev.filter((k) => k !== kw) : [...prev, kw],
+    );
+  };
+
+  const run = async ({
+    q = query,
+    m = mode,
+    dt = docType,
+    ymin = yearMin,
+    ymax = yearMax,
+  } = {}) => {
     const text = q.trim();
     if (!text || loading) return;
     setLoading(true);
@@ -286,7 +467,13 @@ export default function Search() {
     scrollRef.current?.scrollTo({ top: 0 });
     try {
       if (m === "law") {
-        const { data } = await fiscalService.search({ query: text, docType: dt, yearMin: ymin, yearMax: ymax, size: 30 });
+        const { data } = await fiscalService.search({
+          query: text,
+          docType: dt,
+          yearMin: ymin,
+          yearMax: ymax,
+          size: 30,
+        });
         setLawRes(data.data);
       } else {
         const { data } = await fiscalService.list(text);
@@ -294,7 +481,10 @@ export default function Search() {
       }
       remember(text, m);
     } catch (err) {
-      setError(err.response?.data?.message || "La recherche a échoué — vérifiez la connexion du moteur (statut en haut à droite).");
+      setError(
+        err.response?.data?.message ||
+          t("search.searchFailed"),
+      );
       if (m === "law") setLawRes(null);
       else setConsRes(null);
     } finally {
@@ -325,10 +515,19 @@ export default function Search() {
   };
 
   const resetFilters = () => {
-    setDocType("all");
-    setYearMin(YEARS.min);
-    setYearMax(YEARS.max);
-    if (searched && query.trim()) run({ dt: "all", ymin: YEARS.min, ymax: YEARS.max });
+    if (mode === "law") {
+      setDocType("all");
+      setYearMin(YEARS.min);
+      setYearMax(YEARS.max);
+      if (searched && query.trim())
+        run({ dt: "all", ymin: YEARS.min, ymax: YEARS.max });
+    } else {
+      setClientSearch("");
+      setDateFrom("");
+      setDateTo("");
+      setCountry("");
+      setKeywords([]);
+    }
   };
 
   const pickRecent = (r) => {
@@ -345,6 +544,7 @@ export default function Search() {
   };
 
   const hits = lawRes?.hits || [];
+
   const filtersPanel = (closeFn) => (
     <FiltersPanel
       mode={mode}
@@ -354,195 +554,400 @@ export default function Search() {
       yearMax={yearMax}
       onYears={pickYears}
       buckets={lawRes?.docTypeBuckets}
+      clientSearch={clientSearch}
+      onClientSearch={setClientSearch}
+      dateFrom={dateFrom}
+      dateTo={dateTo}
+      onDates={(f, t) => {
+        setDateFrom(f);
+        setDateTo(t);
+      }}
+      country={country}
+      onCountry={setCountry}
+      keywords={keywords}
+      onToggleKeyword={toggleKeyword}
       recent={recent}
       onRecent={pickRecent}
       onReset={resetFilters}
       filtersActive={filtersActive}
       onClose={closeFn}
+      t={t}
     />
   );
 
   return (
-    <div className="h-full flex bg-sand">
-      {/* ① filters — desktop column, collapsible */}
-      <aside
-        className={`hidden md:block shrink-0 overflow-hidden transition-[width] duration-300 ${EASE} ${
-          filtersOpen ? "w-[250px] border-r border-border" : "w-0"
-        }`}
-      >
-        <div className="w-[250px] h-full">{filtersPanel()}</div>
-      </aside>
+    <div className="h-full flex flex-col bg-sand">
+      {/* Chrome-style tab bar */}
+      <div className="shrink-0 flex items-end bg-sand px-2 pt-1.5 border-b border-border">
+        {[
+          {
+            key: "law",
+            label: t("search.lawTab"),
+            color: "text-indigo-500",
+            activeBg: "bg-indigo-500",
+            icon: (
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
+                />
+              </svg>
+            ),
+          },
+          {
+            key: "consultations",
+            label: t("search.consultationsTab"),
+            color: "text-emerald-500",
+            activeBg: "bg-emerald-500",
+            icon: (
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                />
+              </svg>
+            ),
+          },
+        ].map((m) => {
+          const active = mode === m.key;
+          return (
+            <button
+              key={m.key}
+              onClick={() => switchMode(m.key)}
+              className={`relative flex items-center gap-1.5 text-[12.5px] font-semibold px-4 py-2 rounded-t-lg transition-all duration-200 ${
+                active
+                  ? "bg-white text-dark border border-border border-b-white -mb-px z-10"
+                  : "text-muted hover:text-dark hover:bg-white/50 border border-transparent"
+              }`}
+            >
+              {m.icon}
+              {m.label}
+              {active && (
+                <span className={`absolute bottom-0 left-2 right-2 h-[2px] rounded-full ${m.activeBg}`} />
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* ① filters — mobile overlay */}
-      {mobileFilters && (
-        <div className="md:hidden fixed inset-0 z-[70]">
-          <div className="absolute inset-0 bg-dark/40 backdrop-blur-[2px] animate-fade-in" onClick={() => setMobileFilters(false)} />
-          <div className="absolute left-0 top-0 h-full w-[280px] shadow-2xl animate-slide-in-left">
-            {filtersPanel(() => setMobileFilters(false))}
+      <div className="flex-1 min-h-0 flex">
+        {/* Filters panel — desktop */}
+        <aside
+          className={`hidden md:block shrink-0 overflow-hidden transition-[width] duration-300 ${EASE} ${
+            filtersOpen ? "w-[240px] border-r border-border" : "w-0"
+          }`}
+        >
+          <div className="w-[240px] h-full">{filtersPanel()}</div>
+        </aside>
+
+        {/* Filters — mobile overlay */}
+        {mobileFilters && (
+          <div className="md:hidden fixed inset-0 z-[70]">
+            <div
+              className="absolute inset-0 bg-dark/40 backdrop-blur-[2px] animate-fade-in"
+              onClick={() => setMobileFilters(false)}
+            />
+            <div className="absolute left-0 top-0 h-full w-[280px] shadow-2xl animate-slide-in-left">
+              {filtersPanel(() => setMobileFilters(false))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ② results */}
-      <section className="flex-1 min-w-0 flex flex-col">
-        {/* toolbar */}
-        <div className="h-12 shrink-0 flex items-center gap-2 px-3 border-b border-border/70 bg-white/70 backdrop-blur">
-          <button
-            onClick={() => setFiltersOpen((o) => !o)}
-            className="hidden md:flex relative w-8 h-8 rounded-lg text-muted hover:text-dark hover:bg-light items-center justify-center transition-colors"
-            aria-label={filtersOpen ? "Masquer les filtres" : "Afficher les filtres"}
-            title={filtersOpen ? "Masquer les filtres" : "Afficher les filtres"}
-          >
-            <svg className="w-[17px] h-[17px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25a1.5 1.5 0 011.5-1.5h13.5a1.5 1.5 0 011.5 1.5v13.5a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V5.25z" />
-              <path strokeLinecap="round" d="M9.75 3.75v16.5" />
-            </svg>
-            {filtersActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-brand ring-2 ring-white" />}
-          </button>
-          <button
-            onClick={() => setMobileFilters(true)}
-            className="md:hidden relative flex w-8 h-8 rounded-lg text-muted hover:text-dark hover:bg-light items-center justify-center transition-colors"
-            aria-label="Filtres"
-          >
-            <svg className="w-[17px] h-[17px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-            </svg>
-            {filtersActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-brand ring-2 ring-white" />}
-          </button>
+        {/* Results column */}
+        <section className="flex-1 min-w-0 flex flex-col">
+          {/* Slim search bar */}
+          <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-border/60 bg-white">
+            <button
+              onClick={() => {
+                if (window.innerWidth < 768) setMobileFilters(true);
+                else setFiltersOpen((o) => !o);
+              }}
+              className="relative w-8 h-8 rounded-lg text-muted hover:text-dark hover:bg-light flex items-center justify-center transition-colors shrink-0"
+              aria-label="Filtres"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.8}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z"
+                />
+              </svg>
+              {filtersActive && (
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-brand" />
+              )}
+            </button>
 
-          {/* Apple-style segmented scope control */}
-          <div className="flex bg-light rounded-xl p-1 gap-0.5">
-            {[
-              { key: "law", label: "Textes de loi" },
-              { key: "consultations", label: "Consultations" },
-            ].map((m) => (
-              <button key={m.key} onClick={() => switchMode(m.key)}
-                className={`text-[12px] font-bold rounded-lg px-3 py-1.5 transition-all ${
-                  mode === m.key ? "bg-white text-dark shadow-sm" : "text-muted hover:text-dark"
-                }`}>
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1" />
-          {!loading && mode === "law" && lawRes && (
-            <p className="text-[12px] text-muted shrink-0 animate-fade-in">
-              <span className="font-bold text-dark">{lawRes.total}</span> résultats · {Math.round(lawRes.elapsedMs)} ms
-            </p>
-          )}
-          {!loading && mode === "consultations" && consRes && (
-            <p className="text-[12px] text-muted shrink-0 animate-fade-in">
-              <span className="font-bold text-dark">{consRes.length}</span> consultation{consRes.length !== 1 ? "s" : ""}
-            </p>
-          )}
-        </div>
-
-        {!searched && !loading ? (
-          /* hero state — big centered search, like the chat's greeting */
-          <div className="flex-1 overflow-y-auto">
-            <div className="min-h-full flex flex-col items-center justify-center px-4 sm:px-6 py-10 animate-fade-up">
-              <div className="w-14 h-14 rounded-2xl bg-dark flex items-center justify-center mb-6 relative">
-                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-brand border-2 border-sand" />
-                <svg className="w-6 h-6 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                run();
+              }}
+              className="flex-1 min-w-0 flex items-center"
+            >
+              <div className="flex-1 min-w-0 relative flex items-center">
+                <svg
+                  className="absolute left-3 w-4 h-4 text-muted pointer-events-none"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+                  />
                 </svg>
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={
+                    mode === "law"
+                      ? t("search.searchLaw")
+                      : t("search.searchConsultations")
+                  }
+                  className="w-full bg-light/60 border border-border rounded-lg pl-9 pr-3 py-2 text-[13px] text-dark placeholder-muted focus:outline-none focus:ring-2 focus:ring-brand/60 focus:border-transparent focus:bg-white transition-all"
+                />
               </div>
-              <h1 className="font-display text-4xl text-dark text-center">Que cherchez-vous&nbsp;?</h1>
-              <p className="text-muted mt-3 mb-8 text-center max-w-md">
-                {mode === "law"
-                  ? "Recherche sémantique sur 67 000+ passages juridiques — décrivez votre question, même sans les mots exacts."
-                  : "Retrouvez un mémo par client, référence ou question traitée — quelques lettres suffisent."}
-              </p>
-              <div className="w-full max-w-xl">
-                <SearchBar value={query} onChange={setQuery} onSubmit={run} loading={loading} inputRef={inputRef} large />
-                <div className="flex flex-wrap justify-center gap-2 mt-4">
-                  {EXAMPLES[mode].map((q, i) => (
-                    <button key={q} onClick={() => { setQuery(q); if (mode === "law") run({ q }); }}
+              <button
+                type="submit"
+                disabled={loading || !query.trim()}
+                className="ml-2 bg-gradient-to-r from-brand to-[#F59E0B] text-dark text-[12px] font-bold rounded-lg px-4 py-2 hover:shadow-md hover:shadow-brand/30 active:scale-95 disabled:opacity-30 transition-all shrink-0"
+              >
+                {loading ? (
+                  <span className="w-3.5 h-3.5 border-2 border-dark/30 border-t-dark rounded-full animate-spin inline-block" />
+                ) : (
+                  t("search.searchBtn")
+                )}
+              </button>
+            </form>
+
+            <div className="hidden sm:block shrink-0 text-[11px] text-muted">
+              {!loading && mode === "law" && lawRes && (
+                <span className="animate-fade-in">
+                  <b className="text-dark">{lawRes.total}</b> {t("search.results")} ·{" "}
+                  {Math.round(lawRes.elapsedMs)}ms
+                </span>
+              )}
+              {!loading && mode === "consultations" && consRes && (
+                <span className="animate-fade-in">
+                  <b className="text-dark">{consRes.length}</b>{" "}
+                  {consRes.length !== 1 ? t("search.consultations") : t("search.consultation")}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Results area */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto bg-white">
+            {!searched && !loading ? (
+              <div className="flex flex-col items-center justify-center h-full px-4 animate-fade-up relative overflow-hidden">
+                <div className="absolute top-10 left-10 w-32 h-32 bg-brand/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute bottom-20 right-16 w-40 h-40 bg-indigo-400/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute top-1/3 right-1/4 w-24 h-24 bg-emerald-400/8 rounded-full blur-2xl pointer-events-none" />
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-[#F59E0B] flex items-center justify-center mb-5 shadow-lg shadow-brand/20">
+                  <svg className="w-7 h-7 text-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                  </svg>
+                </div>
+                <h2 className="font-display text-3xl sm:text-4xl text-dark text-center mb-3">
+                  {t("search.whatLooking")}
+                </h2>
+                <p className="text-muted text-[14px] text-center max-w-sm mb-6">
+                  {mode === "law"
+                    ? t("search.lawHint")
+                    : t("search.consHint")}
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {(mode === "law"
+                    ? [
+                        { q: "retenue à la source", color: "hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10" },
+                        { q: "TVA services export", color: "hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10" },
+                        { q: "convention Tunisie-France", color: "hover:border-brand hover:bg-brand/10" },
+                        { q: "amortissement", color: "hover:border-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10" },
+                      ]
+                    : [
+                        { q: "nom du client", color: "hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10" },
+                        { q: "référence mémo", color: "hover:border-brand hover:bg-brand/10" },
+                        { q: "question fiscale", color: "hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10" },
+                      ]
+                  ).map((item, i) => (
+                    <button
+                      key={item.q}
+                      onClick={() => {
+                        setQuery(item.q);
+                        run({ q: item.q });
+                      }}
                       style={{ animationDelay: `${i * 60}ms` }}
-                      className="text-[12.5px] font-semibold text-body bg-white hover:bg-brand/10 border border-border hover:border-brand/60 hover:text-dark rounded-full px-3.5 py-1.5 transition-all hover:-translate-y-0.5 animate-pop opacity-0">
-                      {q}
+                      className={`text-[11.5px] font-semibold text-body bg-white border border-border hover:text-dark rounded-full px-3.5 py-2 transition-all hover:-translate-y-0.5 hover:shadow-sm animate-pop opacity-0 ${item.color}`}
+                    >
+                      {item.q}
                     </button>
                   ))}
                 </div>
               </div>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* compact search bar pinned under the toolbar */}
-            <div className="shrink-0 px-4 sm:px-6 pt-4 pb-3">
-              <div className="max-w-3xl mx-auto">
-                <SearchBar value={query} onChange={setQuery} onSubmit={run} loading={loading} inputRef={inputRef} />
-              </div>
-            </div>
-
-            <div ref={scrollRef} className="flex-1 overflow-y-auto">
-              <div className="max-w-3xl mx-auto w-full px-4 sm:px-6 pb-10">
+            ) : (
+              <div className="max-w-3xl mx-auto w-full px-3 sm:px-5 py-3">
                 {error && (
-                  <div className="mt-2 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm animate-pop opacity-0">
+                  <div className="mb-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-[13px] flex items-center gap-2 animate-pop opacity-0">
+                    <svg
+                      className="w-4 h-4 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                      />
+                    </svg>
                     {error}
                   </div>
                 )}
 
                 {loading && (
-                  <div className="mt-2 space-y-3">
-                    {[0, 1, 2, 3].map((i) => <ResultSkeleton key={i} delay={i * 120} />)}
+                  <div className="space-y-2">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className="bg-white border border-border rounded-xl p-4 animate-pulse"
+                        style={{ animationDelay: `${i * 80}ms` }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-6 h-6 bg-light rounded-md" />
+                          <div className="h-3.5 bg-light rounded w-1/3" />
+                          <div className="ml-auto h-4 bg-light rounded-full w-16" />
+                        </div>
+                        <div className="mt-3 space-y-1.5">
+                          <div className="h-3 bg-light rounded w-full" />
+                          <div className="h-3 bg-light rounded w-4/5" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
-                {/* law results */}
                 {!loading && mode === "law" && lawRes && (
                   <>
                     {lawRes.total === 0 && (
-                      <div className="mt-6 bg-white border border-border border-dashed rounded-2xl p-10 text-center animate-fade-in">
-                        <p className="text-dark font-semibold">Aucun texte trouvé</p>
-                        <p className="text-muted text-sm mt-1">Élargissez les mots-clés ou réinitialisez les filtres.</p>
+                      <div className="mt-4 bg-gradient-to-br from-indigo-50/50 to-brand/5 dark:from-indigo-500/5 dark:to-brand/5 border border-dashed border-indigo-200 dark:border-indigo-500/20 rounded-xl p-8 text-center animate-fade-in">
+                        <div className="w-10 h-10 mx-auto rounded-xl bg-indigo-100 dark:bg-indigo-500/15 flex items-center justify-center mb-3">
+                          <svg className="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                          </svg>
+                        </div>
+                        <p className="text-dark font-semibold text-[14px]">
+                          {t("search.noLawResults")}
+                        </p>
+                        <p className="text-muted text-[13px] mt-1">
+                          {t("search.noLawHint")}
+                        </p>
                       </div>
                     )}
-                    <div className="mt-2 space-y-3">
+                    <div className="space-y-1.5">
                       {hits.map((h, i) => {
                         const open = viewing && viewing.index === i + 1;
+                        const badge = TYPE_BADGE[h.documentType] || {
+                          bg: "bg-light",
+                          text: "text-body",
+                          border: "border-border",
+                        };
                         return (
-                          <button key={h.id || i} onClick={() => openHit(hits, i)}
-                            style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
-                            className={`w-full text-left bg-white border rounded-2xl p-5 transition-all group animate-pop opacity-0 ${
+                          <button
+                            key={h.id || i}
+                            onClick={() => openHit(hits, i)}
+                            style={{
+                              animationDelay: `${Math.min(i, 8) * 40}ms`,
+                            }}
+                            className={`w-full text-left bg-white border rounded-xl px-4 py-3 transition-all duration-200 group animate-pop opacity-0 ${
                               open
-                                ? "border-brand ring-2 ring-brand/60 shadow-md"
-                                : "border-border hover:border-dark/25 hover:shadow-md hover:-translate-y-0.5"
-                            }`}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex items-start gap-2.5">
-                                <span className={`shrink-0 mt-0.5 w-5 h-5 rounded-md text-[10px] font-extrabold flex items-center justify-center transition-colors ${open ? "bg-brand text-dark" : "bg-brand/30 text-dark group-hover:bg-brand"}`}>
-                                  {i + 1}
-                                </span>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-bold text-dark capitalize truncate">
-                                    {(h.filename || "Document").replace(/[-_]/g, " ")}
-                                    {h.articleNumber ? ` · ${h.articleNumber}` : ""}
+                                ? "border-brand ring-1 ring-brand/40 shadow-md"
+                                : "border-border hover:border-dark/20 hover:shadow-sm"
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <span
+                                className={`shrink-0 mt-0.5 w-6 h-6 rounded-md text-[10px] font-bold flex items-center justify-center transition-colors ${
+                                  open
+                                    ? "bg-brand text-dark"
+                                    : "bg-light text-muted group-hover:bg-brand/30 group-hover:text-dark"
+                                }`}
+                              >
+                                {i + 1}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-[13px] font-semibold text-dark capitalize truncate">
+                                    {(h.filename || "Document").replace(
+                                      /[-_]/g,
+                                      " ",
+                                    )}
+                                    {h.articleNumber
+                                      ? ` · ${h.articleNumber}`
+                                      : ""}
                                   </p>
-                                  {h.sectionTitle && <p className="text-xs text-muted mt-0.5 truncate">{h.sectionTitle}</p>}
+                                  {h.documentType && (
+                                    <span
+                                      className={`text-[9px] font-bold rounded-full px-2 py-0.5 border ${badge.bg} ${badge.text} ${badge.border}`}
+                                    >
+                                      {h.documentType}
+                                    </span>
+                                  )}
+                                  {h.pageNumber != null && (
+                                    <span className="text-[9px] text-muted">
+                                      p.{h.pageNumber}
+                                    </span>
+                                  )}
                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                {h.documentType && (
-                                  <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 uppercase tracking-wide ${TYPE_BADGE[h.documentType] || "bg-light text-body"}`}>
-                                    {h.documentType}
-                                  </span>
+                                {h.sectionTitle && (
+                                  <p className="text-[11px] text-muted mt-0.5 truncate">
+                                    {h.sectionTitle}
+                                  </p>
                                 )}
-                                {h.pageNumber != null && <span className="text-[10px] text-muted">p.{h.pageNumber}</span>}
+                                <p
+                                  className="mt-1.5 text-[12.5px] text-body leading-relaxed line-clamp-2"
+                                  dangerouslySetInnerHTML={{
+                                    __html: highlightHtml(h),
+                                  }}
+                                />
                               </div>
-                            </div>
-                            <p
-                              className="mt-3 text-[13.5px] text-body leading-relaxed line-clamp-3"
-                              dangerouslySetInnerHTML={{ __html: highlightHtml(h) }}
-                            />
-                            <span className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted group-hover:text-dark transition-colors">
-                              {open ? "Passage ouvert" : "Ouvrir le passage"}
-                              <svg className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                              <svg
+                                className={`w-4 h-4 shrink-0 mt-1 transition-all ${open ? "text-brand" : "text-border group-hover:text-muted"}`}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                                />
                               </svg>
-                            </span>
+                            </div>
                           </button>
                         );
                       })}
@@ -550,37 +955,83 @@ export default function Search() {
                   </>
                 )}
 
-                {/* consultation results */}
                 {!loading && mode === "consultations" && consRes && (
                   <>
                     {consRes.length === 0 && (
-                      <div className="mt-6 bg-white border border-border border-dashed rounded-2xl p-10 text-center animate-fade-in">
-                        <p className="text-dark font-semibold">Aucune consultation ne correspond</p>
-                        <p className="text-muted text-sm mt-1">Essayez un autre nom de client ou une référence partielle.</p>
+                      <div className="mt-4 bg-gradient-to-br from-emerald-50/50 to-brand/5 dark:from-emerald-500/5 dark:to-brand/5 border border-dashed border-emerald-200 dark:border-emerald-500/20 rounded-xl p-8 text-center animate-fade-in">
+                        <div className="w-10 h-10 mx-auto rounded-xl bg-emerald-100 dark:bg-emerald-500/15 flex items-center justify-center mb-3">
+                          <svg className="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                          </svg>
+                        </div>
+                        <p className="text-dark font-semibold text-[14px]">
+                          {t("search.noConsResults")}
+                        </p>
+                        <p className="text-muted text-[13px] mt-1">
+                          {t("search.noConsHint")}
+                        </p>
                       </div>
                     )}
-                    <div className="mt-2 space-y-3">
+                    <div className="space-y-1.5">
                       {consRes.map((c, i) => (
-                        <button key={c.id} onClick={() => navigate(`/app/consultations/${c.id}`)}
-                          style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
-                          className="w-full text-left bg-white border border-border rounded-2xl p-5 hover:border-dark/25 hover:shadow-md hover:-translate-y-0.5 transition-all group animate-pop opacity-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-bold text-dark bg-brand/30 rounded-full px-2 py-0.5">{c.reference}</span>
-                            {c.isInternational && (
-                              <span className="text-[10px] font-semibold text-[#1D4ED8] bg-[#DBEAFE] rounded-full px-2 py-0.5">International</span>
-                            )}
-                            <span className="text-xs text-muted ml-auto">{fmtDate(c.createdAt)}</span>
-                          </div>
-                          <p className="mt-2.5 font-bold text-dark">{c.clientName}</p>
-                          <p className="text-[13.5px] text-body line-clamp-2 mt-1 leading-snug">{c.fiscalQuestion}</p>
-                          <div className="mt-3 flex items-center justify-between text-xs text-muted">
-                            <span>{c.sourcesCount} sources · {c.refineCount} modifications</span>
-                            <span className="inline-flex items-center gap-1.5 font-semibold group-hover:text-dark transition-colors">
-                              Ouvrir le document
-                              <svg className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        <button
+                          key={c.id}
+                          onClick={() => navigate(`/app/consultations/${c.id}`)}
+                          style={{
+                            animationDelay: `${Math.min(i, 8) * 40}ms`,
+                          }}
+                          className="w-full text-left bg-white border border-border rounded-xl px-4 py-3 hover:border-dark/20 hover:shadow-sm transition-all duration-200 group animate-pop opacity-0"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center shrink-0 mt-0.5">
+                              <svg
+                                className="w-4 h-4 text-dark/70"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={1.5}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                                />
                               </svg>
-                            </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] font-bold text-dark bg-brand/15 rounded px-1.5 py-0.5">
+                                  {c.reference}
+                                </span>
+                                {c.isInternational && (
+                                  <span className="text-[10px] font-semibold text-[#1D4ED8] bg-[#DBEAFE] rounded px-1.5 py-0.5">
+                                    International
+                                  </span>
+                                )}
+                                <span className="text-[11px] text-muted ml-auto shrink-0">
+                                  {fmtDate(c.createdAt)}
+                                </span>
+                              </div>
+                              <p className="text-[13px] font-semibold text-dark mt-1">
+                                {c.clientName}
+                              </p>
+                              <p className="text-[12px] text-body line-clamp-1 mt-0.5">
+                                {c.fiscalQuestion}
+                              </p>
+                            </div>
+                            <svg
+                              className="w-4 h-4 text-border group-hover:text-muted shrink-0 mt-1 transition-colors"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                              />
+                            </svg>
                           </div>
                         </button>
                       ))}
@@ -588,39 +1039,51 @@ export default function Search() {
                   </>
                 )}
               </div>
+            )}
+          </div>
+        </section>
+
+        {/* Document panel — desktop */}
+        <aside
+          className={`hidden lg:block shrink-0 overflow-hidden transition-[width] duration-300 ${EASE} ${
+            viewing ? "w-[400px] xl:w-[460px]" : "w-0"
+          }`}
+        >
+          {viewing && (
+            <div className="w-[400px] xl:w-[460px] h-full border-l border-border">
+              <SourcePanel
+                key={`${viewing.index}-${viewing.docName}`}
+                source={viewing}
+                sources={viewList}
+                onNavigate={setViewing}
+                onClose={() => setViewing(null)}
+              />
             </div>
-          </>
-        )}
-      </section>
+          )}
+        </aside>
 
-      {/* ③ document — desktop inline third pane */}
-      <aside
-        className={`hidden lg:block shrink-0 overflow-hidden transition-[width] duration-300 ${EASE} ${
-          viewing ? "w-[400px] xl:w-[460px]" : "w-0"
-        }`}
-      >
+        {/* Document panel — mobile overlay */}
         {viewing && (
-          <div className="w-[400px] xl:w-[460px] h-full border-l border-border">
-            <SourcePanel
-              key={`${viewing.index}-${viewing.docName}`}
-              source={viewing}
-              sources={viewList}
-              onNavigate={setViewing}
-              onClose={() => setViewing(null)}
+          <div
+            className="lg:hidden fixed inset-0 z-[80]"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div
+              className="absolute inset-0 bg-dark/40 backdrop-blur-[2px] animate-fade-in"
+              onClick={() => setViewing(null)}
             />
+            <div className="absolute right-0 top-0 h-full w-full max-w-md shadow-2xl animate-slide-in-right">
+              <SourcePanel
+                source={viewing}
+                sources={viewList}
+                onNavigate={setViewing}
+                onClose={() => setViewing(null)}
+              />
+            </div>
           </div>
         )}
-      </aside>
-
-      {/* ③ document — mobile/tablet overlay */}
-      {viewing && (
-        <div className="lg:hidden fixed inset-0 z-[80]" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-dark/40 backdrop-blur-[2px] animate-fade-in" onClick={() => setViewing(null)} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-md shadow-2xl animate-slide-in-right">
-            <SourcePanel source={viewing} sources={viewList} onNavigate={setViewing} onClose={() => setViewing(null)} />
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

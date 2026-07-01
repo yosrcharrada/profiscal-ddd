@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './components/common/Toast';
 import AdminUsers from './pages/admin/AdminUsers';
 import ChangePassword from './pages/ChangePassword';
@@ -19,6 +20,7 @@ import ConsultationEditor from './pages/fiscal/ConsultationEditor';
 function App() {
   return (
     <BrowserRouter>
+      <LanguageProvider>
       <AuthProvider>
         <ToastProvider>
         <Routes>
@@ -39,6 +41,7 @@ function App() {
         </Routes>
         </ToastProvider>
       </AuthProvider>
+      </LanguageProvider>
     </BrowserRouter>
   );
 }

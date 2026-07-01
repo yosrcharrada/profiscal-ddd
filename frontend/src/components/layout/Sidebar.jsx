@@ -1,6 +1,6 @@
 import { NavLink, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import EYLockup from "../common/EYLockup";
+import { useLanguage } from "../../context/LanguageContext";
 
 const ICONS = {
   dashboard: (
@@ -64,10 +64,9 @@ const ICONS = {
   ),
 };
 
-/* Floating label shown next to icons when the rail is collapsed. */
 function Tip({ label }) {
   return (
-    <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 rounded-lg bg-dark text-white text-[11px] font-semibold whitespace-nowrap opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 shadow-xl shadow-dark/20 z-[60]">
+    <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2.5 px-2 py-1 rounded-md bg-dark text-white text-[10px] font-semibold whitespace-nowrap opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 shadow-lg z-[60]">
       {label}
     </span>
   );
@@ -79,21 +78,21 @@ function Item({ to, label, icon, badge, onNavigate, collapsed }) {
       to={to}
       onClick={onNavigate}
       className={({ isActive }) =>
-        `group relative flex items-center rounded-xl text-sm font-semibold transition-all duration-200 ${
+        `group relative flex items-center text-[13px] font-medium transition-all duration-150 ${
           collapsed
-            ? "justify-center gap-0 w-11 h-11 mx-auto"
-            : "gap-3 px-3 py-2.5"
+            ? "justify-center gap-0 w-9 h-9 mx-auto rounded-lg"
+            : "gap-2.5 px-2.5 py-[7px]"
         } ${
           isActive
-            ? "bg-dark text-white shadow-sm"
-            : "text-body hover:text-dark hover:bg-light"
+            ? "text-[#e9d200] font-semibold"
+            : "text-body hover:text-dark"
         }`
       }
     >
       {({ isActive }) => (
         <>
           <svg
-            className={`w-[18px] h-[18px] shrink-0 transition-colors ${isActive ? "text-brand" : "text-muted group-hover:text-dark"}`}
+            className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-[#e9d200]" : "text-muted dark:text-[#a0a0b0] group-hover:text-body dark:group-hover:text-[#d0d0dd]"}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -102,17 +101,17 @@ function Item({ to, label, icon, badge, onNavigate, collapsed }) {
             {icon}
           </svg>
           <span
-            className={`whitespace-nowrap overflow-hidden transition-all duration-300 ${
+            className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${
               collapsed
                 ? "max-w-0 opacity-0"
-                : "max-w-[150px] opacity-100 flex-1"
+                : "max-w-[140px] opacity-100 flex-1"
             }`}
           >
             {label}
           </span>
           {badge && !collapsed && (
             <span
-              className={`text-[9px] font-bold rounded-full px-1.5 py-0.5 uppercase tracking-wide ${isActive ? "bg-brand text-dark" : "bg-brand/40 text-dark"}`}
+              className={`text-[9px] font-bold rounded-full px-1.5 py-0.5 uppercase tracking-wide ${isActive ? "bg-brand text-dark" : "bg-brand/30 text-dark"}`}
             >
               {badge}
             </span>
@@ -127,8 +126,8 @@ function Item({ to, label, icon, badge, onNavigate, collapsed }) {
 function SectionLabel({ children, collapsed }) {
   return (
     <p
-      className={`mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em] whitespace-nowrap overflow-hidden transition-all duration-300 ${
-        collapsed ? "opacity-0 max-h-0 mb-0" : "opacity-100 max-h-4 px-3"
+      className={`mb-1.5 text-[10px] font-semibold text-muted uppercase tracking-[0.12em] whitespace-nowrap overflow-hidden transition-all duration-200 ${
+        collapsed ? "opacity-0 max-h-0 mb-0" : "opacity-100 max-h-4 px-2.5"
       }`}
     >
       {children}
@@ -136,15 +135,14 @@ function SectionLabel({ children, collapsed }) {
   );
 }
 
-/* Left app-shell navigation — Notion/Linear style.
-   Collapses to a 68px icon rail (toggle button or ⌘B); state lives in Layout. */
 export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
   const { isAdmin } = useAuth();
+  const { t } = useLanguage();
   return (
-    <div className="h-full flex flex-col bg-YellowMidLight/60 border-r border-border overflow-visible">
+    <div className="h-full flex flex-col overflow-visible">
       <div
-        className={`h-14 flex items-center border-b border-border shrink-0 ${
-          collapsed ? "justify-center px-2" : "justify-between pl-5 pr-3"
+        className={`h-12 flex items-center shrink-0 ${
+          collapsed ? "justify-center px-2" : "justify-between pl-4 pr-2"
         }`}
       >
         {collapsed ? (
@@ -154,27 +152,47 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
             className="flex flex-col items-center"
             aria-label="EY TAXMIND — Dashboard"
           >
-            <svg width="20" height="6" viewBox="0 0 26 8" aria-hidden="true">
+            <svg width="18" height="5" viewBox="0 0 26 8" aria-hidden="true">
               <polygon points="0,8 26,0 26,8" fill="#FFE600" />
             </svg>
-            <span className="text-[13px] font-bold text-dark leading-none mt-[3px]">
+            <span className="text-[12px] font-bold text-dark dark:text-white leading-none mt-[2px]">
               EY
             </span>
           </Link>
         ) : (
           <>
-            <Link to="/dashboard" onClick={onNavigate} className="inline-flex">
-              <EYLockup dark compact />
+            <Link
+              to="/dashboard"
+              onClick={onNavigate}
+              className="inline-flex items-center gap-2"
+            >
+              <span className="flex flex-col items-start">
+                <svg
+                  width="18"
+                  height="5"
+                  viewBox="0 0 26 8"
+                  aria-hidden="true"
+                >
+                  <polygon points="0,8 26,0 26,8" fill="#FFE600" />
+                </svg>
+                <span className="text-[13px] font-bold text-dark dark:text-white leading-none mt-[2px]">
+                  EY
+                </span>
+              </span>
+              <span className="h-4 w-px bg-border" />
+              <span className="text-[11px] font-semibold tracking-[0.18em] text-dark/70 dark:text-[#b0b0c0]">
+                TAXMIND
+              </span>
             </Link>
             {onToggle && (
               <button
                 onClick={onToggle}
-                className="w-8 h-8 rounded-lg text-muted hover:text-dark hover:bg-light flex items-center justify-center transition-colors"
-                aria-label="Réduire la barre latérale"
-                title="Réduire (⌘B)"
+                className="w-7 h-7 rounded-md text-muted dark:text-[#a0a0b0] hover:text-dark dark:hover:text-white hover:bg-light/80 flex items-center justify-center transition-colors"
+                aria-label="Collapse sidebar"
+                title="Toggle (⌘B)"
               >
                 <svg
-                  className="w-[17px] h-[17px]"
+                  className="w-4 h-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -189,14 +207,14 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
       </div>
 
       {collapsed && onToggle && (
-        <div className="flex justify-center pt-3 shrink-0">
+        <div className="flex justify-center pt-2 shrink-0">
           <button
             onClick={onToggle}
-            className="group relative w-9 h-9 rounded-xl text-muted hover:text-dark hover:bg-light flex items-center justify-center transition-colors"
-            aria-label="Développer la barre latérale"
+            className="group relative w-8 h-8 rounded-md text-muted dark:text-[#a0a0b0] hover:text-dark dark:hover:text-white hover:bg-light/80 flex items-center justify-center transition-colors"
+            aria-label="Expand sidebar"
           >
             <svg
-              className="w-[17px] h-[17px]"
+              className="w-4 h-4"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -204,39 +222,41 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
             >
               {ICONS.panel}
             </svg>
-            <Tip label="Développer (⌘B)" />
+            <Tip label="Expand (⌘B)" />
           </button>
         </div>
       )}
 
-      <nav className={`flex-1 py-5 space-y-6 ${collapsed ? "px-2" : "px-3"}`}>
+      <nav className={`flex-1 py-3 space-y-4 ${collapsed ? "px-1.5" : "px-2"}`}>
         <div>
-          <SectionLabel collapsed={collapsed}>Workspace</SectionLabel>
-          <div className="space-y-1">
+          <SectionLabel collapsed={collapsed}>
+            {t("sidebar.workspace")}
+          </SectionLabel>
+          <div className="space-y-0.5">
             <Item
               to="/dashboard"
-              label="Dashboard"
+              label={t("sidebar.dashboard")}
               icon={ICONS.dashboard}
               onNavigate={onNavigate}
               collapsed={collapsed}
             />
             <Item
               to="/app/search"
-              label="Recherche"
+              label={t("sidebar.search")}
               icon={ICONS.search}
               onNavigate={onNavigate}
               collapsed={collapsed}
             />
             <Item
               to="/app/chat"
-              label="Assistant IA"
+              label={t("sidebar.chat")}
               icon={ICONS.chat}
               onNavigate={onNavigate}
               collapsed={collapsed}
             />
             <Item
               to="/app/consultations"
-              label="Consultations"
+              label={t("sidebar.consultations")}
               icon={ICONS.docs}
               onNavigate={onNavigate}
               collapsed={collapsed}
@@ -245,12 +265,16 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
         </div>
         {isAdmin && (
           <div>
-            <SectionLabel collapsed={collapsed}>Administration</SectionLabel>
-            {collapsed && <div className="mx-2 mb-3 border-t border-border" />}
-            <div className="space-y-1">
+            <SectionLabel collapsed={collapsed}>
+              {t("sidebar.admin")}
+            </SectionLabel>
+            {collapsed && (
+              <div className="mx-1.5 mb-2 border-t border-border/50" />
+            )}
+            <div className="space-y-0.5">
               <Item
                 to="/admin/users"
-                label="Utilisateurs"
+                label={t("sidebar.users")}
                 icon={ICONS.users}
                 badge="Admin"
                 onNavigate={onNavigate}
@@ -262,11 +286,11 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
       </nav>
 
       <div
-        className={`py-2 border-t border-border space-y-1 shrink-0 ${collapsed ? "px-2" : "px-3"}`}
+        className={`py-2 border-t border-border/40 space-y-0.5 shrink-0 ${collapsed ? "px-1.5" : "px-2"}`}
       >
         <Item
           to="/settings"
-          label="Paramètres"
+          label={t("sidebar.settings")}
           icon={ICONS.settings}
           onNavigate={onNavigate}
           collapsed={collapsed}

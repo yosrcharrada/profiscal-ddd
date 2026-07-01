@@ -5,24 +5,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap');
 
 @layer base {
-  /* ── Theme tokens (space-separated RGB channels so Tailwind alpha works) ── */
   :root {
-    --c-dark:   46 46 56;     /* #2E2E38  primary text / strong ink */
-    --c-body:   88 88 101;    /* #585865  secondary text */
-    --c-muted:  154 154 165;  /* #9A9AA5  tertiary text */
-    --c-cream:  255 255 255;  /* #FFFFFF  card surface */
-    --c-sand:   255 255 252;  /* #FFFFFC  page background */
-    --c-light:  242 242 246;  /* #F2F2F6  hover / elevated surface */
-    --c-border: 229 229 236;  /* #E5E5EC  borders */
+    --c-dark:   46 46 56;
+    --c-body:   88 88 101;
+    --c-muted:  154 154 165;
+    --c-cream:  255 255 255;
+    --c-sand:   244 244 243;
+    --c-light:  243 243 248;
+    --c-border: 232 232 240;
   }
   .dark {
-    --c-dark:   236 236 240;  /* light text on dark */
+    --c-dark:   236 236 240;
     --c-body:   197 197 206;
-    --c-muted:  143 143 156;  /* still readable on dark */
-    --c-cream:  30 30 38;     /* #1E1E26  card surface */
-    --c-sand:   21 21 27;     /* #15151B  page background */
-    --c-light:  42 42 52;     /* #2A2A34  hover / elevated surface */
-    --c-border: 49 49 58;     /* #31313A  borders */
+    --c-muted:  143 143 156;
+    --c-cream:  30 30 38;
+    --c-sand:   21 21 27;
+    --c-light:  42 42 52;
+    --c-border: 49 49 58;
   }
 
   html { scroll-behavior: smooth; }
@@ -38,24 +37,69 @@
   ::selection { background: rgba(255, 230, 0, 0.4); color: #2E2E38; }
 }
 
-/* ── Dark-mode fixes for color *roles* this palette couples together. ──
-   These win by specificity (.dark .x) so no component markup changes are needed. */
-
-/* "white" is used both as card surface AND as text-on-dark; flip only the surface. */
 .dark .bg-white { background-color: rgb(var(--c-cream)); }
 .dark .border-white { border-color: rgb(var(--c-border)); }
-
-/* "dark" is the ink token (now light). Keep genuinely dark surfaces dark. */
 .dark .bg-dark { background-color: #34343f; }
 .dark .border-dark { border-color: #4a4a57; }
 .dark .bg-black { background-color: #0c0c10; }
-
-/* The yellow brand surface always needs dark text (yellow is light in both modes). */
 .dark .bg-brand { color: #2e2e38; }
 .dark .bg-brand .text-dark,
 .dark .bg-brand.text-dark { color: #2e2e38; }
-
-/* Scrollbars in dark. */
+.dark input, .dark textarea, .dark select {
+  background-color: rgb(var(--c-light));
+  border-color: rgb(var(--c-border));
+  color: rgb(var(--c-dark));
+}
+.dark input::placeholder, .dark textarea::placeholder {
+  color: rgb(var(--c-muted));
+}
+.dark input:focus, .dark textarea:focus, .dark select:focus {
+  background-color: rgb(var(--c-cream));
+}
+.dark .bg-red-50 { background-color: rgba(220,38,38,0.08); }
+.dark .text-red-600 { color: #f87171; }
+.dark .text-red-500 { color: #f87171; }
+.dark .border-red-200 { border-color: rgba(220,38,38,0.2); }
+.dark .border-red-100 { border-color: rgba(220,38,38,0.15); }
+.dark .bg-green-50 { background-color: rgba(16,185,129,0.08); }
+.dark .text-green-700 { color: #34d399; }
+.dark .text-green-600 { color: #34d399; }
 .dark ::-webkit-scrollbar { width: 10px; height: 10px; }
 .dark ::-webkit-scrollbar-track { background: rgb(var(--c-sand)); }
 .dark ::-webkit-scrollbar-thumb { background: #3a3a44; border-radius: 6px; }
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+@layer utilities {
+  .glass {
+    background: rgba(255,255,255,0.72);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  }
+  .dark .glass {
+    background: rgba(30,30,38,0.72);
+  }
+  .glass-subtle {
+    background: rgba(255,255,255,0.45);
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  }
+  .dark .glass-subtle {
+    background: rgba(30,30,38,0.45);
+  }
+  .glow-brand {
+    box-shadow: 0 0 0 1px rgba(255,230,0,0.08), 0 1px 3px rgba(255,230,0,0.12), 0 8px 24px rgba(255,230,0,0.06);
+  }
+  .shadow-card {
+    box-shadow: 0 1px 2px rgba(46,46,56,0.04), 0 2px 8px rgba(46,46,56,0.03);
+  }
+  .shadow-card-hover {
+    box-shadow: 0 2px 4px rgba(46,46,56,0.06), 0 4px 16px rgba(46,46,56,0.06);
+  }
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--c-border)); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-muted)); }
