@@ -42,26 +42,30 @@ public sealed class FiscalRetrievalPolicy : IRuleBasedRetrieval
         // intro chunks outrank. Left null for rules that resolve cleanly number-free.
         string[]? ArticleHints = null);
 
-    // ── The routing map (maintained policy — edit here as the law changes) ──────────
+    // ── The routing map — mirrors the EY tax team's official source list for RS consultations ──────
+    //   Droit commun (RS):  CIRPPIS Art. 45/46/49/52 + NC 3/2015 · TVA Art. 1/3/5/7 + tableaux A&B
+    //   Fournisseur étranger: ES → CIRPPIS Art. 45/47 + NC 2/2015 + convention · RS → Art. 52 + convention
+    //                          TVA → Art. 1/3/5/19/7 + tableaux · Transfert → CDPF Art. 112 + circ. BCT 9/2016
     private static readonly Rule[] Rules =
     {
-        // Domestic withholding tax — the rate table (identified by its own wording, not its number).
+        // RS — droit commun: rate table + base articles (CIRPPIS Art. 45/46/49/52).
         new Rule(
-            "RAS domestique — taux (CIRPPIS)",
+            "RAS — droit commun (CIRPPIS Art. 45/46/49/52)",
             ctx => ctx.Branches.Contains("Retenue") || Mentions(ctx, "retenue", "ras", "taux"),
             "code_irpp_is",
             AnchorPhrases: new[] { "retenue à la source aux taux suivants", "font l'objet d'une retenue à la source" },
             Topics: Array.Empty<string>(),
-            Keywords: new[] { "retenue à la source", "honoraires", "régime fiscal privilégié", "25%", "15%" }),
+            Keywords: new[] { "retenue à la source", "honoraires", "régime fiscal privilégié", "25%", "15%" },
+            ArticleHints: new[] { "45", "46", "49", "52", "53" }),
 
-        // Honoraires vs commercial services — Note Commune N°3/2015.
+        // Honoraires / assiette de la RS — Note Commune N°3/2015 (base brute TVA comprise).
         new Rule(
-            "Honoraires — Note Commune N°3/2015",
-            ctx => Mentions(ctx, "honoraires", "assistance", "conseil", "prestation", "retenue"),
+            "Honoraires & assiette RS — Note Commune N°3/2015",
+            ctx => Mentions(ctx, "honoraires", "assistance", "conseil", "prestation", "retenue") || ctx.Branches.Contains("Retenue"),
             "NC_2015_03",
             AnchorPhrases: Array.Empty<string>(),
             Topics: Array.Empty<string>(),
-            Keywords: new[] { "honoraires", "professions", "retenue à la source", "assistance" }),
+            Keywords: new[] { "honoraires", "assiette", "montant brut", "retenue à la source", "assistance" }),
 
         // IS — base & rate.
         new Rule(
@@ -71,18 +75,48 @@ public sealed class FiscalRetrievalPolicy : IRuleBasedRetrieval
             AnchorPhrases: new[] { "taux de l'impôt sur les sociétés", "bénéfice imposable" },
             Topics: new[] { "Bénéfices des entreprises" },
             Keywords: new[] { "personnes morales", "taux", "bénéfices" },
-            ArticleHints: new[] { "45", "47", "49" }),  // IS rate (49) can't be pinned number-free here
+            ArticleHints: new[] { "45", "47", "49" }),
 
-        // TVA — scope + full rate spread (standard 19% + reduced 13%/7% in the tableaux annexes).
+        // TVA — champ (Art.1), territorialité (Art.3), Art.5, Art.19 (services importés), taux (Art.7 + tableaux A&B).
         new Rule(
-            "TVA — champ & taux 19/13/7% (CTVA + tableaux annexes)",
+            "TVA — champ/territorialité/taux (CTVA Art. 1/3/5/19/7 + tableaux A&B)",
             ctx => ctx.Branches.Contains("TVA") || Mentions(ctx, "tva"),
             "code_tva",
             AnchorPhrases: new[] { "soumis à la taxe sur la valeur ajoutée au taux de", "tableaux annexes", "affaire est réputée faite en Tunisie" },
             Topics: Array.Empty<string>(),
-            Keywords: new[] { "taux", "13%", "7%", "tableau", "assujetti", "soumises" }),
+            Keywords: new[] { "taux", "13%", "7%", "tableau", "assujetti", "soumises" },
+            ArticleHints: new[] { "1", "3", "5", "7", "19" }),
 
-        // Transfer pricing.
+        // Établissement stable — foreign provider (CIRPPIS Art. 45/47 + NC 2/2015 + convention if any).
+        new Rule(
+            "Établissement stable — prestataire étranger (CIRPPIS Art. 45/47)",
+            ctx => ctx.IsInternational || Mentions(ctx, "établissement stable", "non résident", "non-résident", "prestataire étranger"),
+            "code_irpp_is",
+            AnchorPhrases: new[] { "établissement stable", "établissements situés en Tunisie" },
+            Topics: new[] { "Établissement stable" },
+            Keywords: new[] { "établissement stable", "non résident", "bénéfices" },
+            ArticleHints: new[] { "45", "47" }),
+
+        // Transfert de fonds à l'étranger — CDPF Art. 112 (attestation de situation fiscale).
+        new Rule(
+            "Transfert de fonds — CDPF Art. 112",
+            ctx => ctx.IsInternational || Mentions(ctx, "transfert", "attestation", "régularisation"),
+            "code_droits_procedures",
+            AnchorPhrases: new[] { "attestation de situation fiscale", "transfert desdits revenus" },
+            Topics: Array.Empty<string>(),
+            Keywords: new[] { "transfert", "attestation", "non-résidents" },
+            ArticleHints: new[] { "112" }),
+
+        // Circulaire BCT n°9/2016 — change control on cross-border transfers.
+        new Rule(
+            "Circulaire BCT n°9/2016 — transfert à l'étranger",
+            ctx => ctx.IsInternational || Mentions(ctx, "transfert", "banque centrale", "change"),
+            "",
+            AnchorPhrases: new[] { "circulaire", "banque centrale de tunisie" },
+            Topics: Array.Empty<string>(),
+            Keywords: new[] { "circulaire", "9/2016", "banque centrale", "transfert" }),
+
+        // Prix de transfert.
         new Rule(
             "Prix de transfert (CIRPPIS + CDPF)",
             ctx => ctx.Branches.Contains("PrixTransfert") || Mentions(ctx, "prix de transfert", "pleine concurrence", "marge"),
@@ -92,7 +126,7 @@ public sealed class FiscalRetrievalPolicy : IRuleBasedRetrieval
             Keywords: new[] { "prix de transfert", "bénéfices indirectement transférés" }),
 
         // Régime fiscal privilégié — list of States/territories (NC 16/2019 + the consolidated code's
-        // arrêté table) to decide whether the 25% RS majoration applies when there is NO convention.
+        // arrêté table) to decide whether the 25% RS majoration applies.
         new Rule(
             "Régime fiscal privilégié — liste des États (majoration RS 25%)",
             ctx => ctx.IsInternational,

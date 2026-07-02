@@ -48,6 +48,12 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
     private const string NoteCommune2Id = "NC_2015_02"; // international: principes/modalités d'imposition
     private const string NoteCommune3Id = "NC_2015_03"; // domestic honoraires (retenue à la source)
 
+    // Excludes Arabic code versions (e.g. code_tva_2025_ar) at query level, so LIMIT reaches the
+    // FRENCH article. Without this, ~40 Arabic duplicates sort first and the number/keyword paths
+    // return nothing usable. (The consultation is always French; the C# ContainsArabic filter is a
+    // second net.) Interpolate {NoAr} into F-projection ($@) queries — never into plain @ queries.
+    private const string NoAr = " AND NOT c.content =~ '(?s).*[؀-ۿ].*' ";
+
     private static readonly Dictionary<string, int> TypeRank = new()
     {
         ["Convention"]=0, ["Code"]=1, ["LoiFinances"]=2,
@@ -575,10 +581,10 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                     var res = await session.RunAsync($@"
                         MATCH (c:Chunk)
                         WHERE ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
-                          AND c.chunk_type = 'article' AND c.content <> ''
+                          AND c.chunk_type = 'article' AND c.content <> ''{NoAr}
                           AND ($num <> '' AND (toString(c.article_number) = $num OR c.article_display CONTAINS $num))
                         RETURN {F}, 0.96 AS score
-                        ORDER BY c.doc_id DESC LIMIT 3",
+                        ORDER BY (CASE WHEN toString(c.article_number) = $num THEN 0 ELSE 1 END), c.doc_id DESC LIMIT 3",
                         new { frag, num });
                     await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.96); }
                 }
@@ -594,7 +600,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                     var res = await session.RunAsync($@"
                         MATCH (c:Chunk)
                         WHERE ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
-                          AND c.content <> '' AND toLower(c.content) CONTAINS toLower($kw)
+                          AND c.content <> ''{NoAr} AND toLower(c.content) CONTAINS toLower($kw)
                         RETURN {F}, 0.9 AS score
                         ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), c.doc_id DESC LIMIT 3",
                         new { frag, kw });

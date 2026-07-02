@@ -35,15 +35,17 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
         "est-il traité (droit commun PUIS Art.5 convention) avant la conclusion ?\n" +
         "9. TAUX LE PLUS FAVORABLE: le taux/traitement retenu est-il le PLUS FAVORABLE légalement " +
         "applicable (convention vs droit commun) dont toutes les conditions sont remplies ? Si la " +
-        "convention réduit/exonère et que le projet applique quand même le taux de droit commun (ex: " +
-        "RS 15% Art.52) sans écarter la convention par une justification = faiblesse. En l'absence d'ES " +
+        "convention réduit/exonère et que le projet applique quand même le taux de droit commun (RS " +
+        "Art.52) sans écarter la convention par une justification = faiblesse. En l'absence d'ES " +
         "et hors redevance, le revenu est un bénéfice d'entreprise imposable seulement dans l'État de " +
         "résidence (pas de RS en Tunisie) : vérifier que cette issue n'a pas été manquée.\n\n" +
-        "Réponds UNIQUEMENT en JSON:\n" +
+        "Réponds UNIQUEMENT en JSON, de façon CONCISE (limite la longueur):\n" +
         "{\"accept\":true|false,\"score\":0.0-1.0,\"issues\":[\"faiblesse concrète\"]," +
         "\"needs_more_sources\":true|false," +
         "\"missing_topics\":[\"ex: taux retenue à la source\",\"ex: Art. 52 CIRPPIS\"]," +
         "\"revision_instructions\":\"consignes précises pour corriger le projet\"}\n" +
+        "Liste AU PLUS les 6 faiblesses les plus importantes (issues courtes). " +
+        "missing_topics: AU PLUS 4. revision_instructions: ≤ 120 mots, à l'impératif, sans reformuler le projet.\n" +
         "accept=false dès qu'il existe une faiblesse réelle (pas seulement un taux manquant). " +
         "needs_more_sources=true UNIQUEMENT si la correction exige une source absente; sinon false " +
         "(la faiblesse est corrigeable avec les sources déjà fournies).";

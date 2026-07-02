@@ -63,7 +63,8 @@ public sealed class GenerateConsultationCommandHandler(
     private const string SystemPrompt =
         "Tu es Faiez Choyakh — fiscaliste tunisien senior, EY Tunisia.\n" +
         "CITATIONS: [S1],[S2]... uniquement. Jamais de document en clair. Jamais inventer un article.\n" +
-        "TAUX: tout taux (15%,5%,2.5%...) DOIT citer [Sn]. Jamais de taux de mémoire.\n" +
+        "TAUX: LIS chaque taux DEPUIS le texte de l'article cité [Sn] et recopie le chiffre EXACT qui y figure. " +
+        "Jamais de taux de mémoire, jamais inventé, jamais supposé.\n" +
         "ART.92 CIRPPIS: si source contient 'Art 92-X LF' = référence LF, pas article autonome.\n" +
         "PRINCIPE DIRECTEUR — TAUX LE PLUS FAVORABLE: parmi TOUS les fondements applicables, retenir le\n" +
         "  traitement le plus favorable au contribuable (taux le plus bas, voire exonération) qui respecte\n" +
@@ -80,10 +81,26 @@ public sealed class GenerateConsultationCommandHandler(
         "     • NON redevance (assistance technique, étude, service) → BÉNÉFICE D'ENTREPRISE (Art.7) →\n" +
         "       imposable UNIQUEMENT dans l'État de résidence → PAS de RS en Tunisie. NE PAS appliquer\n" +
         "       Art.52 CIRPPIS quand la convention écarte l'imposition tunisienne.\n" +
-        "  3. PAS DE CONVENTION → Art.52 CIRPPIS: RS libératoire 15% (et vérifier la majoration 'régime\n" +
-        "     fiscal privilégié', arrêté 26/09/2022, si le bénéficiaire y est listé).\n" +
-        "  4. TVA: toujours (Art.1 & 3 CTVA → service utilisé en Tunisie = TVA 19% par RS 100%).\n" +
-        "  5. ASSIETTE RS: NC 3/2015 (montant brut, TVA comprise, Art.52/53). FORMALISME: Art.112 CDPF.\n" +
+        "  3. PAS DE CONVENTION → Art.52 CIRPPIS: RS libératoire des honoraires/rémunérations de services\n" +
+        "     versés à un non-résident non établi, AU TAUX PRÉVU PAR L'ART.52 [Sn] (lis le taux dans le texte).\n" +
+        "     ES SUPERFÉTATOIRE: ce taux s'applique que l'ES existe ou non → préciser que l'analyse de l'ES\n" +
+        "     revêt un caractère superfétatoire (sans incidence sur le taux). Ne pas mettre 'NON DOCUMENTÉ' pour l'ES.\n" +
+        "  3bis. RÉGIME FISCAL PRIVILÉGIÉ — VÉRIFIER le pays du bénéficiaire DANS la liste retrouvée [Sn]\n" +
+        "     (arrêté 26/09/2022 / NC 16/2019). NE JAMAIS affirmer qu'un pays n'y figure pas sans avoir lu la\n" +
+        "     liste. Si le pays Y FIGURE (ex: Hong Kong): la majoration de RS ne s'applique QUE si l'activité\n" +
+        "     relève du taux d'IS le plus élevé (secteurs spécifiques) ; pour des services de droit commun elle\n" +
+        "     ne s'applique pas ; l'arrêté n'étant pas actualisé (incertitude juridique) → retenir prudemment le\n" +
+        "     taux de droit commun de l'Art.52 [Sn].\n" +
+        "  4. TVA: toujours — champ Art.1, TERRITORIALITÉ Art.3 (affaire réputée faite en Tunisie), Art.5 ;\n" +
+        "     taux au TAUX NORMAL de l'Art.7 [Sn] (ou taux réduit des tableaux annexes A/B si l'opération y figure).\n" +
+        "     Prestataire NON établi = RETENUE À LA SOURCE DE 100% DE LA TVA par le preneur (TVA déductible),\n" +
+        "     pas un simple reverse-charge.\n" +
+        "  5. SECTIONS OBLIGATOIRES (cas RS/international) — À NE JAMAIS OMETTRE:\n" +
+        "     (a) ASSIETTE DE LA RS = montant BRUT, TVA COMPRISE (Art.52/53 + NC 3/2015) ;\n" +
+        "     (b) FORMALISME TRANSFERT DE FONDS = Art.112 CDPF + circulaire BCT n°9/2016 (présenter le\n" +
+        "         certificat de RS ; l'attestation de régularisation n'est PAS exigée quand la RS a été opérée).\n" +
+        "  6. NE JAMAIS introduire une condition non étayée par les faits (ex: réduction pour entreprise\n" +
+        "     totalement exportatrice si le client n'est pas décrit comme tel).\n" +
         "CONVENTION: Art.5=ES, Art.7=bénéfices, Art.10=dividendes, Art.11=intérêts,\n" +
         "  Art.12=redevances, Art.14=prof.indép., Art.15=salaires.\n" +
         "NOTE COMMUNE N°2/2015: l'utiliser pour interpréter les conventions (taux/qualification par pays, sauf Allemagne).\n" +
@@ -425,6 +442,22 @@ public sealed class GenerateConsultationCommandHandler(
         timings.Add(new("6b. Acceptance + revise", sw6b.Elapsed.TotalMilliseconds,
             verdict.Accept ? "accepted" : $"revised: {string.Join(",", verdict.MissingTopics)}"));
 
+        // ── Step 6c: DERIVE the synthesis table from the FINALIZED analyses ──────
+        // The parallel Phase-3 table is generated from raw sources and never revised, so it
+        // drifts (e.g. "NON DOCUMENTÉ" while the body states 15%). We regenerate the table here,
+        // strictly from the final analyses, so it can never contradict them.
+        var sw6c = Stopwatch.StartNew();
+        try
+        {
+            var tableRaw = await llmAgent.CompleteAsync(SystemPrompt,
+                BuildTablePrompt(etendueItems, analysesRaw), "Table", 1800, ct);
+            var derived = ParseTable(tableRaw is not null ? ParseJsonDict(tableRaw) : null);
+            if (derived.Count > 0) table = derived;
+        }
+        catch (Exception ex) { logger.LogWarning(ex, "│  [TABLE] derivation failed — keeping Phase-3 table"); }
+        sw6c.Stop();
+        timings.Add(new("6c. Table from analyses", sw6c.Elapsed.TotalMilliseconds, $"rows={table.Count}"));
+
         // ── Step 7: Build output ──────────────────────────────────────────────
         string R(string t) => ResolveCitations(t, sources);
         var output = new ConsultationOutput
@@ -597,19 +630,31 @@ public sealed class GenerateConsultationCommandHandler(
             else
             {
                 bg.AppendLine("  2. AUCUNE CONVENTION applicable avec ce pays → DROIT COMMUN:");
-                bg.AppendLine("     • Art.52 CIRPPIS → RS libératoire de 15% sur les rémunérations servies aux non-résidents non établis [Sn].");
-                bg.AppendLine("     • RÉGIME FISCAL PRIVILÉGIÉ : vérifier si le bénéficiaire réside dans un État/territoire " +
-                              "à régime fiscal privilégié (Art.52 CIRPPIS modifié + arrêté du Ministre des Finances). " +
-                              "Si listé ET conditions réunies → majoration de la RS à 25% [Sn]. À défaut de source " +
-                              "confirmant l'inscription du pays ou l'applicabilité (arrêté non actualisé) → retenir le " +
-                              "droit commun et signaler la majoration comme point à vérifier, sans l'affirmer.");
+                bg.AppendLine("     • Art.52 CIRPPIS → RS libératoire sur les honoraires/rémunérations de services servis aux " +
+                              "non-résidents non établis, AU TAUX PRÉVU PAR L'ART.52 (lis-le dans le texte cité) [Sn].");
+                bg.AppendLine("     • ES SUPERFÉTATOIRE : puisque ce taux s'applique que l'ES existe ou non, préciser " +
+                              "que l'analyse de l'ES revêt un caractère superfétatoire (sans incidence sur le taux).");
+                bg.AppendLine("     • RÉGIME FISCAL PRIVILÉGIÉ : LIRE la liste des États retrouvée [Sn] et vérifier si le pays " +
+                              "y figure. NE PAS affirmer qu'il n'y figure pas sans l'avoir vérifiée. S'il Y FIGURE (ex: Hong Kong), " +
+                              "la majoration de RS ne s'applique QUE si l'activité relève du taux d'IS le plus élevé (secteurs " +
+                              "spécifiques) ; pour des services de droit commun elle ne s'applique pas ; l'arrêté (26/09/2022) " +
+                              "n'étant pas actualisé, son application est juridiquement incertaine → retenir prudemment le taux " +
+                              "de droit commun de l'Art.52 [Sn].");
             }
             bg.AppendLine("  3. TAUX LE PLUS FAVORABLE : retenir le taux le plus bas (ou l'exonération) dont toutes les conditions sont remplies.");
-            bg.AppendLine("  4. TVA : applicabilité (Art.1 & 3 CTVA) → verdict.");
+            bg.AppendLine("  4. TVA : champ Art.1, TERRITORIALITÉ Art.3 (affaire réputée faite en Tunisie), Art.5 → taux NORMAL " +
+                          "de l'Art.7 [Sn] (ou taux réduit des tableaux annexes A/B si l'opération y figure). Prestataire non établi " +
+                          "= RETENUE À LA SOURCE DE 100% DE LA TVA par le preneur (TVA déductible).");
+            bg.AppendLine("  5. SECTIONS OBLIGATOIRES — ne jamais omettre : (a) ASSIETTE DE LA RS = montant brut TVA comprise " +
+                          "(Art.52/53 + NC 3/2015) [Sn] ; (b) FORMALISME DU TRANSFERT DES FONDS = Art.112 CDPF + circulaire BCT " +
+                          "n°9/2016 (certificat de RS ; attestation de régularisation non exigée si la RS a été opérée) [Sn].");
+            bg.AppendLine("  6. Ne PAS introduire de condition non étayée par les faits (ex: réduction 'entreprise totalement " +
+                          "exportatrice' si le client n'est pas décrit comme tel).");
         }
-        if (plan.NoteCommune2Used && hasConvention)
-            bg.AppendLine("  Note Commune N°2/2015 disponible → l'utiliser pour interpréter la convention " +
-                          "(qualification du revenu et taux applicable par pays).");
+        if (plan.NoteCommune2Used)
+            bg.AppendLine("  Note Commune N°2/2015 disponible → l'utiliser pour la doctrine de l'établissement " +
+                          "stable (prestataire étranger) et, s'il existe une convention, pour interpréter celle-ci " +
+                          "(qualification du revenu et taux par pays).");
         if (branches.Contains("IS"))     bg.AppendLine("  IS → CIRPPIS Art.45/47 (personnes morales, bénéfices).");
         if (branches.Contains("TVA"))    bg.AppendLine("  TVA → CTVA (opérations soumises en Tunisie).");
         if (branches.Contains("IRPP"))   bg.AppendLine("  IRPP → CIRPPIS (revenu, personne physique).");
@@ -665,6 +710,25 @@ public sealed class GenerateConsultationCommandHandler(
             $"Client: {cmd.ClientName}\nSOURCES:\n{lst}\n\n" +
             "{\"documents\":\"5. RÉFÉRENCES\\n\\n[sources citées]\"," +
             "\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"OUI/NON\"}]}";
+    }
+
+    // Synthesis table derived STRICTLY from the finalized analyses (never from raw sources),
+    // so it always matches the body — no "NON DOCUMENTÉ" while the analysis states a rate.
+    private static string BuildTablePrompt(List<string> etendueItems, string finalAnalyses)
+    {
+        var n  = etendueItems.Count;
+        var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
+        return
+            $"TABLEAU DE SYNTHÈSE — JSON: analysis_table ({n} objets, un par point d'étendue, même ordre).\n\n" +
+            $"POINTS D'ÉTENDUE:\n{et}\n\n" +
+            $"ANALYSES FINALES (SEULE source de vérité — n'invente rien hors de ce texte):\n{finalAnalyses}\n\n" +
+            "RÈGLES STRICTES:\n" +
+            "- sujet: le point d'étendue.\n" +
+            "- analyse: 1–2 phrases résumant la position RETENUE dans les analyses, avec les mêmes [Sn].\n" +
+            "- conclusion: le VERDICT EXACT tranché dans les analyses (taux %, OUI/NON, EXONÉRÉ, SOUMIS…). " +
+            "INTERDIT d'écrire « NON DOCUMENTÉ » si les analyses tranchent le point : recopie fidèlement le " +
+            "verdict et le taux figurant dans les analyses. Le tableau NE DOIT JAMAIS contredire les analyses.\n\n" +
+            "{\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"\"}]}";
     }
 
     // ── Source merging ────────────────────────────────────────────────────────
