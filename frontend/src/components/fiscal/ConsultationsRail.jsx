@@ -55,11 +55,7 @@ export default function ConsultationsRail({
       <div className="p-3 pb-2 shrink-0 flex items-center gap-2">
         <button
           onClick={onNew}
-          className={`flex-1 flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-[13px] font-bold transition-all shadow-sm active:scale-[0.98] ${
-            newActive
-              ? "bg-dark text-white ring-2 ring-brand"
-              : "bg-dark text-white hover:bg-black"
-          }`}
+          className={` w-full flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold text-dark bg-gradient-to-r from-brand/10 to-violet-400/10 border border-brand/30 hover:border-brand/60 hover:from-brand/20 hover:to-violet-400/15 active:scale-[0.98] transition-all`}
         >
           <span className="w-4 h-4 rounded-md bg-brand text-dark flex items-center justify-center">
             <svg

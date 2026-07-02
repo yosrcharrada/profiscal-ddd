@@ -70,12 +70,10 @@ builder.Services.AddValidatorsFromAssemblyContaining<
 builder.Services.AddScoped<
     FiscalPlatform.Application.Chat.Queries.Chat.ChatQueryHandler>();
 
-// Legal search engine: Elasticsearch BM25 (restored — better ranking than the
-// Neo4j substring search, and what the instructor requires). Needs an ES instance
-// with the `tunisian_legal` index. Neo4jSearchAgent stays in the codebase as a
-// no-ES fallback (just swap this line back if ES is unavailable).
-builder.Services.AddSingleton<ISearchAgent,
-    FiscalPlatform.Infrastructure.Search.ElasticsearchSearchAgent>();
+// Legal search engine: Neo4j-backed search over the legal Chunk nodes.
+// This keeps the dashboard health/count aligned with the knowledge base that is
+// already loaded in the local Neo4j `tunisian-fiscal` database.
+builder.Services.AddSingleton<ISearchAgent, Neo4jSearchAgent>();
 
 // EF replacements for consultations/ratings persistence.
 builder.Services.AddScoped<IConsultationRepository, EfConsultationRepository>();

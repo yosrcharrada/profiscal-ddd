@@ -497,9 +497,9 @@ export default function Consultations() {
                     <textarea
                       value={form.situation}
                       onChange={set("situation")}
-                      rows={4}
+                      rows={2}
                       placeholder={t("cons.situationPlaceholder")}
-                      className="w-full px-3.5 py-3 rounded-xl border border-border bg-white text-[14px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none transition-all"
+                      className="w-full px-3.5 py-3 rounded-xl border border-border bg-white text-[14px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none transition-all"
                     />
                     <FieldCheck ok={valid.situation}>
                       {form.situation.trim().length} {t("cons.characters")}{" "}
@@ -523,34 +523,12 @@ export default function Consultations() {
                       onChange={set("fiscalQuestion")}
                       rows={2}
                       placeholder={t("cons.questionPlaceholder")}
-                      className="w-full px-3.5 py-3 rounded-xl border border-border bg-white text-[14px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none transition-all"
+                      className="w-full px-3.5 py-3 rounded-xl border border-border bg-white text-[14px] leading-normal focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent resize-none transition-all"
                     />
                     <FieldCheck ok={valid.question}>
                       {form.fiscalQuestion.trim().length} {t("cons.characters")}{" "}
                       {valid.question ? "✓" : `(${t("cons.min10")})`}
                     </FieldCheck>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {QUESTION_EXAMPLE_KEYS.map((key, i) => {
-                        const q = t(key);
-                        const chipColors = [
-                          "hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700",
-                          "hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700",
-                          "hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700",
-                        ];
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() =>
-                              setForm((f) => ({ ...f, fiscalQuestion: q }))
-                            }
-                            className={`text-[11px] font-semibold text-body bg-white border border-border rounded-full px-3 py-1.5 transition-all hover:-translate-y-0.5 ${chipColors[i]}`}
-                          >
-                            {q.length > 48 ? `${q.slice(0, 45)}…` : q}
-                          </button>
-                        );
-                      })}
-                    </div>
                   </div>
 
                   {/* row 4: mode + submit */}
@@ -570,13 +548,13 @@ export default function Consultations() {
                           v: "detaillee",
                           label: t("cons.detailed"),
                           d: t("cons.detailedDesc"),
-                          accent: "border-yellow-400 bg-yellow-50/50 ",
+                          accent: "border-yellow-400 bg-yellow-50/5 ",
                         },
                         {
                           v: "concise",
                           label: t("cons.concise"),
                           d: t("cons.conciseDesc"),
-                          accent: "border-emerald-400 bg-emerald-50/50",
+                          accent: "border-emerald-400 bg-emerald-50/5",
                         },
                       ].map((o) => {
                         const active = form.mode === o.v;
@@ -645,11 +623,6 @@ export default function Consultations() {
                       </svg>
                       {t("cons.generate")}
                     </button>
-                    {!allValid && (
-                      <p className="text-[11px] text-muted mt-2">
-                        {t("cons.fillFields")}
-                      </p>
-                    )}
                   </div>
                 </div>
               </form>
