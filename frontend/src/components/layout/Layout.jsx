@@ -5,6 +5,7 @@ import EYLockup from "../common/EYLockup";
 import ChatBubble from "../fiscal/ChatBubble";
 import SystemStatus from "../../pages/fiscal/SystemStatus";
 import Sidebar from "./Sidebar";
+import ThemeToggle from "../common/ThemeToggle";
 
 function UserMenu() {
   const { user, logout } = useAuth();
@@ -216,6 +217,7 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             <SystemStatus />
+            <ThemeToggle />
             <UserMenu />
           </div>
         </header>

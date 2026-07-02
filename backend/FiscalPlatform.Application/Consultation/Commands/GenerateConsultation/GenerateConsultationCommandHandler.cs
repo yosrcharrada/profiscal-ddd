@@ -71,36 +71,44 @@ public sealed class GenerateConsultationCommandHandler(
         "  TOUTES les conditions légales. La convention prime toujours le droit commun et peut réduire ou\n" +
         "  supprimer l'imposition tunisienne. Ne jamais retenir un taux plus élevé s'il existe un fondement\n" +
         "  plus favorable dont les conditions sont remplies.\n" +
+        "TAUX SPÉCIFIQUE (lex specialis): dans un article de taux, LIS TOUT l'article et applique la LIGNE\n" +
+        "  correspondant PRÉCISÉMENT à la NATURE du revenu ET à la QUALITÉ du bénéficiaire — jamais la\n" +
+        "  première ligne venue. IMPÉRATIF: pour un bénéficiaire NON-RÉSIDENT NON ÉTABLI, applique la ligne\n" +
+        "  qui vise EXPRESSÉMENT les revenus « servis aux non domiciliés ni établis » / « aux non-résidents »,\n" +
+        "  et NON la ligne des paiements aux résidents (régime réel), même si le taux diffère. Le taux\n" +
+        "  spécifique prime le taux général. Le 'taux le plus favorable' ne joue qu'entre fondements RÉELLEMENT\n" +
+        "  CONCURRENTS pour la MÊME situation (convention vs droit commun ; régime standard vs régime réduit\n" +
+        "  dont les conditions sont remplies), jamais entre sous-taux de catégories différentes.\n" +
         "PRESTATAIRE ÉTRANGER — séquence obligatoire:\n" +
         "  1. ES (établissement stable): trancher OUI/NON, d'abord SELON LE DROIT COMMUN (Art.45/47 CIRPPIS\n" +
         "     + doctrine: interprétation extensive, règle des 6 mois même pour une seule prestation), PUIS\n" +
-        "     SELON L'ART.5 de la convention. Si ES en Tunisie → imposition (IS/RS) selon le régime de l'ES.\n" +
-        "  2. EN L'ABSENCE D'ES — qualifier le revenu AU REGARD DE LA CONVENTION:\n" +
-        "     • REDEVANCE au sens de l'Art.12 (vérifier la définition propre à la convention) → RS au TAUX\n" +
-        "       RÉDUIT de la convention (le plus favorable).\n" +
-        "     • NON redevance (assistance technique, étude, service) → BÉNÉFICE D'ENTREPRISE (Art.7) →\n" +
-        "       imposable UNIQUEMENT dans l'État de résidence → PAS de RS en Tunisie. NE PAS appliquer\n" +
-        "       Art.52 CIRPPIS quand la convention écarte l'imposition tunisienne.\n" +
-        "  3. PAS DE CONVENTION → Art.52 CIRPPIS: RS libératoire des honoraires/rémunérations de services\n" +
-        "     versés à un non-résident non établi, AU TAUX PRÉVU PAR L'ART.52 [Sn] (lis le taux dans le texte).\n" +
-        "     ES SUPERFÉTATOIRE: ce taux s'applique que l'ES existe ou non → préciser que l'analyse de l'ES\n" +
-        "     revêt un caractère superfétatoire (sans incidence sur le taux). Ne pas mettre 'NON DOCUMENTÉ' pour l'ES.\n" +
-        "  3bis. RÉGIME FISCAL PRIVILÉGIÉ — VÉRIFIER le pays du bénéficiaire DANS la liste retrouvée [Sn]\n" +
-        "     (arrêté 26/09/2022 / NC 16/2019). NE JAMAIS affirmer qu'un pays n'y figure pas sans avoir lu la\n" +
-        "     liste. Si le pays Y FIGURE (ex: Hong Kong): la majoration de RS ne s'applique QUE si l'activité\n" +
-        "     relève du taux d'IS le plus élevé (secteurs spécifiques) ; pour des services de droit commun elle\n" +
-        "     ne s'applique pas ; l'arrêté n'étant pas actualisé (incertitude juridique) → retenir prudemment le\n" +
-        "     taux de droit commun de l'Art.52 [Sn].\n" +
-        "  4. TVA: toujours — champ Art.1, TERRITORIALITÉ Art.3 (affaire réputée faite en Tunisie), Art.5 ;\n" +
-        "     taux au TAUX NORMAL de l'Art.7 [Sn] (ou taux réduit des tableaux annexes A/B si l'opération y figure).\n" +
-        "     Prestataire NON établi = RETENUE À LA SOURCE DE 100% DE LA TVA par le preneur (TVA déductible),\n" +
-        "     pas un simple reverse-charge.\n" +
-        "  5. SECTIONS OBLIGATOIRES (cas RS/international) — À NE JAMAIS OMETTRE:\n" +
-        "     (a) ASSIETTE DE LA RS = montant BRUT, TVA COMPRISE (Art.52/53 + NC 3/2015) ;\n" +
-        "     (b) FORMALISME TRANSFERT DE FONDS = Art.112 CDPF + circulaire BCT n°9/2016 (présenter le\n" +
-        "         certificat de RS ; l'attestation de régularisation n'est PAS exigée quand la RS a été opérée).\n" +
-        "  6. NE JAMAIS introduire une condition non étayée par les faits (ex: réduction pour entreprise\n" +
-        "     totalement exportatrice si le client n'est pas décrit comme tel).\n" +
+        "     SELON l'ART.5 de la convention. Si ES en Tunisie → imposition (IS/RS) selon le régime de l'ES.\n" +
+        "  2. EN L'ABSENCE D'ES — qualifier le revenu et appliquer le régime correspondant:\n" +
+        "     • S'IL EXISTE UNE CONVENTION: qualifier le revenu au regard de la convention (bénéfice\n" +
+        "       d'entreprise, redevance, dividende, intérêt, profession indépendante…) et appliquer le\n" +
+        "       TRAITEMENT CONVENTIONNEL de cette catégorie:\n" +
+        "         - bénéfice d'entreprise (Art.7) → imposable UNIQUEMENT dans l'État de résidence → AUCUNE\n" +
+        "           imposition tunisienne (ni RS) en l'absence d'ES ;\n" +
+        "         - redevance / dividende / intérêt (Art.12/10/11) → imposable dans l'État de la source au\n" +
+        "           TAUX RÉDUIT de la convention [Sn], sous réserve des conditions de la convention.\n" +
+        "       LA CONVENTION PRIME TOUT RÉGIME INTERNE DE RS — l'Art.52 CIRPPIS comme tout régime interne\n" +
+        "       SECTORIEL (travaux, montage, installation, surveillance, construction) ou toute note commune\n" +
+        "       fixant un taux interne : ces régimes ne valent qu'à DÉFAUT de convention.\n" +
+        "     • SANS CONVENTION: droit commun — Art.52 CIRPPIS, au taux correspondant à la nature du revenu\n" +
+        "       et à la qualité du bénéficiaire [Sn]. ES SUPERFÉTATOIRE si ce taux s'applique que l'ES existe\n" +
+        "       ou non (le préciser ; ne pas mettre 'NON DOCUMENTÉ' pour l'ES). Puis vérifier le régime privilégié (pt.3).\n" +
+        "  3. RÉGIME FISCAL PRIVILÉGIÉ — VÉRIFIER le pays du bénéficiaire DANS la liste retrouvée [Sn]. NE\n" +
+        "     JAMAIS affirmer qu'un pays n'y figure pas sans avoir lu la liste. S'il Y FIGURE, la majoration de\n" +
+        "     RS ne s'applique QUE si l'activité relève du taux d'IS le plus élevé ; sinon elle ne s'applique\n" +
+        "     pas ; si l'arrêté n'est pas actualisé, son application est incertaine → conclure prudemment au\n" +
+        "     taux de droit commun [Sn].\n" +
+        "  4. TVA: toujours — champ Art.1, TERRITORIALITÉ Art.3, Art.5 ; taux Art.7 [Sn] (ou taux réduit des\n" +
+        "     tableaux annexes A/B si l'opération y figure). Prestataire NON établi = RETENUE À LA SOURCE DE\n" +
+        "     100% DE LA TVA par le preneur (TVA déductible).\n" +
+        "  5. SECTIONS OBLIGATOIRES (cas RS/international): (a) ASSIETTE DE LA RS = montant BRUT, TVA COMPRISE\n" +
+        "     (Art.52/53 + NC 3/2015) ; (b) FORMALISME TRANSFERT DE FONDS = Art.112 CDPF + circulaire BCT\n" +
+        "     n°9/2016 (certificat de RS ; attestation de régularisation non exigée si la RS a été opérée).\n" +
+        "  6. NE JAMAIS introduire de condition non étayée par les faits.\n" +
         "CONVENTION: Art.5=ES, Art.7=bénéfices, Art.10=dividendes, Art.11=intérêts,\n" +
         "  Art.12=redevances, Art.14=prof.indép., Art.15=salaires.\n" +
         "NOTE COMMUNE N°2/2015: l'utiliser pour interpréter les conventions (taux/qualification par pays, sauf Allemagne).\n" +
@@ -520,15 +528,19 @@ public sealed class GenerateConsultationCommandHandler(
 
     private static string SourcesBlock(List<LegalSourceDto> sources)
     {
+        // Show enough of each article that the RATE the model must cite is visible. Rate tables
+        // (e.g. CIRPPIS Art.52) put the SPECIFIC non-resident rate deep in the text (~char 2800),
+        // so a short truncation hid it and the model applied the wrong sub-rate. 3200 chars covers it.
+        const int MaxSources = 12, MaxChars = 3100;
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
-        foreach (var s in sources.Take(18))
+        foreach (var s in sources.Take(MaxSources))
         {
             var label   = s.IsExpert ? "COMMENTAIRE — Faiez Choyakh" : s.DocType;
-            var preview = s.Text.Length > 300 ? s.Text[..300] + "…" : s.Text;
+            var preview = s.Text.Length > MaxChars ? s.Text[..MaxChars] + "…" : s.Text;
             sb.AppendLine($"[S{s.Index}] {label} | {s.DocName} | {s.Year} | {s.ArticleRef}");
             sb.AppendLine($"       {preview}\n");
         }
-        sb.AppendLine($"!! Cite UNIQUEMENT [S1]..[S{Math.Min(sources.Count, 18)}].");
+        sb.AppendLine($"!! Cite UNIQUEMENT [S1]..[S{Math.Min(sources.Count, MaxSources)}].");
         return sb.ToString();
     }
 
@@ -543,10 +555,12 @@ public sealed class GenerateConsultationCommandHandler(
               "\n(Si contrat fourni: extraire nature des services, montants, durée, lieu d'exécution.)"
             : "";
 
+        var hasConv = sources.Any(s => string.Equals(s.DocType, "Convention", StringComparison.OrdinalIgnoreCase));
         var plannerContext =
             $"[ANALYSE PRÉLIMINAIRE DU PLANNER]\n" +
             $"Type de revenu identifié: {plan.IncomeType}\n" +
             $"Risque ES: {(plan.EsRiskPossible ? "OUI — analyser obligatoirement" : "faible")}\n" +
+            $"Convention fiscale disponible: {(hasConv ? "OUI" : "NON — appliquer le DROIT COMMUN, n'invoque AUCUNE convention")}\n" +
             $"Note Commune N°2/2015: {(plan.NoteCommune2Used ? "fetchée — utiliser ses tables" : "non applicable")}\n";
 
         return
@@ -569,7 +583,9 @@ public sealed class GenerateConsultationCommandHandler(
             "- etendue: laisse \"\" — la section 1.2 est construite automatiquement (liste à puces) " +
             "à partir de etendue_items.\n" +
             "- abbreviations: SIGLE : Définition\n" +
-            "- sommaire_executif: verdicts concis, max 1 [Sn] par point, tout taux justifié.\n" +
+            "- sommaire_executif: verdicts concis, max 1 [Sn] par point, tout taux LU depuis [Sn]. " +
+            "N'INVOQUE JAMAIS une convention fiscale si 'Convention fiscale disponible: NON' — dans ce cas " +
+            "applique le droit commun. N'affirme pas de conclusion contraire à celle qui découlera de l'analyse.\n" +
             "- pays_non_resident: pays de résidence de la partie étrangère (ex: france, maroc). " +
             "Identifier même si non mentionné explicitement (nom de société, groupe, devise). " +
             "Vide si transaction purement tunisienne.\n\n" +
@@ -622,34 +638,33 @@ public sealed class GenerateConsultationCommandHandler(
 
             if (hasConvention)
             {
-                bg.AppendLine($"  2. EN L'ABSENCE D'ES — qualifier le revenu au regard de la convention (type: {plan.IncomeType}):");
-                bg.AppendLine("     • REDEVANCE (définition propre à la convention) → RS au TAUX RÉDUIT de la convention [Sn].");
-                bg.AppendLine("     • NON redevance (assistance technique, étude, service) → BÉNÉFICE D'ENTREPRISE → " +
-                              "imposable UNIQUEMENT dans l'État de résidence → PAS de RS en Tunisie. Ne pas appliquer Art.52 CIRPPIS.");
+                bg.AppendLine($"  2. EN L'ABSENCE D'ES — qualifier le revenu au regard de la convention (type indicatif: {plan.IncomeType}) et appliquer le traitement conventionnel de la catégorie:");
+                bg.AppendLine("     • BÉNÉFICE D'ENTREPRISE (Art.7) → imposable UNIQUEMENT dans l'État de résidence → AUCUNE " +
+                              "imposition tunisienne (ni RS) en l'absence d'ES.");
+                bg.AppendLine("     • REDEVANCE / DIVIDENDE / INTÉRÊT (Art.12/10/11) → imposable dans l'État de la source au " +
+                              "TAUX RÉDUIT de la convention [Sn], sous réserve des conditions de la convention.");
+                bg.AppendLine("     • La convention PRIME TOUT RÉGIME INTERNE DE RS — l'Art.52 CIRPPIS comme tout régime interne " +
+                              "SECTORIEL (travaux/montage/installation/surveillance/construction) ou note commune fixant un taux " +
+                              "interne : ces régimes ne valent qu'à DÉFAUT de convention.");
             }
             else
             {
-                bg.AppendLine("  2. AUCUNE CONVENTION applicable avec ce pays → DROIT COMMUN:");
-                bg.AppendLine("     • Art.52 CIRPPIS → RS libératoire sur les honoraires/rémunérations de services servis aux " +
-                              "non-résidents non établis, AU TAUX PRÉVU PAR L'ART.52 (lis-le dans le texte cité) [Sn].");
-                bg.AppendLine("     • ES SUPERFÉTATOIRE : puisque ce taux s'applique que l'ES existe ou non, préciser " +
-                              "que l'analyse de l'ES revêt un caractère superfétatoire (sans incidence sur le taux).");
-                bg.AppendLine("     • RÉGIME FISCAL PRIVILÉGIÉ : LIRE la liste des États retrouvée [Sn] et vérifier si le pays " +
-                              "y figure. NE PAS affirmer qu'il n'y figure pas sans l'avoir vérifiée. S'il Y FIGURE (ex: Hong Kong), " +
-                              "la majoration de RS ne s'applique QUE si l'activité relève du taux d'IS le plus élevé (secteurs " +
-                              "spécifiques) ; pour des services de droit commun elle ne s'applique pas ; l'arrêté (26/09/2022) " +
-                              "n'étant pas actualisé, son application est juridiquement incertaine → retenir prudemment le taux " +
-                              "de droit commun de l'Art.52 [Sn].");
+                bg.AppendLine("  2. AUCUNE CONVENTION applicable → DROIT COMMUN:");
+                bg.AppendLine("     • Art.52 CIRPPIS → RS au taux de la LIGNE visant les revenus « servis aux non domiciliés ni " +
+                              "établis » / « aux non-résidents » (PAS la ligne des paiements aux résidents), lis-le dans le texte cité [Sn].");
+                bg.AppendLine("     • ES SUPERFÉTATOIRE si ce taux s'applique que l'ES existe ou non (le préciser).");
+                bg.AppendLine("     • RÉGIME FISCAL PRIVILÉGIÉ : LIRE la liste retrouvée [Sn] et vérifier si le pays y figure. " +
+                              "NE PAS affirmer qu'il n'y figure pas sans l'avoir vérifiée. S'il Y FIGURE, la majoration de RS ne " +
+                              "s'applique QUE si l'activité relève du taux d'IS le plus élevé ; sinon elle ne s'applique pas ; si " +
+                              "l'arrêté n'est pas actualisé, son application est incertaine → conclure prudemment au taux de droit commun [Sn].");
             }
-            bg.AppendLine("  3. TAUX LE PLUS FAVORABLE : retenir le taux le plus bas (ou l'exonération) dont toutes les conditions sont remplies.");
-            bg.AppendLine("  4. TVA : champ Art.1, TERRITORIALITÉ Art.3 (affaire réputée faite en Tunisie), Art.5 → taux NORMAL " +
-                          "de l'Art.7 [Sn] (ou taux réduit des tableaux annexes A/B si l'opération y figure). Prestataire non établi " +
-                          "= RETENUE À LA SOURCE DE 100% DE LA TVA par le preneur (TVA déductible).");
+            bg.AppendLine("  3. TAUX LE PLUS FAVORABLE : entre fondements concurrents, retenir le taux le plus bas (ou l'exonération) dont toutes les conditions sont remplies.");
+            bg.AppendLine("  4. TVA : champ Art.1, TERRITORIALITÉ Art.3, Art.5 → taux Art.7 [Sn] (ou taux réduit des tableaux " +
+                          "annexes A/B si l'opération y figure). Prestataire non établi = RETENUE À LA SOURCE DE 100% DE LA TVA par le preneur (TVA déductible).");
             bg.AppendLine("  5. SECTIONS OBLIGATOIRES — ne jamais omettre : (a) ASSIETTE DE LA RS = montant brut TVA comprise " +
                           "(Art.52/53 + NC 3/2015) [Sn] ; (b) FORMALISME DU TRANSFERT DES FONDS = Art.112 CDPF + circulaire BCT " +
                           "n°9/2016 (certificat de RS ; attestation de régularisation non exigée si la RS a été opérée) [Sn].");
-            bg.AppendLine("  6. Ne PAS introduire de condition non étayée par les faits (ex: réduction 'entreprise totalement " +
-                          "exportatrice' si le client n'est pas décrit comme tel).");
+            bg.AppendLine("  6. Ne PAS introduire de condition non étayée par les faits.");
         }
         if (plan.NoteCommune2Used)
             bg.AppendLine("  Note Commune N°2/2015 disponible → l'utiliser pour la doctrine de l'établissement " +
@@ -662,29 +677,33 @@ public sealed class GenerateConsultationCommandHandler(
         if (branches.Contains("PrixTransfert")) bg.AppendLine("  Prix de transfert → Art.48 septies CIRPPIS + CDPF.");
 
         var antiDraft =
-            "═══ TON — DOCUMENT FINAL, PAS UN BROUILLON ═══\n" +
-            "Rédige comme un mémo de cabinet REMIS au client. INTERDICTION d'exposer ton raisonnement " +
-            "ou un dialogue interne : jamais de \"Détermination\", \"le scénario applicable\", " +
-            "\"sur la base du fait établi\", ni de \"Si X alors Y\". Affirme directement la position " +
-            "retenue, avec UN SEUL verdict par point (aucun verdict conditionnel). " +
-            "NON DOCUMENTÉ uniquement pour un sous-point réellement indéterminé.\n";
+            "═══ STYLE RÉDACTIONNEL — CONSULTATION FINALE REMISE AU CLIENT ═══\n" +
+            "Rédige une consultation PROFESSIONNELLE et ABOUTIE, en PROSE juridique continue, comme un mémo\n" +
+            "EY effectivement remis au client — PAS un brouillon ni un exercice scolaire. INTERDIT: les\n" +
+            "étiquettes de raisonnement « Principe applicable : », « Application au cas : », « Détermination »,\n" +
+            "« le scénario applicable », « sur la base du fait établi », et toute formulation « Si X alors Y ».\n" +
+            "Intègre la règle, sa source [Sn] et son application aux faits dans des PHRASES FLUIDES et liées\n" +
+            "(« Conformément à l'article … [Sn], … », « Il en résulte que … », « En conséquence, … »,\n" +
+            "« Dès lors, … »). Affirme directement la position retenue, UN SEUL verdict par point (jamais\n" +
+            "conditionnel), registre soutenu et impersonnel. NON DOCUMENTÉ seulement pour un sous-point\n" +
+            "réellement indéterminé.\n";
 
         var styleAndFormat = concise
-            ? "═══ STYLE — VERSION CONCISE ═══\n" +
-              "Mémo TRÈS court, droit au but. Pas d'introduction, pas de rappel des faits ni de la question.\n" +
-              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue):\n" +
-              "  4.X [Titre court]\n" +
-              "  [VERDICT direct en 1 à 3 phrases maximum, justifié par [Sn].]\n" +
-              "Tu peux ajouter de très courtes sous-sections (ES, TVA, obligations) si indispensables, " +
-              "même hors étendue.\n"
-            : "═══ STYLE — VERSION DÉTAILLÉE ═══\n" +
-              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue):\n" +
-              "  4.X [Titre]\n" +
-              "  Principe applicable : [Sn] : \"citation exacte du texte\".\n" +
-              "  Application au cas : analyse appliquée aux faits du client, en prose professionnelle (sans \"si\").\n" +
-              "  Conclusion : VERDICT unique, taux cité depuis [Sn].\n" +
-              "Ajoute les sous-analyses juridiques nécessaires (ES, redevance, TVA, obligations) comme " +
-              "sous-sections, même si elles ne figurent pas dans l'étendue.\n";
+            ? "═══ FORMAT — VERSION CONCISE ═══\n" +
+              "MÊME analyse juridique et MÊMES conclusions que la version détaillée — mêmes verdicts, mêmes\n" +
+              "taux, mêmes sections obligatoires — simplement PLUS CONDENSÉE : chaque point en 2 à 4 phrases\n" +
+              "fluides, sans reproduire les longues citations. N'OMETS AUCUN verdict, AUCUN taux, ni les\n" +
+              "sections obligatoires (assiette de la RS, formalisme du transfert). Pas de rappel des faits.\n" +
+              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue) + les sous-analyses nécessaires " +
+              "(ES, qualification/redevance, TVA, régime privilégié, assiette, formalisme).\n"
+            : "═══ FORMAT — VERSION DÉTAILLÉE ═══\n" +
+              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue), en PROSE professionnelle " +
+              "continue (paragraphes liés, PAS d'étiquettes « Principe/Application/Conclusion »).\n" +
+              "Dans chaque bloc: énonce la règle avec sa source (« Conformément à l'article … [Sn], … »), " +
+              "applique-la aux faits du client, puis conclus par un verdict clair et unique (taux cité " +
+              "depuis [Sn]).\n" +
+              "Ajoute les sous-analyses nécessaires (ES, qualification/redevance, TVA, régime privilégié, " +
+              "assiette de la RS, formalisme) comme paragraphes, même hors étendue.\n";
 
         return
             $"PHASE 2 — JSON avec 1 clé: analyses.\n\n" +
