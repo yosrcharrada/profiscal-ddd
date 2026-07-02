@@ -420,8 +420,11 @@ public sealed class GenerateConsultationCommandHandler(
                     .ToList();
                 if (addable.Any())
                 {
-                    sources.InsertRange(0, addable);
-                    for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
+                    // APPEND at the end (never insert at front): existing [Sn] must stay stable so the
+                    // citations already written in the analyses/table keep resolving to the right source.
+                    var start = sources.Count;
+                    sources.AddRange(addable);
+                    for (int i = start; i < sources.Count; i++) sources[i].Index = i + 1;
                     addedCount = addable.Count;
                 }
             }
@@ -528,15 +531,19 @@ public sealed class GenerateConsultationCommandHandler(
 
     private static string SourcesBlock(List<LegalSourceDto> sources)
     {
-        // Show enough of each article that the RATE the model must cite is visible. Rate tables
-        // (e.g. CIRPPIS Art.52) put the SPECIFIC non-resident rate deep in the text (~char 2800),
-        // so a short truncation hid it and the model applied the wrong sub-rate. 3200 chars covers it.
-        const int MaxSources = 12, MaxChars = 3100;
+        // Enough sources that EVERY branch (RS, TVA, régime, formalisme) reaches the prompt — cutting
+        // this too low dropped the CTVA articles and produced "TVA NON DOCUMENTÉ". SMART truncation:
+        // rate-bearing articles (rate tables, e.g. CIRPPIS Art.52 whose non-résident rate sits ~char
+        // 2800, or CTVA Art.7) get the full text so the rate is visible; other sources get a short
+        // preview. This keeps every needed article present without exploding the token budget.
+        const int MaxSources = 18, RateChars = 3300, PlainChars = 1100;
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
         foreach (var s in sources.Take(MaxSources))
         {
             var label   = s.IsExpert ? "COMMENTAIRE — Faiez Choyakh" : s.DocType;
-            var preview = s.Text.Length > MaxChars ? s.Text[..MaxChars] + "…" : s.Text;
+            var rateBearing = s.Text.Contains('%') || s.Text.Contains("taux", StringComparison.OrdinalIgnoreCase);
+            var cap     = rateBearing ? RateChars : PlainChars;
+            var preview = s.Text.Length > cap ? s.Text[..cap] + "…" : s.Text;
             sb.AppendLine($"[S{s.Index}] {label} | {s.DocName} | {s.Year} | {s.ArticleRef}");
             sb.AppendLine($"       {preview}\n");
         }
@@ -682,28 +689,51 @@ public sealed class GenerateConsultationCommandHandler(
             "EY effectivement remis au client — PAS un brouillon ni un exercice scolaire. INTERDIT: les\n" +
             "étiquettes de raisonnement « Principe applicable : », « Application au cas : », « Détermination »,\n" +
             "« le scénario applicable », « sur la base du fait établi », et toute formulation « Si X alors Y ».\n" +
-            "Intègre la règle, sa source [Sn] et son application aux faits dans des PHRASES FLUIDES et liées\n" +
-            "(« Conformément à l'article … [Sn], … », « Il en résulte que … », « En conséquence, … »,\n" +
-            "« Dès lors, … »). Affirme directement la position retenue, UN SEUL verdict par point (jamais\n" +
-            "conditionnel), registre soutenu et impersonnel. NON DOCUMENTÉ seulement pour un sous-point\n" +
-            "réellement indéterminé.\n";
+            "Rédige des PHRASES FLUIDES et liées (« Conformément à l'article … , … », « Il en résulte que … »,\n" +
+            "« En conséquence, … », « Dès lors, … »). Affirme directement la position, UN SEUL verdict par point.\n" +
+            "═══ INTERDICTION ABSOLUE — HÉDGING PROCÉDURAL ═══\n" +
+            "Tu DISPOSES du texte COMPLET des articles dans les SOURCES ci-dessous : LIS-LES et DONNE le\n" +
+            "RÉSULTAT. INTERDIT d'écrire des formules dilatoires comme « le taux doit être vérifié dans le\n" +
+            "texte », « il convient de consulter la liste », « le taux reste à déterminer », « sous réserve de\n" +
+            "vérification ». Donne le TAUX CHIFFRÉ EXACT lu dans la source (ex: le taux de l'Art.52 pour la\n" +
+            "catégorie « non domiciliés ni établis ») et le CONSTAT direct (le pays figure OU NON sur la liste).\n" +
+            "CITATIONS: utilise le NUMÉRO RÉEL de la source, p.ex. [S1], [S7] — JAMAIS le littéral « [Sn] » ni\n" +
+            "« [S…] ». NON DOCUMENTÉ est réservé au cas où l'information est réellement absente des sources —\n" +
+            "PAS quand tu n'as pas pris la peine de lire le texte fourni.\n";
+
+        // The démarche is enforced as TITLED sub-sections (like the EY gold memos), with flowing prose
+        // INSIDE each. This prevents the model from collapsing everything into one paragraph and
+        // skipping a step (e.g. concluding 'no ES → no tax' and forgetting the Art.52 RS entirely).
+        var demarche =
+            "DÉMARCHE OBLIGATOIRE — développe CHAQUE sous-section titrée ci-dessous, sans en sauter AUCUNE:\n" +
+            "  A. IMPÔT DIRECT\n" +
+            "     A.1 Établissement stable — d'abord selon le droit commun (Art.45/47), puis selon l'Art.5\n" +
+            "         de la convention s'il en existe une → verdict OUI/NON.\n" +
+            "     A.2 Imposition EN L'ABSENCE d'ES — c'est ICI qu'on tranche le TAUX: qualifier le revenu\n" +
+            "         et DONNER le taux chiffré: soit le taux de RS de l'Art.52 pour la catégorie non-\n" +
+            "         résident (pays SANS convention — l'absence d'ES N'exonère PAS, elle rend la RS\n" +
+            "         libératoire ; lis le chiffre dans le texte de l'Art.52 fourni et écris-le), soit le\n" +
+            "         traitement conventionnel (bénéfice d'entreprise = aucune RS ; redevance/dividende/\n" +
+            "         intérêt = taux réduit chiffré). NE JAMAIS conclure 'pas de RS' du seul fait de\n" +
+            "         l'absence d'ES pour un pays sans convention.\n" +
+            "     A.3 Régime fiscal privilégié — DIS si le pays figure ou non sur la liste fournie, et\n" +
+            "         conclus (majoration applicable uniquement pour les activités au taux d'IS le plus élevé).\n" +
+            "  B. TVA — territorialité (Art.3) et taux chiffré (Art.7).\n" +
+            "  C. AUTRES CONSIDÉRATIONS — C.1 Assiette de la RS (NC 3/2015) ; C.2 Formalisme du transfert\n" +
+            "     des fonds (Art.112 CDPF + circ. BCT 9/2016).\n";
 
         var styleAndFormat = concise
-            ? "═══ FORMAT — VERSION CONCISE ═══\n" +
-              "MÊME analyse juridique et MÊMES conclusions que la version détaillée — mêmes verdicts, mêmes\n" +
-              "taux, mêmes sections obligatoires — simplement PLUS CONDENSÉE : chaque point en 2 à 4 phrases\n" +
-              "fluides, sans reproduire les longues citations. N'OMETS AUCUN verdict, AUCUN taux, ni les\n" +
-              "sections obligatoires (assiette de la RS, formalisme du transfert). Pas de rappel des faits.\n" +
-              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue) + les sous-analyses nécessaires " +
-              "(ES, qualification/redevance, TVA, régime privilégié, assiette, formalisme).\n"
-            : "═══ FORMAT — VERSION DÉTAILLÉE ═══\n" +
-              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue), en PROSE professionnelle " +
-              "continue (paragraphes liés, PAS d'étiquettes « Principe/Application/Conclusion »).\n" +
-              "Dans chaque bloc: énonce la règle avec sa source (« Conformément à l'article … [Sn], … »), " +
-              "applique-la aux faits du client, puis conclus par un verdict clair et unique (taux cité " +
-              "depuis [Sn]).\n" +
-              "Ajoute les sous-analyses nécessaires (ES, qualification/redevance, TVA, régime privilégié, " +
-              "assiette de la RS, formalisme) comme paragraphes, même hors étendue.\n";
+            ? "═══ FORMAT — VERSION CONCISE ═══\n" + demarche +
+              "MÊME démarche et MÊMES conclusions que la version détaillée (mêmes verdicts, mêmes taux, mêmes\n" +
+              "sous-sections) — simplement PLUS CONDENSÉE: chaque sous-section en 1 à 2 phrases, sans reproduire\n" +
+              "les longues citations. N'OMETS AUCUNE sous-section, AUCUN verdict, AUCUN taux. Pas de rappel des faits.\n" +
+              $"Organise en blocs « 4.1 » à « 4.{n} » (un par point d'étendue) intégrant les sous-sections ci-dessus.\n"
+            : "═══ FORMAT — VERSION DÉTAILLÉE ═══\n" + demarche +
+              $"Organise en blocs « 4.1 » à « 4.{n} » (un par point d'étendue), avec des SOUS-SECTIONS TITRÉES " +
+              "suivant la démarche ci-dessus, et une PROSE professionnelle continue DANS chaque sous-section " +
+              "(paragraphes liés, PAS d'étiquettes « Principe/Application/Conclusion »). Chaque sous-section " +
+              "énonce la règle avec sa source (numéro réel, p.ex. [S1]), l'applique aux faits, et se termine " +
+              "par une position claire (taux chiffré cité depuis sa source).\n";
 
         return
             $"PHASE 2 — JSON avec 1 clé: analyses.\n\n" +
@@ -854,12 +884,18 @@ public sealed class GenerateConsultationCommandHandler(
 
     // ── Citation resolver ─────────────────────────────────────────────────────
 
-    private static string ResolveCitations(string text, List<LegalSourceDto> sources) =>
-        Regex.Replace(text, @"\[S(\d+)\]", m =>
+    private static string ResolveCitations(string text, List<LegalSourceDto> sources)
+    {
+        // Safety net: the model must never emit the literal placeholder tokens from the prompt
+        // ([Sn], [S…], [S...], [S ]). Strip them (and any adjacent orphan separators) before
+        // resolving real [S1]..[Sn] citations to their source labels.
+        text = Regex.Replace(text, @"\s*\[S\s*(?:n|…|\.\.\.| )\s*\]", "", RegexOptions.IgnoreCase);
+        return Regex.Replace(text, @"\[S(\d+)\]", m =>
         {
             if (!int.TryParse(m.Groups[1].Value, out var idx)) return m.Value;
             return sources.FirstOrDefault(s => s.Index == idx)?.Citation ?? m.Value;
         });
+    }
 
     // ── JSON helpers ──────────────────────────────────────────────────────────
 
