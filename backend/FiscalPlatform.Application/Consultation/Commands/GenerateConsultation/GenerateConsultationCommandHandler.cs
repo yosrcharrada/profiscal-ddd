@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using FiscalPlatform.Application.Common.DTOs;
 using FiscalPlatform.Application.Common.Interfaces.Agents;
 using FiscalPlatform.Application.Common.Interfaces.Services;
+using FiscalPlatform.Application.Consultation.Agents;
 using FiscalPlatform.Application.Consultation.Playbooks;
 using FiscalPlatform.Domain.Exceptions;
 using FiscalPlatform.Domain.Repositories;
@@ -53,6 +54,7 @@ public sealed class GenerateConsultationCommandHandler(
     IAcceptanceAgent         acceptanceAgent,
     ILlmAgent                llmAgent,
     IDocumentGenerationAgent docAgent,
+    IEnumerable<ICaseAgent>  caseAgents,
     IConsultationRepository  repository,
     ILogger<GenerateConsultationCommandHandler> logger)
     : IRequestHandler<GenerateConsultationCommand, ConsultationGeneratedDto>
@@ -61,7 +63,7 @@ public sealed class GenerateConsultationCommandHandler(
     private static readonly HashSet<string> NoteCommune2Exceptions =
         new(StringComparer.OrdinalIgnoreCase) { "allemagne" };
 
-    private const string SystemPrompt =
+    internal const string SystemPrompt =
         "Tu es Faiez Choyakh — fiscaliste tunisien senior, EY Tunisia.\n" +
         "CITATIONS: [S1],[S2]... uniquement. Jamais de document en clair. Jamais inventer un article.\n" +
         "TAUX: LIS chaque taux DEPUIS le texte de l'article cité [Sn] et recopie le chiffre EXACT qui y figure. " +
@@ -358,80 +360,31 @@ public sealed class GenerateConsultationCommandHandler(
             }
         }
 
-        // ── Step 5c: Qualify the income type → resolve playbook ───────────────
+        // ── Step 5c: Qualify the income type → select the CASE AGENT ──────────
         // Determines WHAT KIND of income this is (service / dividend / interest / royalty) and picks
-        // the matching démarche. Generic / RS-service keep the legacy proven prompt; dividende &
-        // co. get their own specialised flow (no ES-of-service, no forced TVA section).
+        // the agent that owns that case. Generic / RS-service keep the legacy proven flow; dividende
+        // & co. run their own specialised démarche (no ES-of-service, no forced TVA section).
         var sw5c = Stopwatch.StartNew();
         var caseType = await QualifyCaseAsync(cmd, etendueItems, contexteFaits, plan, ct);
-        var playbook = PlaybookRegistry.Get(caseType);
-
-        // For convention-income playbooks (dividende/intérêt/redevance) guarantee the treaty income
-        // article is present — fetched BY SUBJECT since its number varies per convention.
-        if (playbook.HasOwnPrompt && playbook.NeedsConventionArticle &&
-            playbook.TreatySubjects.Length > 0 && countries.Any())
-        {
-            var before = sources.Count;
-            try
-            {
-                // (a) the treaty income article, fetched BY SUBJECT (its number varies per convention).
-                foreach (var country in countries.Where(c => !string.IsNullOrWhiteSpace(c)).Take(2))
-                foreach (var subj in playbook.TreatySubjects)
-                {
-                    var hits = await retrievalAgent.FetchBySubjectAsync(
-                        "conv_" + country, new[] { subj }, playbook.Topics,
-                        new[] { subj.ToLowerInvariant() }, ct) ?? new List<LegalSourceDto>();
-                    var existing = new HashSet<string>(
-                        sources.Select(s => s.ChunkId).Where(id => !string.IsNullOrEmpty(id)));
-                    foreach (var h in hits.Where(h => h is not null &&
-                                 (string.IsNullOrEmpty(h.ChunkId) || existing.Add(h.ChunkId))))
-                        sources.Add(h);
-                }
-                // (b) guarantee the domestic rate article (CIRPPIS Art.52/53, newest year) is present —
-                //     otherwise, in a treaty case the convention chunks flood the window and Art.52 (the
-                //     line that actually carries the dividend/interest rate) never reaches the model.
-                var dom = await retrievalAgent.FetchDomesticRetenueAsync(new List<string>(), ct)
-                          ?? new List<LegalSourceDto>();
-                var seenDom = new HashSet<string>(sources.Select(s => s.ChunkId).Where(id => !string.IsNullOrEmpty(id)));
-                foreach (var h in dom.Where(h => h is not null &&
-                             (string.IsNullOrEmpty(h.ChunkId) || seenDom.Add(h.ChunkId))))
-                    sources.Add(h);
-            }
-            catch (Exception ex) { logger.LogWarning(ex, "► [STEP 5c] treaty/domestic fetch failed"); }
-
-            // Pin the two MUST-SEE sources to the very front: the treaty income article (Dividendes /
-            // Intérêts / Redevances) and CIRPPIS Art.52/53 — so neither is crowded out of the visible
-            // window by the pile of convention articles a treaty case pulls in.
-            PinPlaybookSources(sources, countries, playbook);
-            for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
-            logger.LogInformation("► [STEP 5c] +{N} src, playbook-pinned for {PB}", sources.Count - before, playbook.Label);
-        }
+        var agent    = caseAgents.FirstOrDefault(a => a.Type == caseType)
+                       ?? caseAgents.FirstOrDefault(a => a.Type == CaseType.Generic)
+                       ?? throw new ConsultationGenerationException("No case agent registered");
+        var ctx = new CaseContext(cmd, etendueItems, contexteFaits, sommaire, sources,
+                                  countries.ToList(), isIntl, branches, plan);
         sw5c.Stop();
-        timings.Add(new("5c. Qualify + playbook", sw5c.Elapsed.TotalMilliseconds, playbook.Label));
+        timings.Add(new("5c. Qualify + agent", sw5c.Elapsed.TotalMilliseconds, caseType.ToString()));
 
-        // Phase-2 uses the playbook's specialised prompt when it has one; otherwise the legacy path.
-        var phase2System = playbook.HasOwnPrompt ? playbook.SystemPrompt : SystemPrompt;
-        var phase2User   = playbook.HasOwnPrompt
-            ? BuildPlaybookPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, playbook)
-            : BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan);
-
-        // ── Step 6: LLM Phase 2 + 3 — PARALLEL ───────────────────────────────
-        logger.LogInformation("┌─ [PHASE 2+3] analyses ‖ table — parallel… (playbook={PB})", playbook.Label);
-        var sw6   = Stopwatch.StartNew();
-        var task2 = llmAgent.CompleteAsync(phase2System, phase2User, "Phase2", 3800, ct);
-        var task3 = llmAgent.CompleteAsync(SystemPrompt,
+        // ── Step 6: Case agent drafts the analyses ‖ Phase-3 table — PARALLEL ──
+        logger.LogInformation("┌─ [PHASE 2+3] agent={A} analyses ‖ table — parallel…", agent.Type);
+        var sw6       = Stopwatch.StartNew();
+        var draftTask = agent.DraftAsync(ctx, ct);
+        var task3     = llmAgent.CompleteAsync(SystemPrompt,
             BuildPhase3Prompt(cmd, sources, etendueItems),
             "Phase3", 3500, ct);
-        await Task.WhenAll(task2, task3);
+        await Task.WhenAll(draftTask, task3);
+        var draft = draftTask.Result;
+        sources   = draft.Sources;   // the agent may have augmented + re-indexed the source list
 
-        if (task2.Result is null)
-        {
-            sw6.Stop();
-            timings.Add(new("6. LLM Phase 2+3", sw6.Elapsed.TotalMilliseconds, "PHASE 2 FAILED"));
-            throw new ConsultationGenerationException("LLM Phase 2 returned null");
-        }
-
-        var p2    = ParseJsonDict(task2.Result) ?? new Dictionary<string, JsonElement>();
         var p3    = task3.Result is not null ? ParseJsonDict(task3.Result) : null;
         var table = ParseTable(p3);
 
@@ -446,14 +399,16 @@ public sealed class GenerateConsultationCommandHandler(
             table.Count, etendueItems.Count);
 
         // ── Step 6b: Acceptance agent (validate generation) + bounded self-correction ──
-        var analysesRaw = GetStr(p2, "analyses");
+        var analysesRaw = draft.Analyses;
+        if (string.IsNullOrWhiteSpace(analysesRaw))
+            throw new ConsultationGenerationException("Case agent returned empty analyses");
         var sw6b = Stopwatch.StartNew();
         var sourcesList = string.Join("\n", sources.Take(18)
             .Select(s => $"[S{s.Index}] {s.DocType} {s.DocName} {s.ArticleRef}"));
-        // Feed the judge the playbook's per-case criteria so a dividend isn't judged against
+        // Feed the judge the agent's per-case criteria so a dividend isn't judged against
         // service-RS expectations (ES/TVA) and vice-versa.
-        if (!string.IsNullOrWhiteSpace(playbook.JudgeCriteria))
-            sourcesList += "\n\n═══ CRITÈRES SPÉCIFIQUES AU CAS (" + playbook.Label + ") ═══\n" + playbook.JudgeCriteria;
+        if (!string.IsNullOrWhiteSpace(draft.JudgeCriteria))
+            sourcesList += "\n\n═══ CRITÈRES SPÉCIFIQUES AU CAS ═══\n" + draft.JudgeCriteria;
         var verdict = await acceptanceAgent.ReviewAsync(
             new AcceptanceRequest(cmd.FiscalQuestion, BuildEtendue(etendueItems, ""),
                 analysesRaw, sourcesList), ct);
@@ -500,18 +455,10 @@ public sealed class GenerateConsultationCommandHandler(
             logger.LogInformation("► [STEP 6b] REVISE — {N} issue(s); +{A} sources",
                 verdict.Issues.Count, addedCount);
 
-            var reviseBase = playbook.HasOwnPrompt
-                ? BuildPlaybookPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, playbook)
-                : BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan);
-            var revisePrompt = reviseBase +
-                "\n\n═══ CORRECTIONS DEMANDÉES (relecture qualité) ═══\n" + guidance +
-                "\nCorrige ces points en conservant strictement le format et le niveau de détail demandé.";
-            var revisedRaw = await llmAgent.CompleteAsync(phase2System, revisePrompt, "Phase2-Revise", 3800, ct);
-            var revised = revisedRaw is not null ? ParseJsonDict(revisedRaw) : null;
-            if (revised is not null && !string.IsNullOrWhiteSpace(GetStr(revised, "analyses")))
-                analysesRaw = GetStr(revised, "analyses");
+            // The case agent owns its revision (same prompt/démarche, plus the judge's guidance).
+            analysesRaw = await agent.ReviseAsync(ctx, draft, guidance, ct);
 
-            logger.LogInformation("└─ [STEP 6b] revised");
+            logger.LogInformation("└─ [STEP 6b] revised by agent {A}", agent.Type);
         }
         sw6b.Stop();
         timings.Add(new("6b. Acceptance + revise", sw6b.Elapsed.TotalMilliseconds,
@@ -519,7 +466,7 @@ public sealed class GenerateConsultationCommandHandler(
 
         // ── Step 6b': Senior-review polish (universal EY house form; form-only, guarded) ──
         var swSr = Stopwatch.StartNew();
-        var polished = await SeniorReviewAsync(phase2System, analysesRaw, ct);
+        var polished = await SeniorReviewAsync(draft.SystemPrompt, analysesRaw, ct);
         var srApplied = !ReferenceEquals(polished, analysesRaw) && polished != analysesRaw;
         analysesRaw = polished;
         swSr.Stop();
@@ -601,7 +548,7 @@ public sealed class GenerateConsultationCommandHandler(
 
     // ── Prompt builders ───────────────────────────────────────────────────────
 
-    private static string SourcesBlock(List<LegalSourceDto> sources)
+    internal static string SourcesBlock(List<LegalSourceDto> sources)
     {
         // Enough sources that EVERY branch (RS, TVA, régime, formalisme) reaches the prompt — cutting
         // this too low dropped the CTVA articles and produced "TVA NON DOCUMENTÉ". SMART truncation:
@@ -683,7 +630,7 @@ public sealed class GenerateConsultationCommandHandler(
                string.Join("\n", clean.Select(i => $"- {i}"));
     }
 
-    private static string BuildPhase2Prompt(GenerateConsultationCommand cmd,
+    internal static string BuildPhase2Prompt(GenerateConsultationCommand cmd,
         List<LegalSourceDto> sources, List<string> etendueItems, string sommaire,
         string contexteFaits, bool isIntl, HashSet<string> branches, RetrievalPlan plan)
     {
@@ -923,7 +870,7 @@ public sealed class GenerateConsultationCommandHandler(
     // Phase-2 prompt for a specialised (non-legacy) playbook: the playbook supplies the démarche,
     // forbidden steps, qualification guidance and a structure-only skeleton; the universal EY style
     // card supplies the voice. No rates, no verdicts — every number is read from the sources.
-    private static string BuildPlaybookPhase2Prompt(
+    internal static string BuildPlaybookPhase2Prompt(
         GenerateConsultationCommand cmd, List<LegalSourceDto> sources, List<string> etendueItems,
         string sommaire, string contexteFaits, CasePlaybook pb)
     {
@@ -996,7 +943,7 @@ public sealed class GenerateConsultationCommandHandler(
     // embed server returning a slightly different neighbour set on another machine can push these past
     // the cutoff even when they were fetched. This pins the rate-bearing copy to the front (after any
     // Convention chunks, which keep priority for international cases). Deterministic — no scores, no env.
-    private static void PinRateArticles(List<LegalSourceDto> sources)
+    internal static void PinRateArticles(List<LegalSourceDto> sources)
     {
         // Require an actual numeric rate ('%') — not merely the word "taux" — so a rate-less stub
         // copy of the article never jumps ahead of the version that carries the figure to read.
@@ -1034,7 +981,7 @@ public sealed class GenerateConsultationCommandHandler(
         for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
     }
 
-    private static string Digits(string? s) =>
+    internal static string Digits(string? s) =>
         string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
 
     // For a specialised (convention-income) playbook, force the two decisive sources to the very
@@ -1042,7 +989,7 @@ public sealed class GenerateConsultationCommandHandler(
     // (Dividendes / Intérêts / Redevances) for a detected country, and (2) the CIRPPIS Art.52/53
     // rate article that carries the domestic figure. Otherwise the flood of convention chunks a
     // treaty case pulls in pushes Art.52 past the cutoff and the model invents the rate.
-    private static void PinPlaybookSources(
+    internal static void PinPlaybookSources(
         List<LegalSourceDto> sources, ICollection<string> countries, Playbooks.CasePlaybook pb)
     {
         static string Head(LegalSourceDto s) =>
@@ -1187,7 +1134,7 @@ public sealed class GenerateConsultationCommandHandler(
 
     // ── JSON helpers ──────────────────────────────────────────────────────────
 
-    private static Dictionary<string, JsonElement>? ParseJsonDict(string raw)
+    internal static Dictionary<string, JsonElement>? ParseJsonDict(string raw)
     {
         raw = Regex.Replace(raw.Trim(), @"^```(json)?\s*", "", RegexOptions.Multiline);
         raw = Regex.Replace(raw.Trim(), @"\s*```$",          "", RegexOptions.Multiline);
@@ -1201,7 +1148,7 @@ public sealed class GenerateConsultationCommandHandler(
         catch { return null; }
     }
 
-    private static string GetStr(Dictionary<string, JsonElement>? d, string key) =>
+    internal static string GetStr(Dictionary<string, JsonElement>? d, string key) =>
         d is not null && d.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String
         ? v.GetString() ?? "" : "";
 

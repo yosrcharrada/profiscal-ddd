@@ -1,5 +1,6 @@
 using FiscalPlatform.Application.Common.Interfaces.Agents;
 using FiscalPlatform.Application.Common.Interfaces.Services;
+using FiscalPlatform.Application.Consultation.Agents;
 using FiscalPlatform.Infrastructure.Agents;
 using FiscalPlatform.Infrastructure.DomainServices;
 using FiscalPlatform.Infrastructure.Guardrails;
@@ -28,6 +29,14 @@ public static class DependencyInjection
         services.AddSingleton<IDocumentGenerationAgent, DocumentGenerationAgent>();
         services.AddSingleton<IRetrievalPlannerAgent,   RetrievalPlannerAgent>();
         services.AddSingleton<IAcceptanceAgent,         AcceptanceAgent>();
+
+        // ── Case agents (one per income qualification; resolved as IEnumerable<ICaseAgent>,
+        //    the handler qualifies then dispatches to the matching Type) ──
+        services.AddSingleton<ICaseAgent, GenericAgent>();
+        services.AddSingleton<ICaseAgent, RsServiceForeignAgent>();
+        services.AddSingleton<ICaseAgent, DividendeAgent>();
+        services.AddSingleton<ICaseAgent, InteretAgent>();
+        services.AddSingleton<ICaseAgent, RedevanceAgent>();
 
         // ── Rule-based retrieval policy (config-driven routing, not hardcoded answers) ──
         services.AddSingleton<IRuleBasedRetrieval,
