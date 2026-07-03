@@ -276,6 +276,7 @@ public sealed class GenerateConsultationCommandHandler(
         var sources = MergeAllSources(
             ruleSources.Concat(plan.Sources).ToList(), filteredEmbed, neo4jSources, 30);
         CorrectArticleRefs(sources);
+        PinRateArticles(sources);
 
         if (sources.Count == 0)
             throw new NoSourcesFoundException(cmd.Situation);
@@ -781,6 +782,43 @@ public sealed class GenerateConsultationCommandHandler(
     }
 
     // ── Source merging ────────────────────────────────────────────────────────
+
+    // The rate-driving domestic articles (CIRPPIS Art.52/53 for the withholding rate, CTVA Art.7 for
+    // the VAT rate) MUST be inside the model's visible source window — otherwise the model truthfully
+    // reports "taux NON DOCUMENTÉ". Version-bloat (2026/2023/2022 copies of every article) plus the
+    // embed server returning a slightly different neighbour set on another machine can push these past
+    // the cutoff even when they were fetched. This pins the rate-bearing copy to the front (after any
+    // Convention chunks, which keep priority for international cases). Deterministic — no scores, no env.
+    private static void PinRateArticles(List<LegalSourceDto> sources)
+    {
+        // Require an actual numeric rate ('%') — not merely the word "taux" — so a rate-less stub
+        // copy of the article never jumps ahead of the version that carries the figure to read.
+        static bool HasRate(LegalSourceDto s) => (s.Text ?? "").Contains('%');
+
+        static bool IsRs(LegalSourceDto s) =>
+            (s.DocName ?? "").Contains("code_irpp_is", StringComparison.OrdinalIgnoreCase) &&
+            (Digits(s.ArticleRef) == "52" || Digits(s.ArticleRef) == "53");
+
+        static bool IsTva(LegalSourceDto s) =>
+            (s.DocName ?? "").Contains("code_tva", StringComparison.OrdinalIgnoreCase) &&
+            Digits(s.ArticleRef) == "7";
+
+        bool Pin(LegalSourceDto s) => HasRate(s) && (IsRs(s) || IsTva(s));
+
+        // Stable partition: Conventions first (int'l priority), then pinned rate articles, then the rest.
+        var convs  = sources.Where(s => s.DocType == "Convention").ToList();
+        var pinned = sources.Where(s => s.DocType != "Convention" && Pin(s)).ToList();
+        var rest   = sources.Where(s => s.DocType != "Convention" && !Pin(s)).ToList();
+
+        sources.Clear();
+        sources.AddRange(convs);
+        sources.AddRange(pinned);
+        sources.AddRange(rest);
+        for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
+    }
+
+    private static string Digits(string? s) =>
+        string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
 
     private static List<LegalSourceDto> MergeAllSources(
         List<LegalSourceDto> plannerSources,

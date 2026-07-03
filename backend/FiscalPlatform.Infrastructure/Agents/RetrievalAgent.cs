@@ -512,13 +512,17 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         try
         {
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
+            // toString() so this matches whether article_number is stored as a string ('52') or an
+            // integer (52) — the import type differs across Neo4j environments and an int-typed graph
+            // silently drops the RS-rate article otherwise. Prefer the chunk that actually carries the
+            // rate ('%') and the longest (fullest) version, so a stub Art.52 never wins.
             var art = await session.RunAsync($@"
                 MATCH (c:Chunk)
                 WHERE toLower(c.doc_id) CONTAINS 'code_irpp_is'
                   AND c.chunk_type = 'article'
-                  AND (c.article_number IN ['52','53'] OR c.article_display CONTAINS '52' OR c.article_display CONTAINS '53')
+                  AND (toString(c.article_number) IN ['52','53'] OR c.article_display CONTAINS '52' OR c.article_display CONTAINS '53')
                 RETURN {F}, 0.95 AS score
-                ORDER BY c.doc_id DESC LIMIT 4");
+                ORDER BY (CASE WHEN c.content CONTAINS '%' THEN 0 ELSE 1 END), size(c.content) DESC, c.doc_id DESC LIMIT 4");
             await foreach (var r in art) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.95); }
 
             var nc = await session.RunAsync($@"
@@ -571,10 +575,13 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         {
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
 
-            // 1) by article number (precise — taxmind has article-typed chunks with article_number)
-            foreach (var aref in (articleRefs ?? Array.Empty<string>()).Take(6))
+            // 1) by article number (precise — taxmind has article-typed chunks with article_number).
+            //    LIMIT 1 = the single fullest exact-match version per hinted article, so every hint
+            //    (…/49/52/53) is actually reached instead of the cap being spent on 3 version-copies
+            //    of the first few articles (which used to starve the RS-rate Art.52 fetch).
+            foreach (var aref in (articleRefs ?? Array.Empty<string>()).Take(8))
             {
-                if (results.Count >= 12) break;
+                if (results.Count >= 16) break;
                 var num = new string((aref ?? "").Where(char.IsDigit).ToArray());
                 try
                 {
@@ -584,7 +591,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                           AND c.chunk_type = 'article' AND c.content <> ''{NoAr}
                           AND ($num <> '' AND (toString(c.article_number) = $num OR c.article_display CONTAINS $num))
                         RETURN {F}, 0.96 AS score
-                        ORDER BY (CASE WHEN toString(c.article_number) = $num THEN 0 ELSE 1 END), c.doc_id DESC LIMIT 3",
+                        ORDER BY (CASE WHEN toString(c.article_number) = $num THEN 0 ELSE 1 END), size(c.content) DESC, c.doc_id DESC LIMIT 1",
                         new { frag, num });
                     await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.96); }
                 }
