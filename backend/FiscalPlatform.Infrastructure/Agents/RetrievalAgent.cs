@@ -514,15 +514,19 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
             // toString() so this matches whether article_number is stored as a string ('52') or an
             // integer (52) — the import type differs across Neo4j environments and an int-typed graph
-            // silently drops the RS-rate article otherwise. Prefer the chunk that actually carries the
-            // rate ('%') and the longest (fullest) version, so a stub Art.52 never wins.
+            // silently drops the RS-rate article otherwise. Ordering priorities, in order:
+            //   1. carries an actual rate ('%')      — never a rate-less stub
+            //   2. NEWEST year (doc_id DESC)         — 2026 beats 2020; the LF changes rates yearly
+            //   3. fullest text (size DESC)          — tiebreak within the same year
+            // (2) MUST precede (3): the 2020 Art.52 is physically longer than 2026, so size-first
+            // wrongly picked the stale 2020 text where §a honoraires was still 15% instead of 10%.
             var art = await session.RunAsync($@"
                 MATCH (c:Chunk)
                 WHERE toLower(c.doc_id) CONTAINS 'code_irpp_is'
                   AND c.chunk_type = 'article'
                   AND (toString(c.article_number) IN ['52','53'] OR c.article_display CONTAINS '52' OR c.article_display CONTAINS '53')
                 RETURN {F}, 0.95 AS score
-                ORDER BY (CASE WHEN c.content CONTAINS '%' THEN 0 ELSE 1 END), size(c.content) DESC, c.doc_id DESC LIMIT 4");
+                ORDER BY (CASE WHEN c.content CONTAINS '%' THEN 0 ELSE 1 END), c.doc_id DESC, size(c.content) DESC LIMIT 4");
             await foreach (var r in art) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.95); }
 
             var nc = await session.RunAsync($@"
@@ -591,7 +595,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                           AND c.chunk_type = 'article' AND c.content <> ''{NoAr}
                           AND ($num <> '' AND (toString(c.article_number) = $num OR c.article_display CONTAINS $num))
                         RETURN {F}, 0.96 AS score
-                        ORDER BY (CASE WHEN toString(c.article_number) = $num THEN 0 ELSE 1 END), size(c.content) DESC, c.doc_id DESC LIMIT 1",
+                        ORDER BY (CASE WHEN toString(c.article_number) = $num THEN 0 ELSE 1 END), c.doc_id DESC, size(c.content) DESC LIMIT 1",
                         new { frag, num });
                     await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.96); }
                 }

@@ -40,3 +40,6 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# Local notes
+todo.txt

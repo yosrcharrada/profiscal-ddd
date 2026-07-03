@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using FiscalPlatform.Application.Common.DTOs;
 using FiscalPlatform.Application.Common.Interfaces.Agents;
 using FiscalPlatform.Application.Common.Interfaces.Services;
+using FiscalPlatform.Application.Consultation.Playbooks;
 using FiscalPlatform.Domain.Exceptions;
 using FiscalPlatform.Domain.Repositories;
 using MediatR;
@@ -114,7 +115,8 @@ public sealed class GenerateConsultationCommandHandler(
         "NOTE COMMUNE N°2/2015: l'utiliser pour interpréter les conventions (taux/qualification par pays, sauf Allemagne).\n" +
         "HIÉRARCHIE: International: Convention→Codes→LdF→Doctrine. Local: Codes→LdF→Doctrine.\n" +
         "ÉTENDUE: UNIQUEMENT ce que le client demande. ZÉRO ajout.\n" +
-        "VERDICTS: OUI/NON/X%/EXONÉRÉ/SOUMIS. NON DOCUMENTÉ si aucune source.\n" +
+        "VERDICTS: OUI / NON / le taux chiffré réel (lu dans [Sn]) / EXONÉRÉ / SOUMIS. " +
+        "N'écris JAMAIS le littéral « X% » : recopie le vrai pourcentage. NON DOCUMENTÉ si aucune source.\n" +
         "JSON PUR UNIQUEMENT.";
 
     // ── Timing table ──────────────────────────────────────────────────────────
@@ -356,12 +358,67 @@ public sealed class GenerateConsultationCommandHandler(
             }
         }
 
+        // ── Step 5c: Qualify the income type → resolve playbook ───────────────
+        // Determines WHAT KIND of income this is (service / dividend / interest / royalty) and picks
+        // the matching démarche. Generic / RS-service keep the legacy proven prompt; dividende &
+        // co. get their own specialised flow (no ES-of-service, no forced TVA section).
+        var sw5c = Stopwatch.StartNew();
+        var caseType = await QualifyCaseAsync(cmd, etendueItems, contexteFaits, plan, ct);
+        var playbook = PlaybookRegistry.Get(caseType);
+
+        // For convention-income playbooks (dividende/intérêt/redevance) guarantee the treaty income
+        // article is present — fetched BY SUBJECT since its number varies per convention.
+        if (playbook.HasOwnPrompt && playbook.NeedsConventionArticle &&
+            playbook.TreatySubjects.Length > 0 && countries.Any())
+        {
+            var before = sources.Count;
+            try
+            {
+                // (a) the treaty income article, fetched BY SUBJECT (its number varies per convention).
+                foreach (var country in countries.Where(c => !string.IsNullOrWhiteSpace(c)).Take(2))
+                foreach (var subj in playbook.TreatySubjects)
+                {
+                    var hits = await retrievalAgent.FetchBySubjectAsync(
+                        "conv_" + country, new[] { subj }, playbook.Topics,
+                        new[] { subj.ToLowerInvariant() }, ct) ?? new List<LegalSourceDto>();
+                    var existing = new HashSet<string>(
+                        sources.Select(s => s.ChunkId).Where(id => !string.IsNullOrEmpty(id)));
+                    foreach (var h in hits.Where(h => h is not null &&
+                                 (string.IsNullOrEmpty(h.ChunkId) || existing.Add(h.ChunkId))))
+                        sources.Add(h);
+                }
+                // (b) guarantee the domestic rate article (CIRPPIS Art.52/53, newest year) is present —
+                //     otherwise, in a treaty case the convention chunks flood the window and Art.52 (the
+                //     line that actually carries the dividend/interest rate) never reaches the model.
+                var dom = await retrievalAgent.FetchDomesticRetenueAsync(new List<string>(), ct)
+                          ?? new List<LegalSourceDto>();
+                var seenDom = new HashSet<string>(sources.Select(s => s.ChunkId).Where(id => !string.IsNullOrEmpty(id)));
+                foreach (var h in dom.Where(h => h is not null &&
+                             (string.IsNullOrEmpty(h.ChunkId) || seenDom.Add(h.ChunkId))))
+                    sources.Add(h);
+            }
+            catch (Exception ex) { logger.LogWarning(ex, "► [STEP 5c] treaty/domestic fetch failed"); }
+
+            // Pin the two MUST-SEE sources to the very front: the treaty income article (Dividendes /
+            // Intérêts / Redevances) and CIRPPIS Art.52/53 — so neither is crowded out of the visible
+            // window by the pile of convention articles a treaty case pulls in.
+            PinPlaybookSources(sources, countries, playbook);
+            for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
+            logger.LogInformation("► [STEP 5c] +{N} src, playbook-pinned for {PB}", sources.Count - before, playbook.Label);
+        }
+        sw5c.Stop();
+        timings.Add(new("5c. Qualify + playbook", sw5c.Elapsed.TotalMilliseconds, playbook.Label));
+
+        // Phase-2 uses the playbook's specialised prompt when it has one; otherwise the legacy path.
+        var phase2System = playbook.HasOwnPrompt ? playbook.SystemPrompt : SystemPrompt;
+        var phase2User   = playbook.HasOwnPrompt
+            ? BuildPlaybookPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, playbook)
+            : BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan);
+
         // ── Step 6: LLM Phase 2 + 3 — PARALLEL ───────────────────────────────
-        logger.LogInformation("┌─ [PHASE 2+3] analyses ‖ table — parallel…");
+        logger.LogInformation("┌─ [PHASE 2+3] analyses ‖ table — parallel… (playbook={PB})", playbook.Label);
         var sw6   = Stopwatch.StartNew();
-        var task2 = llmAgent.CompleteAsync(SystemPrompt,
-            BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan),
-            "Phase2", 3800, ct);
+        var task2 = llmAgent.CompleteAsync(phase2System, phase2User, "Phase2", 3800, ct);
         var task3 = llmAgent.CompleteAsync(SystemPrompt,
             BuildPhase3Prompt(cmd, sources, etendueItems),
             "Phase3", 3500, ct);
@@ -393,6 +450,10 @@ public sealed class GenerateConsultationCommandHandler(
         var sw6b = Stopwatch.StartNew();
         var sourcesList = string.Join("\n", sources.Take(18)
             .Select(s => $"[S{s.Index}] {s.DocType} {s.DocName} {s.ArticleRef}"));
+        // Feed the judge the playbook's per-case criteria so a dividend isn't judged against
+        // service-RS expectations (ES/TVA) and vice-versa.
+        if (!string.IsNullOrWhiteSpace(playbook.JudgeCriteria))
+            sourcesList += "\n\n═══ CRITÈRES SPÉCIFIQUES AU CAS (" + playbook.Label + ") ═══\n" + playbook.JudgeCriteria;
         var verdict = await acceptanceAgent.ReviewAsync(
             new AcceptanceRequest(cmd.FiscalQuestion, BuildEtendue(etendueItems, ""),
                 analysesRaw, sourcesList), ct);
@@ -439,11 +500,13 @@ public sealed class GenerateConsultationCommandHandler(
             logger.LogInformation("► [STEP 6b] REVISE — {N} issue(s); +{A} sources",
                 verdict.Issues.Count, addedCount);
 
-            var revisePrompt =
-                BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan) +
+            var reviseBase = playbook.HasOwnPrompt
+                ? BuildPlaybookPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, playbook)
+                : BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan);
+            var revisePrompt = reviseBase +
                 "\n\n═══ CORRECTIONS DEMANDÉES (relecture qualité) ═══\n" + guidance +
                 "\nCorrige ces points en conservant strictement le format et le niveau de détail demandé.";
-            var revisedRaw = await llmAgent.CompleteAsync(SystemPrompt, revisePrompt, "Phase2-Revise", 3800, ct);
+            var revisedRaw = await llmAgent.CompleteAsync(phase2System, revisePrompt, "Phase2-Revise", 3800, ct);
             var revised = revisedRaw is not null ? ParseJsonDict(revisedRaw) : null;
             if (revised is not null && !string.IsNullOrWhiteSpace(GetStr(revised, "analyses")))
                 analysesRaw = GetStr(revised, "analyses");
@@ -453,6 +516,14 @@ public sealed class GenerateConsultationCommandHandler(
         sw6b.Stop();
         timings.Add(new("6b. Acceptance + revise", sw6b.Elapsed.TotalMilliseconds,
             verdict.Accept ? "accepted" : $"revised: {string.Join(",", verdict.MissingTopics)}"));
+
+        // ── Step 6b': Senior-review polish (universal EY house form; form-only, guarded) ──
+        var swSr = Stopwatch.StartNew();
+        var polished = await SeniorReviewAsync(phase2System, analysesRaw, ct);
+        var srApplied = !ReferenceEquals(polished, analysesRaw) && polished != analysesRaw;
+        analysesRaw = polished;
+        swSr.Stop();
+        timings.Add(new("6b'. Senior review", swSr.Elapsed.TotalMilliseconds, srApplied ? "polished" : "kept draft"));
 
         // ── Step 6c: DERIVE the synthesis table from the FINALIZED analyses ──────
         // The parallel Phase-3 table is generated from raw sources and never revised, so it
@@ -534,10 +605,12 @@ public sealed class GenerateConsultationCommandHandler(
     {
         // Enough sources that EVERY branch (RS, TVA, régime, formalisme) reaches the prompt — cutting
         // this too low dropped the CTVA articles and produced "TVA NON DOCUMENTÉ". SMART truncation:
-        // rate-bearing articles (rate tables, e.g. CIRPPIS Art.52 whose non-résident rate sits ~char
-        // 2800, or CTVA Art.7) get the full text so the rate is visible; other sources get a short
-        // preview. This keeps every needed article present without exploding the token budget.
-        const int MaxSources = 18, RateChars = 3300, PlainChars = 1100;
+        // rate-bearing articles (rate tables) get their FULL text so the correct LINE is visible, other
+        // sources get a short preview. CIRPPIS Art.52 is a multi-rate menu ~8 200 chars: the honoraires
+        // line is ~char 1000, the non-résident b) 15% ~char 2 830, the DIVIDENDES c bis) ~char 4 450,
+        // the cession f) 2,5% ~char 7 660. A 3 300 cap hid the dividend line and the model guessed the
+        // wrong rate — the cap must cover the whole menu so the model reads the RIGHT paragraph.
+        const int MaxSources = 18, RateChars = 8600, PlainChars = 1100;
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
         foreach (var s in sources.Take(MaxSources))
         {
@@ -781,6 +854,140 @@ public sealed class GenerateConsultationCommandHandler(
             "{\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"\"}]}";
     }
 
+    // ── Case qualifier + playbook (income-type routing) ────────────────────────
+
+    // LLM-primary qualification of the consultation into an income CaseType, with a light
+    // deterministic contradiction check. Qualification is a semantic judgement (services vs
+    // dividend vs interest vs royalty), so the LLM decides; determinism only guards against an
+    // obviously wrong call (e.g. "dividende" with no distribution/shareholder cue in the facts).
+    private async Task<CaseType> QualifyCaseAsync(
+        GenerateConsultationCommand cmd, List<string> etendueItems, string contexteFaits,
+        RetrievalPlan plan, CancellationToken ct)
+    {
+        var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
+        var sys =
+            "Tu es un fiscaliste tunisien senior. Tu CLASSES la nature du revenu d'une consultation, " +
+            "à partir de l'ÉTENDUE des travaux et des faits. Réponds UNIQUEMENT en JSON:\n" +
+            "{\"case_type\":\"rs_service_foreign|dividende|interet|redevance|autre\",\"rationale\":\"...\"}\n" +
+            "- dividende: distribution de bénéfices / dividendes à un actionnaire (société mère, associé…).\n" +
+            "- interet: intérêts d'un prêt / d'une créance.\n" +
+            "- redevance: usage d'un droit, marque, brevet, logiciel, savoir-faire, licence.\n" +
+            "- rs_service_foreign: prestation de services rendue par un fournisseur ÉTRANGER (étude, " +
+            "engineering, assistance technique, conseil…).\n" +
+            "- autre: tout le reste (transaction purement interne, cas non couvert).\n" +
+            "Choisis la catégorie DOMINANTE de la question posée.";
+        var user = $"ÉTENDUE:\n{et}\n\nFAITS:\n{contexteFaits}\n\nQUESTION: {cmd.FiscalQuestion}\n\n" +
+                   $"(indice préliminaire du planner: {plan.IncomeType})\nClasse. JSON.";
+
+        CaseType llmType = CaseType.Generic;
+        try
+        {
+            var raw    = await llmAgent.CompleteAsync(sys, user, "Qualifier", 300, ct);
+            var parsed = raw is not null ? ParseJsonDict(raw) : null;
+            var label  = (parsed is not null ? GetStr(parsed, "case_type") : "").Trim().ToLowerInvariant();
+            llmType = label switch
+            {
+                "dividende"          => CaseType.Dividende,
+                "interet"            => CaseType.Interet,
+                "redevance"          => CaseType.Redevance,
+                "rs_service_foreign" => CaseType.RsServiceForeign,
+                _                    => CaseType.Generic,
+            };
+        }
+        catch (Exception ex) { logger.LogWarning(ex, "[QUALIFY] failed — Generic"); }
+
+        // Deterministic contradiction guard: only for the qualifications whose démarche diverges
+        // hard from the legacy flow. If the LLM picked dividende/interet/redevance but no supporting
+        // cue exists in the facts, fall back to the safe legacy path rather than skip ES/TVA wrongly.
+        var hay = ((cmd.Situation ?? "") + " " + (cmd.FiscalQuestion ?? "") + " " + (contexteFaits ?? "")
+                   + " " + string.Join(" ", etendueItems)).ToLowerInvariant();
+        bool Cue(params string[] terms) => terms.Any(hay.Contains);
+        var validated = llmType switch
+        {
+            CaseType.Dividende when !Cue("dividend", "distribu", "actionnaire", "société mère",
+                "societe mere", "filiale", "participation", "associé", "associe", "bénéfices dist",
+                "benefices dist") => CaseType.Generic,
+            CaseType.Interet when !Cue("intérêt", "interet", "prêt", "pret", "créance", "creance",
+                "emprunt", "coupon") => CaseType.Generic,
+            CaseType.Redevance when !Cue("redevance", "royalt", "licence", "marque", "brevet",
+                "logiciel", "savoir-faire", "savoir faire", "droit d'usage") => CaseType.Generic,
+            _ => llmType,
+        };
+
+        if (validated != llmType)
+            logger.LogInformation("[QUALIFY] LLM said {L} but no supporting cue → {V}", llmType, validated);
+        logger.LogInformation("► [QUALIFY] case type = {T}", validated);
+        return validated;
+    }
+
+    // Phase-2 prompt for a specialised (non-legacy) playbook: the playbook supplies the démarche,
+    // forbidden steps, qualification guidance and a structure-only skeleton; the universal EY style
+    // card supplies the voice. No rates, no verdicts — every number is read from the sources.
+    private static string BuildPlaybookPhase2Prompt(
+        GenerateConsultationCommand cmd, List<LegalSourceDto> sources, List<string> etendueItems,
+        string sommaire, string contexteFaits, CasePlaybook pb)
+    {
+        var n  = etendueItems.Count;
+        var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
+        var concise = string.Equals(cmd.Mode, "concise", StringComparison.OrdinalIgnoreCase);
+        var format = concise
+            ? "FORMAT — VERSION CONCISE : mêmes qualification, mêmes verdicts et mêmes taux que la version " +
+              "détaillée, mais CONDENSÉS (chaque point en quelques phrases). N'omets aucun verdict ni taux.\n"
+            : "FORMAT — VERSION DÉTAILLÉE : prose professionnelle continue, chaque point développé selon la " +
+              "démarche ci-dessus, chaque règle appliquée aux faits et close par une position claire.\n";
+
+        return
+            $"PHASE 2 — JSON avec 1 clé: analyses.\n\n" +
+            $"CAS QUALIFIÉ : {pb.Label}\n\n" +
+            $"Client : {cmd.ClientName} | Question : {cmd.FiscalQuestion}\n\n" +
+            $"FAITS ÉTABLIS (section 1.1) :\n{contexteFaits}\n\n" +
+            $"ÉTENDUE ({n} point(s) demandé(s)) :\n{et}\n\n" +
+            SourcesBlock(sources) + "\n" +
+            "═══ QUALIFICATION ═══\n" + pb.QualificationGuidance + "\n\n" +
+            pb.Demarche + "\n" +
+            (string.IsNullOrWhiteSpace(pb.ForbiddenSteps) ? "" : "═══ À NE PAS FAIRE ═══\n" + pb.ForbiddenSteps + "\n\n") +
+            EyStyle.Card + "\n" +
+            "═══ MODÈLE DE STRUCTURE (forme uniquement — les crochets sont des ESPACES À REMPLIR depuis les " +
+            "faits et les sources ; ne recopie JAMAIS un contenu du modèle) ═══\n" + pb.RedactedSkeleton + "\n\n" +
+            format +
+            $"Organise en blocs « 4.1 » à « 4.{n} » (un par point d'étendue).\n" +
+            "[Sn] OBLIGATOIRE ; tout taux cite sa source [Sn] et est LU dans son texte.\n\n" +
+            "{\"analyses\":\"4. ANALYSES\\n\\n[blocs]\"}";
+    }
+
+    // Universal "senior review" polish: a bounded rewrite that improves the drafting to EY house
+    // form WITHOUT touching any figure, citation, verdict or article. Guarded — if the rewrite drops
+    // citations or introduces a spurious "NON DOCUMENTÉ", we keep the original. Fixes "reads like a
+    // draft" for every case, since it operates on form, not content.
+    private async Task<string> SeniorReviewAsync(string systemPrompt, string analyses, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(analyses) || analyses.Length < 200) return analyses;
+        try
+        {
+            var prompt =
+                EyStyle.Card + "\n\n" +
+                "Voici un PROJET d'analyse. Réécris-le pour qu'il se lise comme un mémo EY final et fluide, " +
+                "sous CONTRAINTES STRICTES :\n" +
+                "- NE CHANGE AUCUN chiffre, AUCUN taux, AUCUNE citation [Sn], AUCUN verdict, AUCUN numéro d'article.\n" +
+                "- CONSERVE toutes les sections, sous-sections, titres et leur ordre, ainsi que les « Verdict : ».\n" +
+                "- Améliore UNIQUEMENT la fluidité, les liaisons et le ton ; supprime les tournures de brouillon.\n" +
+                "- Réponds en JSON : {\"analyses\":\"...\"}.\n\n" +
+                "PROJET :\n" + analyses;
+            var raw     = await llmAgent.CompleteAsync(systemPrompt, prompt, "SeniorReview", 3800, ct);
+            var parsed  = raw is not null ? ParseJsonDict(raw) : null;
+            var revised = parsed is not null ? GetStr(parsed, "analyses") : "";
+            if (string.IsNullOrWhiteSpace(revised) || revised.Length < analyses.Length / 2) return analyses;
+            // Guard: never accept a rewrite that lost citations or invented "NON DOCUMENTÉ".
+            if (CountCitations(revised) + 1 < CountCitations(analyses)) return analyses;
+            if (revised.Contains("NON DOCUMENT") && !analyses.Contains("NON DOCUMENT")) return analyses;
+            return revised;
+        }
+        catch (Exception ex) { logger.LogWarning(ex, "[SENIOR-REVIEW] failed — keeping draft"); return analyses; }
+    }
+
+    private static int CountCitations(string text) =>
+        System.Text.RegularExpressions.Regex.Matches(text ?? "", @"\[S\d+\]").Count;
+
     // ── Source merging ────────────────────────────────────────────────────────
 
     // The rate-driving domestic articles (CIRPPIS Art.52/53 for the withholding rate, CTVA Art.7 for
@@ -805,9 +1012,19 @@ public sealed class GenerateConsultationCommandHandler(
 
         bool Pin(LegalSourceDto s) => HasRate(s) && (IsRs(s) || IsTva(s));
 
-        // Stable partition: Conventions first (int'l priority), then pinned rate articles, then the rest.
+        // Newest-year copy of a pinned article wins (2026 before 2020) — the LF revises rates yearly,
+        // so a stale year gives the wrong figure even when the article number is right.
+        static int Year(LegalSourceDto s)
+        {
+            var m = Regex.Match((s.DocName ?? "") + " " + (s.Year ?? ""), @"(19|20)\d{2}");
+            return m.Success ? int.Parse(m.Value) : 0;
+        }
+
+        // Stable partition: Conventions first (int'l priority), then pinned rate articles (newest year
+        // first), then the rest.
         var convs  = sources.Where(s => s.DocType == "Convention").ToList();
-        var pinned = sources.Where(s => s.DocType != "Convention" && Pin(s)).ToList();
+        var pinned = sources.Where(s => s.DocType != "Convention" && Pin(s))
+                            .OrderByDescending(Year).ToList();
         var rest   = sources.Where(s => s.DocType != "Convention" && !Pin(s)).ToList();
 
         sources.Clear();
@@ -819,6 +1036,39 @@ public sealed class GenerateConsultationCommandHandler(
 
     private static string Digits(string? s) =>
         string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
+
+    // For a specialised (convention-income) playbook, force the two decisive sources to the very
+    // front of the visible window: (1) the treaty income article matching the playbook's subject
+    // (Dividendes / Intérêts / Redevances) for a detected country, and (2) the CIRPPIS Art.52/53
+    // rate article that carries the domestic figure. Otherwise the flood of convention chunks a
+    // treaty case pulls in pushes Art.52 past the cutoff and the model invents the rate.
+    private static void PinPlaybookSources(
+        List<LegalSourceDto> sources, ICollection<string> countries, Playbooks.CasePlaybook pb)
+    {
+        static string Head(LegalSourceDto s) =>
+            (s.Text ?? "")[..System.Math.Min((s.Text ?? "").Length, 60)];
+
+        bool IsIncomeTreaty(LegalSourceDto s) =>
+            string.Equals(s.DocType, "Convention", System.StringComparison.OrdinalIgnoreCase) &&
+            pb.TreatySubjects.Any(subj =>
+                Head(s).Contains(subj, System.StringComparison.OrdinalIgnoreCase)) &&
+            (countries.Count == 0 || countries.Any(c =>
+                (s.DocName ?? "").Contains(c, System.StringComparison.OrdinalIgnoreCase)));
+
+        bool IsDomesticRate(LegalSourceDto s) =>
+            (s.DocName ?? "").Contains("code_irpp_is", System.StringComparison.OrdinalIgnoreCase) &&
+            (Digits(s.ArticleRef) == "52" || Digits(s.ArticleRef) == "53") &&
+            (s.Text ?? "").Contains('%');
+
+        var treaty   = sources.Where(IsIncomeTreaty).ToList();
+        var domestic = sources.Where(s => !IsIncomeTreaty(s) && IsDomesticRate(s)).ToList();
+        var rest     = sources.Where(s => !IsIncomeTreaty(s) && !IsDomesticRate(s)).ToList();
+
+        sources.Clear();
+        sources.AddRange(treaty);
+        sources.AddRange(domestic);
+        sources.AddRange(rest);
+    }
 
     private static List<LegalSourceDto> MergeAllSources(
         List<LegalSourceDto> plannerSources,
