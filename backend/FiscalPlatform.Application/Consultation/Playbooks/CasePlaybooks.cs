@@ -22,39 +22,6 @@ public enum CaseType
 }
 
 /// <summary>
-/// A playbook is the strategy for ONE case type. It carries everything that differs by
-/// qualification: which sources to guarantee, the legal démarche (as a qualitative checklist —
-/// never rates), the steps that must NOT be run, how the qualification narrows the applicable
-/// paragraph, a structure-only (redacted) EY skeleton, and the judge's per-case criteria.
-///
-/// Golden rule: a playbook NEVER states a numeric rate or a verdict. It tells the model which
-/// KIND of income it is, which paragraph/article to READ, and what shape the memo takes. Every
-/// number is read by the model from the retrieved source.
-/// </summary>
-public sealed record CasePlaybook(
-    CaseType Type,
-    string   Label,
-    // Retrieval routing (topic-primary, article-backstop).
-    string[] Topics,             // taxmind Topic nodes (HAS_TOPIC) — robust to renumbering
-    string[] BackstopArticlesCirppis,
-    string[] BackstopArticlesTva,
-    string[] BackstopArticlesCdpf,
-    string[] TreatySubjects,     // treaty article subjects to fetch BY SUBJECT (numbers vary per treaty)
-    bool     NeedsConventionArticle,
-    // Prompt content. When SystemPrompt/Demarche are empty the handler keeps the legacy path
-    // (Generic / RsServiceForeign) so the proven service flow never regresses.
-    string   SystemPrompt,
-    string   Demarche,
-    string   ForbiddenSteps,
-    string   QualificationGuidance,
-    string   RedactedSkeleton,
-    string   JudgeCriteria)
-{
-    /// <summary>True when this playbook supplies its own specialised prompt (i.e. not the legacy path).</summary>
-    public bool HasOwnPrompt => !string.IsNullOrWhiteSpace(Demarche);
-}
-
-/// <summary>
 /// Universal EY house-style — the WAY a memo reads, independent of the case. This is how we fix
 /// "reads like a draft / weak analysis" without teaching any answer: it contains zero tax content,
 /// only writing rules. Applied to every case, service or dividend alike.

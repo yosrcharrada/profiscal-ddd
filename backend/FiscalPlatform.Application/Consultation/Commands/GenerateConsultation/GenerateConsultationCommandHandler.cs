@@ -867,41 +867,6 @@ public sealed class GenerateConsultationCommandHandler(
         return validated;
     }
 
-    // Phase-2 prompt for a specialised (non-legacy) playbook: the playbook supplies the démarche,
-    // forbidden steps, qualification guidance and a structure-only skeleton; the universal EY style
-    // card supplies the voice. No rates, no verdicts — every number is read from the sources.
-    internal static string BuildPlaybookPhase2Prompt(
-        GenerateConsultationCommand cmd, List<LegalSourceDto> sources, List<string> etendueItems,
-        string sommaire, string contexteFaits, CasePlaybook pb)
-    {
-        var n  = etendueItems.Count;
-        var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
-        var concise = string.Equals(cmd.Mode, "concise", StringComparison.OrdinalIgnoreCase);
-        var format = concise
-            ? "FORMAT — VERSION CONCISE : mêmes qualification, mêmes verdicts et mêmes taux que la version " +
-              "détaillée, mais CONDENSÉS (chaque point en quelques phrases). N'omets aucun verdict ni taux.\n"
-            : "FORMAT — VERSION DÉTAILLÉE : prose professionnelle continue, chaque point développé selon la " +
-              "démarche ci-dessus, chaque règle appliquée aux faits et close par une position claire.\n";
-
-        return
-            $"PHASE 2 — JSON avec 1 clé: analyses.\n\n" +
-            $"CAS QUALIFIÉ : {pb.Label}\n\n" +
-            $"Client : {cmd.ClientName} | Question : {cmd.FiscalQuestion}\n\n" +
-            $"FAITS ÉTABLIS (section 1.1) :\n{contexteFaits}\n\n" +
-            $"ÉTENDUE ({n} point(s) demandé(s)) :\n{et}\n\n" +
-            SourcesBlock(sources) + "\n" +
-            "═══ QUALIFICATION ═══\n" + pb.QualificationGuidance + "\n\n" +
-            pb.Demarche + "\n" +
-            (string.IsNullOrWhiteSpace(pb.ForbiddenSteps) ? "" : "═══ À NE PAS FAIRE ═══\n" + pb.ForbiddenSteps + "\n\n") +
-            EyStyle.Card + "\n" +
-            "═══ MODÈLE DE STRUCTURE (forme uniquement — les crochets sont des ESPACES À REMPLIR depuis les " +
-            "faits et les sources ; ne recopie JAMAIS un contenu du modèle) ═══\n" + pb.RedactedSkeleton + "\n\n" +
-            format +
-            $"Organise en blocs « 4.1 » à « 4.{n} » (un par point d'étendue).\n" +
-            "[Sn] OBLIGATOIRE ; tout taux cite sa source [Sn] et est LU dans son texte.\n\n" +
-            "{\"analyses\":\"4. ANALYSES\\n\\n[blocs]\"}";
-    }
-
     // Universal "senior review" polish: a bounded rewrite that improves the drafting to EY house
     // form WITHOUT touching any figure, citation, verdict or article. Guarded — if the rewrite drops
     // citations or introduces a spurious "NON DOCUMENTÉ", we keep the original. Fixes "reads like a
@@ -983,39 +948,6 @@ public sealed class GenerateConsultationCommandHandler(
 
     internal static string Digits(string? s) =>
         string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
-
-    // For a specialised (convention-income) playbook, force the two decisive sources to the very
-    // front of the visible window: (1) the treaty income article matching the playbook's subject
-    // (Dividendes / Intérêts / Redevances) for a detected country, and (2) the CIRPPIS Art.52/53
-    // rate article that carries the domestic figure. Otherwise the flood of convention chunks a
-    // treaty case pulls in pushes Art.52 past the cutoff and the model invents the rate.
-    internal static void PinPlaybookSources(
-        List<LegalSourceDto> sources, ICollection<string> countries, Playbooks.CasePlaybook pb)
-    {
-        static string Head(LegalSourceDto s) =>
-            (s.Text ?? "")[..System.Math.Min((s.Text ?? "").Length, 60)];
-
-        bool IsIncomeTreaty(LegalSourceDto s) =>
-            string.Equals(s.DocType, "Convention", System.StringComparison.OrdinalIgnoreCase) &&
-            pb.TreatySubjects.Any(subj =>
-                Head(s).Contains(subj, System.StringComparison.OrdinalIgnoreCase)) &&
-            (countries.Count == 0 || countries.Any(c =>
-                (s.DocName ?? "").Contains(c, System.StringComparison.OrdinalIgnoreCase)));
-
-        bool IsDomesticRate(LegalSourceDto s) =>
-            (s.DocName ?? "").Contains("code_irpp_is", System.StringComparison.OrdinalIgnoreCase) &&
-            (Digits(s.ArticleRef) == "52" || Digits(s.ArticleRef) == "53") &&
-            (s.Text ?? "").Contains('%');
-
-        var treaty   = sources.Where(IsIncomeTreaty).ToList();
-        var domestic = sources.Where(s => !IsIncomeTreaty(s) && IsDomesticRate(s)).ToList();
-        var rest     = sources.Where(s => !IsIncomeTreaty(s) && !IsDomesticRate(s)).ToList();
-
-        sources.Clear();
-        sources.AddRange(treaty);
-        sources.AddRange(domestic);
-        sources.AddRange(rest);
-    }
 
     private static List<LegalSourceDto> MergeAllSources(
         List<LegalSourceDto> plannerSources,
