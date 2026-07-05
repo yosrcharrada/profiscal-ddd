@@ -76,6 +76,11 @@ public abstract class CaseAgentBase : ICaseAgent
         Key: "cdpf_112", Critical: false,
         Description: "Art.112 CDPF + circulaire BCT n°9/2016 (certificat de RS, transfert des fonds)",
         DocFragment: "code_droits_procedures", ArticleNumber: "112",
+        // "transfert" filters the line-precise fetch: some CDPF parts carry a wrong
+        // article_number=112 stamp (médiateur fiscal, Art.114/117) — without the text filter they
+        // would enter the window as noise. The REAL Art.112 text is absent from both graphs anyway
+        // (only 112 bis exists), so this item stays best-effort until the tax team adds the text.
+        TextContains: "transfert",
         FetchDocFragment: "code_droits_procedures",
         FetchKeywords: new[] { "certificat de retenue", "transfert", "attestation de régularisation" });
 
