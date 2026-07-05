@@ -272,10 +272,6 @@ public sealed class ConsultationWorkflow(
     private async Task<List<LegalSourceDto>> FetchForAsync(
         RequiredSource item, CaseBrief brief, ConsultationState state, CancellationToken ct)
     {
-        // Special métier fetchers first (they encode year-preference and Arabic-exclusion).
-        if (item.Key.StartsWith("art52", StringComparison.OrdinalIgnoreCase))
-            return await retrieval.FetchDomesticRetenueAsync(new List<string>(), ct) ?? new();
-
         if (item.Key == "nc2_2015")
             return await retrieval.FetchNoteCommune2Async(state.Countries.FirstOrDefault(), ct) ?? new();
 
@@ -289,10 +285,20 @@ public sealed class ConsultationWorkflow(
             return all;
         }
 
+        // LINE-PRECISE: the item's own predicates (TextContains / RequirePercent) drive the part
+        // selection — on the part-split graph the writer receives the article header plus ONLY the
+        // alinéas this case needs (with NEXT_PART neighbours for straddles), never the whole menu.
         if (item.ArticleNumber is not null)
+        {
+            var lines = await retrieval.FetchArticleLinesAsync(
+                item.FetchDocFragment ?? item.DocFragment ?? "",
+                item.ArticleNumber, item.TextContains, item.RequirePercent, ct) ?? new();
+            if (lines.Count > 0) return lines;
+            // fallback: the broader by-number fetch (older editions, display-based matches)
             return await retrieval.FetchTargetedAsync(
                 item.FetchDocFragment ?? item.DocFragment ?? "",
                 new[] { item.ArticleNumber }, item.FetchKeywords ?? Array.Empty<string>(), ct) ?? new();
+        }
 
         var kws = item.FetchKeywords ?? (item.TextContains is not null
             ? new[] { item.TextContains } : Array.Empty<string>());

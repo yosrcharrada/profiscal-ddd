@@ -627,6 +627,67 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         return results;
     }
 
+    // LINE-PRECISE article fetch. Two steps: (1) resolve the NEWEST edition carrying the article;
+    // (2) inside that single edition, return the header (part 1) plus ONLY the parts whose text
+    // matches the requested line predicates, expanded to their NEXT_PART neighbours because an
+    // alinéa's sentence can straddle two parts. On taxmindvf (paragraph parts) this hands the
+    // writer exactly the alinéas the case needs; on taxmind (whole-article chunks, part_number
+    // null → treated as header) it degrades to the article's chunks. NEXT_PART simply doesn't
+    // exist on taxmind, so the OPTIONAL MATCH contributes nothing there.
+    public async Task<List<LegalSourceDto>> FetchArticleLinesAsync(
+        string docFragment, string articleNumber, string? mustContain, bool requirePercent,
+        CancellationToken ct = default)
+    {
+        var results = new List<LegalSourceDto>();
+        var seen    = new HashSet<string>();
+        var frag    = (docFragment ?? "").ToLowerInvariant();
+        var num     = new string((articleNumber ?? "").Where(char.IsDigit).ToArray());
+        if (num.Length == 0) return results;
+        try
+        {
+            await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
+
+            // (1) newest edition of this article within the doc family
+            string? newest = null;
+            var docRes = await session.RunAsync($@"
+                MATCH (c:Chunk)
+                WHERE ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS $frag)
+                  AND toString(c.article_number) = $num AND c.content <> ''{NoAr}
+                RETURN coalesce(c.doc_id, c.document_id) AS doc
+                ORDER BY doc DESC LIMIT 1", new { frag, num });
+            await foreach (var r in docRes) { newest = r["doc"].As<string>(); break; }
+            if (newest is null) return results;
+
+            // (2) header + predicate-matching parts + NEXT_PART neighbours, in reading order
+            var res = await session.RunAsync($@"
+                MATCH (c:Chunk)
+                WHERE coalesce(c.doc_id, c.document_id) = $doc
+                  AND toString(c.article_number) = $num AND c.content <> ''{NoAr}
+                  AND ( coalesce(c.part_number, 1) = 1
+                        OR ( ($contains = '' OR toLower(c.content) CONTAINS $contains)
+                             AND (NOT $needPct OR c.content CONTAINS '%') ) )
+                OPTIONAL MATCH (c)-[:NEXT_PART]->(nx:Chunk)
+                    WHERE toString(nx.article_number) = $num
+                OPTIONAL MATCH (pv:Chunk)-[:NEXT_PART]->(c)
+                    WHERE toString(pv.article_number) = $num
+                WITH collect(DISTINCT c) + collect(DISTINCT nx) + collect(DISTINCT pv) AS nodes
+                UNWIND nodes AS n
+                WITH DISTINCT n WHERE n IS NOT NULL
+                WITH n AS c
+                RETURN {F}, 0.97 AS score
+                ORDER BY coalesce(c.part_number, 0) ASC LIMIT 12",
+                new { doc = newest, num,
+                      contains = (mustContain ?? "").ToLowerInvariant(),
+                      needPct  = requirePercent });
+            await foreach (var r in res)
+            { var t = r["text"]?.As<string>() ?? ""; if (!ContainsArabic(t)) TryAdd(results, seen, r, 0.97); }
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "FetchArticleLines {D} art {A}", docFragment, articleNumber); }
+        _logger.LogInformation("FetchArticleLines doc='{D}' art={A} contains='{C}' pct={P}: {N} parts",
+            docFragment, articleNumber, mustContain, requirePercent, results.Count);
+        return results;
+    }
+
     // Number-free: locate a provision by anchor phrase → Topic → keyword → BM25 (all scoped to a
     // doc family). No article numbers — robust to convention/code renumbering.
     public async Task<List<LegalSourceDto>> FetchBySubjectAsync(

@@ -46,6 +46,15 @@ public interface IRetrievalAgent
     Task<List<LegalSourceDto>> FetchBySubjectAsync(
         string docFragment, string[] anchorPhrases, string[] topics, string[] keywords,
         CancellationToken ct = default);
+
+    // LINE-PRECISE article fetch: from the NEWEST edition of the article, return the header
+    // (part 1) plus ONLY the parts matching the requested line predicates (mustContain /
+    // requirePercent) and their NEXT_PART neighbours (a sentence can straddle two parts).
+    // On the part-split taxmindvf graph this returns exactly the alinéas a case needs; on the
+    // whole-article taxmind graph it degrades gracefully to the article's chunks.
+    Task<List<LegalSourceDto>> FetchArticleLinesAsync(
+        string docFragment, string articleNumber, string? mustContain, bool requirePercent,
+        CancellationToken ct = default);
 }
 
 // ─── EMBED SEARCH AGENT ──────────────────────────────────────────────────────
