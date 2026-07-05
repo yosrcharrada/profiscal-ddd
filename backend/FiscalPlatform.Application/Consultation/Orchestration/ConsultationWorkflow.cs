@@ -32,6 +32,7 @@ namespace FiscalPlatform.Application.Consultation.Orchestration;
 public sealed class ConsultationWorkflow(
     ILlmAgent llm,
     IRetrievalAgent retrieval,
+    IRetrievalPlannerAgent planner,
     IAcceptanceAgent acceptance,
     IEnumerable<ICaseAgent> caseAgents,
     ILogger<ConsultationWorkflow> logger)
@@ -164,7 +165,12 @@ public sealed class ConsultationWorkflow(
         return ValueTask.FromResult(state);
     }
 
-    // ── [3] Fulfil retrieval: fetch every still-missing checklist item (case-aware) ──
+    // ── [3] RetrievalPlannerAgent — CASE-AWARE fulfilment of the brief ────────
+    // The case agent's brief goes STRAIGHT to the autonomous ReAct planner: it receives the
+    // still-missing checklist items as its mission, reasons about where they live, and hunts them
+    // with its own tools. The deterministic métier fetchers act only as a SAFETY NET inside the
+    // node — (a) if the planner call itself fails (LLM outage), and (b) as a final sweep for any
+    // item the planner missed — so the completeness guarantee survives the planner's autonomy.
     private async ValueTask<ConsultationState> FulfilAsync(
         ConsultationState state, IWorkflowContext ctx, CancellationToken ct)
     {
@@ -176,26 +182,47 @@ public sealed class ConsultationWorkflow(
         var report  = agent.VerifyCompleteness(brief, state.Sources, state.Countries);
         var before  = state.Sources.Count;
         var hasDraft = !string.IsNullOrEmpty(state.Analyses);
+        var plannerOk = false;
 
-        foreach (var item in report.Missing.Take(8))
+        if (report.Missing.Count > 0 || state.JudgeMissingTopics.Count > 0)
         {
+            // The MISSION: the brief's missing items (+ anything the judge flagged), described in
+            // métier terms. The planner decides which of its tools to call, and how.
+            var items = report.Missing.Select(m => $"- {m.Description}")
+                .Concat(state.JudgeMissingTopics.Select(t => $"- {t}"))
+                .ToList();
             try
             {
-                var hits = await FetchForAsync(item, brief, state, ct);
-                AddDeduped(state.Sources, hits);
+                logger.LogInformation("► [GRAPH:Fulfil #{L}] planner mission — {N} item(s): {M}",
+                    state.RetrievalLoops, items.Count,
+                    string.Join(" | ", report.Missing.Select(m => m.Key)));
+                var mission = await planner.PlanAndRetrieveAsync(
+                    situation:
+                        $"CAS QUALIFIÉ : {brief.Label}.\n" +
+                        $"FAITS : {state.ContexteFaits}",
+                    fiscalQuestion:
+                        "MISSION DE RECHERCHE CIBLÉE — retrouve PRÉCISÉMENT les sources juridiques " +
+                        "suivantes, requises pour ce cas (utilise tes outils, reformule si nécessaire ; " +
+                        "pour les conventions cherche l'article PAR SUJET, jamais par numéro) :\n" +
+                        string.Join("\n", items),
+                    state.Branches, state.Countries, state.IsInternational, ct);
+                AddDeduped(state.Sources, mission?.Sources ?? new List<LegalSourceDto>());
+                plannerOk = true;
             }
-            catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] item {K}", item.Key); }
-        }
-
-        // Judge-requested topics (missing-source rejections) become ad-hoc keyword fetches.
-        foreach (var topic in state.JudgeMissingTopics.Take(4))
-        {
-            try
+            catch (Exception ex)
             {
-                var hits = await retrieval.FetchTargetedAsync("", Array.Empty<string>(), new[] { topic }, ct);
-                AddDeduped(state.Sources, hits);
+                logger.LogWarning(ex, "[GRAPH:Fulfil] planner failed — deterministic net takes over");
             }
-            catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] judge topic {T}", topic); }
+
+            // SAFETY NET: deterministic métier fetchers (year preference, Arabic exclusion,
+            // treaty-by-subject) for whatever the planner did not satisfy — or everything, if the
+            // planner call failed outright. Runs AFTER the planner; never replaces it.
+            var still = agent.VerifyCompleteness(brief, state.Sources, state.Countries);
+            foreach (var item in (plannerOk ? still.Missing : report.Missing).Take(8))
+            {
+                try   { AddDeduped(state.Sources, await FetchForAsync(item, brief, state, ct)); }
+                catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] net item {K}", item.Key); }
+            }
         }
         state.JudgeMissingTopics.Clear();
 
