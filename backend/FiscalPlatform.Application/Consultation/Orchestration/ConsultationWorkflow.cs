@@ -101,13 +101,15 @@ public sealed class ConsultationWorkflow(
         var sys =
             "Tu es un fiscaliste tunisien senior. Tu CLASSES la nature du revenu d'une consultation, " +
             "à partir de l'ÉTENDUE des travaux et des faits. Réponds UNIQUEMENT en JSON:\n" +
-            "{\"case_type\":\"rs_service_foreign|dividende|interet|redevance|autre\",\"rationale\":\"...\"}\n" +
+            "{\"case_type\":\"rs_service_foreign|rs_service_local|dividende|interet|redevance|autre\",\"rationale\":\"...\"}\n" +
             "- dividende: distribution de bénéfices / dividendes à un actionnaire (société mère, associé…).\n" +
             "- interet: intérêts d'un prêt / d'une créance.\n" +
             "- redevance: usage d'un droit, marque, brevet, logiciel, savoir-faire, licence.\n" +
-            "- rs_service_foreign: prestation de services rendue par un fournisseur ÉTRANGER (étude, " +
+            "- rs_service_foreign: prestation de services rendue par un fournisseur ÉTRANGER non résident (étude, " +
             "engineering, assistance technique, conseil…).\n" +
-            "- autre: tout le reste (transaction purement interne, cas non couvert).\n" +
+            "- rs_service_local: prestation de services entre deux entités TOUTES DEUX résidentes/établies " +
+            "en Tunisie (assistance administrative, juridique, comptable, management fees intra-groupe local…).\n" +
+            "- autre: tout le reste (cas non couvert).\n" +
             "Choisis la catégorie DOMINANTE de la question posée.";
         var user = $"ÉTENDUE:\n{et}\n\nFAITS:\n{state.ContexteFaits}\n\nQUESTION: {cmd.FiscalQuestion}\n\n" +
                    $"(indice préliminaire du planner: {state.Plan.IncomeType})\nClasse. JSON.";
@@ -124,6 +126,7 @@ public sealed class ConsultationWorkflow(
                 "interet"            => CaseType.Interet,
                 "redevance"          => CaseType.Redevance,
                 "rs_service_foreign" => CaseType.RsServiceForeign,
+                "rs_service_local"   => CaseType.RsServiceLocal,
                 _                    => CaseType.Generic,
             };
         }
@@ -143,6 +146,10 @@ public sealed class ConsultationWorkflow(
                 "emprunt", "coupon") => CaseType.Generic,
             CaseType.Redevance when !Cue("redevance", "royalt", "licence", "marque", "brevet",
                 "logiciel", "savoir-faire", "savoir faire", "droit d'usage") => CaseType.Generic,
+            // Domestic only when NO foreign country was detected anywhere — a detected country means
+            // a foreign party is involved and the international flow (with its treaty logic) must run.
+            CaseType.RsServiceLocal when state.Countries.Count > 0 || state.IsInternational
+                => CaseType.RsServiceForeign,
             _ => llmType,
         };
 
@@ -226,10 +233,24 @@ public sealed class ConsultationWorkflow(
         }
         state.JudgeMissingTopics.Clear();
 
-        // Citation stability rule (hard-won): BEFORE any draft exists we may pin + fully re-index;
+        // Citation stability rule (hard-won): BEFORE any draft exists we may curate + fully re-index;
         // AFTER a draft exists we only APPEND — existing [Sn] must keep resolving to the same source.
         if (!hasDraft)
         {
+            // (1) MÉTIER: a convention for the WRONG country is strictly worse than no convention —
+            //     purge any treaty source that doesn't match a detected country.
+            if (state.Countries.Count > 0)
+                state.Sources.RemoveAll(s =>
+                    string.Equals(s.DocType, "Convention", StringComparison.OrdinalIgnoreCase) &&
+                    !state.Countries.Any(c => (s.DocName ?? "").Contains(c, StringComparison.OrdinalIgnoreCase)));
+            else
+                state.Sources.RemoveAll(s =>
+                    string.Equals(s.DocType, "Convention", StringComparison.OrdinalIgnoreCase));
+
+            // (2) MÉTIER: cite codes in their single MOST RECENT edition — drop older-year duplicates
+            //     of the same article (keeps all parts of the newest edition; NC/conventions exempt).
+            DropOlderEditions(state.Sources);
+
             PinCaseSources(state.Sources, state.Countries, brief);
             for (int i = 0; i < state.Sources.Count; i++) state.Sources[i].Index = i + 1;
         }
@@ -287,6 +308,41 @@ public sealed class ConsultationWorkflow(
             sources.Add(h);
     }
 
+    // MÉTIER: a code article is cited in its single most recent edition. For each (code family,
+    // article) present in several editions, drop the older years — UNLESS the newest edition carries
+    // no rate ('%') while an older one does (never trade the figure away for recency). NC, LF and
+    // convention docs are exempt (they are unique documents, not yearly editions).
+    internal static void DropOlderEditions(List<LegalSourceDto> sources)
+    {
+        static string Family(string name) => Regex.Replace(name ?? "", @"_(19|20)\d{2}.*$", "");
+        static int YearOf(LegalSourceDto s)
+        {
+            var m = Regex.Match((s.DocName ?? "") + " " + (s.Year ?? ""), @"(19|20)\d{2}");
+            return m.Success ? int.Parse(m.Value) : 0;
+        }
+
+        var codeGroups = sources
+            .Where(s => (s.DocName ?? "").StartsWith("code_", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(s => Family(s.DocName) + "|" + H.Digits(s.ArticleRef))
+            .Where(g => g.Select(YearOf).Distinct().Count() > 1);
+
+        var toDrop = new HashSet<LegalSourceDto>();
+        foreach (var g in codeGroups)
+        {
+            var newestYear   = g.Max(YearOf);
+            var newestHasPct = g.Where(s => YearOf(s) == newestYear).Any(s => (s.Text ?? "").Contains('%'));
+            var anyHasPct    = g.Any(s => (s.Text ?? "").Contains('%'));
+            foreach (var s in g)
+            {
+                if (YearOf(s) == newestYear) continue;
+                // keep an older %-bearing copy only when the newest edition lost the figure
+                if (!newestHasPct && anyHasPct && (s.Text ?? "").Contains('%')) continue;
+                toDrop.Add(s);
+            }
+        }
+        if (toDrop.Count > 0) sources.RemoveAll(toDrop.Contains);
+    }
+
     // Pin the decisive sources to the front of the visible window: treaty income articles matching
     // the brief's subjects, then the %-bearing CIRPPIS 52/53 and CTVA 7 (newest year first).
     private static void PinCaseSources(
@@ -334,7 +390,21 @@ public sealed class ConsultationWorkflow(
         ConsultationState state, IWorkflowContext ctx, CancellationToken ct)
     {
         var agent  = Agent(state.CaseType);
-        state.Completeness = agent.VerifyCompleteness(state.Brief!, state.Sources, state.Countries);
+        var report = agent.VerifyCompleteness(state.Brief!, state.Sources, state.Countries);
+
+        // Existence-conditional items (treaty articles): after the loop has genuinely tried, their
+        // absence becomes a legal FACT (no convention with that country → droit commun applies), not
+        // a retrieval failure to chase forever. Stop them from blocking completeness.
+        if (state.RetrievalLoops >= 2 && report.MissingCritical.Any(m => m.ExistenceConditional))
+        {
+            var stillCritical = report.MissingCritical.Where(m => !m.ExistenceConditional).ToList();
+            foreach (var m in report.MissingCritical.Where(m => m.ExistenceConditional))
+                logger.LogInformation(
+                    "► [GRAPH:Completeness] {K} introuvable après {L} tentatives — traité comme " +
+                    "INEXISTANT (pas de convention → droit commun)", m.Key, state.RetrievalLoops);
+            report = report with { MissingCritical = stillCritical };
+        }
+        state.Completeness = report;
         var r = state.Completeness;
         state.Timings.Add(("W4. Completeness", 0,
             $"{r.TotalRequired - r.Missing.Count}/{r.TotalRequired} ok, crit missing={r.MissingCritical.Count}"));

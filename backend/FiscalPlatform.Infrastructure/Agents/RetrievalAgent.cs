@@ -28,17 +28,20 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
     private readonly string                   _db;
     private readonly ILogger<RetrievalAgent>  _logger;
 
-    // doc_type derived from the corpus the chunk belongs to.
+    // doc_type derived from the corpus/folder the chunk belongs to.
+    // DUAL-SCHEMA: works on both graphs — taxmind (doc_id/corpus, whole-article chunks) and
+    // taxmindvf (document_id/folder, paragraph-level parts). Switch via NEO4J_DATABASE in .env.
     private const string DocTypeCase =
-        "CASE {0}.corpus WHEN 'Conventions' THEN 'Convention' " +
+        "CASE coalesce({0}.corpus, {0}.folder) WHEN 'Conventions' THEN 'Convention' " +
         "WHEN 'Lois_des_Finances' THEN 'LoiFinances' " +
-        "WHEN 'Notes_Communes' THEN 'Doctrine' ELSE 'Code' END";
+        "WHEN 'Notes_Communes' THEN 'Doctrine' " +
+        "WHEN 'Faiez' THEN 'Commentaire' ELSE 'Code' END";
 
     private static string Proj(string a) =>
-        $"{a}.chunk_id AS id, {a}.content AS text, {a}.doc_id AS doc_name, " +
+        $"{a}.chunk_id AS id, {a}.content AS text, coalesce({a}.doc_id, {a}.document_id) AS doc_name, " +
         string.Format(DocTypeCase, a) + " AS doc_type, " +
         $"coalesce({a}.article_display, {a}.article_number, '') AS article_ref, " +
-        $"{a}.title AS section_title, '' AS annee";
+        $"{a}.title AS section_title, coalesce(toString({a}.year), '') AS annee";
 
     private static readonly string F     = Proj("c");
     private static readonly string CH    = Proj("ch");
@@ -107,7 +110,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             await using var s = _driver.AsyncSession(o => o.WithDatabase(_db));
             var r = await s.RunAsync(@"
                 MATCH (c:Chunk)    WITH count(c) AS chunks
-                MATCH (t:Topic)    WITH chunks, count(t) AS ents
+                OPTIONAL MATCH (t:Topic) WITH chunks, count(t) AS ents
                 MATCH ()-[rel]->() RETURN chunks, ents, count(rel) AS rels");
             var rec = await r.SingleAsync();
             stats.TotalChunks    = rec["chunks"].As<long>();
@@ -121,7 +124,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             })
             {
                 var cr = await s.RunAsync(
-                    "MATCH (c:Chunk {corpus:$corpus}) RETURN count(c) AS n", new { corpus });
+                    "MATCH (c:Chunk) WHERE coalesce(c.corpus, c.folder) = $corpus RETURN count(c) AS n", new { corpus });
                 var n = (await cr.SingleAsync())["n"].As<long>();
                 switch (prop)
                 {
@@ -217,10 +220,10 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             {
                 var res = await session.RunAsync($@"
                     MATCH (c:Chunk)
-                    WHERE toLower(c.doc_id) CONTAINS toLower($dk)
+                    WHERE toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($dk)
                       AND c.content <> '' AND toLower(c.content) CONTAINS toLower($kw)
                     RETURN {F}, 0.9 AS score
-                    ORDER BY (CASE WHEN c.chunk_type = 'article' THEN 0 ELSE 1 END), c.doc_id DESC
+                    ORDER BY (CASE WHEN c.chunk_type = 'article' THEN 0 ELSE 1 END), coalesce(c.doc_id, c.document_id) DESC
                     LIMIT 4",
                     new { dk = docIdFragment, kw });
                 await foreach (var r in res)
@@ -250,8 +253,8 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 {
                     var res = await session.RunAsync($@"
                         MATCH (c:Chunk)
-                        WHERE c.corpus = 'Conventions'
-                          AND toLower(c.doc_id) CONTAINS toLower($frag)
+                        WHERE coalesce(c.corpus, c.folder) = 'Conventions'
+                          AND toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag)
                           AND toLower(c.content) CONTAINS toLower($kw)
                         RETURN {F}, 0.85 AS score
                         ORDER BY (CASE WHEN c.chunk_type = 'article' THEN 0 ELSE 1 END)
@@ -274,10 +277,10 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         {
             var res = await session.RunAsync($@"
                 MATCH (c:Chunk)
-                WHERE c.corpus = $corpus AND c.content <> ''
+                WHERE coalesce(c.corpus, c.folder) = $corpus AND c.content <> ''
                   AND ANY(kw IN $kws WHERE toLower(c.content) CONTAINS toLower(kw))
                 RETURN {F}, 0.7 AS score
-                ORDER BY (CASE WHEN c.chunk_type = 'article' THEN 0 ELSE 1 END), c.doc_id DESC
+                ORDER BY (CASE WHEN c.chunk_type = 'article' THEN 0 ELSE 1 END), coalesce(c.doc_id, c.document_id) DESC
                 LIMIT $lim",
                 new { corpus, kws = keywords, lim = limit * 5 });
             await foreach (var r in res)
@@ -369,7 +372,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $emb)
                 YIELD node AS c, score
                 WHERE c.content <> '' AND score >= 0.3
-                RETURN c.doc_id AS doc_name, 0 AS page_num,
+                RETURN coalesce(c.doc_id, c.document_id) AS doc_name, 0 AS page_num,
                        c.content AS text, c.chunk_type AS chunk_type,
                        coalesce(c.article_display, c.article_number, '') AS article_ref, score
                 LIMIT $topK",
@@ -391,7 +394,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 UNWIND $terms AS term
                 MATCH (t:Topic) WHERE toLower(t.label) CONTAINS toLower(term)
                 MATCH (t)<-[:HAS_TOPIC]-(c:Chunk) WHERE c.content <> ''
-                RETURN DISTINCT c.doc_id AS doc_name, 0 AS page_num,
+                RETURN DISTINCT coalesce(c.doc_id, c.document_id) AS doc_name, 0 AS page_num,
                        c.content AS text, c.chunk_type AS chunk_type,
                        coalesce(c.article_display, c.article_number, '') AS article_ref, 0.7 AS score
                 LIMIT $topK",
@@ -412,7 +415,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 var ft = await session.RunAsync(@"
                     CALL db.index.fulltext.queryNodes('chunk_content', $q) YIELD node AS c, score
                     WHERE c.content <> ''
-                    RETURN c.doc_id AS doc_name, 0 AS page_num, c.content AS text,
+                    RETURN coalesce(c.doc_id, c.document_id) AS doc_name, 0 AS page_num, c.content AS text,
                            c.chunk_type AS chunk_type,
                            coalesce(c.article_display, c.article_number, '') AS article_ref, score
                     LIMIT $topK",
@@ -427,7 +430,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             var r = await session.RunAsync(@"
                 MATCH (c:Chunk)
                 WHERE c.content <> '' AND ANY(t IN $terms WHERE toLower(c.content) CONTAINS t)
-                RETURN c.doc_id AS doc_name, 0 AS page_num, c.content AS text,
+                RETURN coalesce(c.doc_id, c.document_id) AS doc_name, 0 AS page_num, c.content AS text,
                        c.chunk_type AS chunk_type,
                        coalesce(c.article_display, c.article_number, '') AS article_ref, 0.5 AS score
                 LIMIT $topK",
@@ -456,8 +459,8 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                     // SUBJECT (its title — e.g. 'Redevances', 'Etablissement stable'), title first.
                     var res = await session.RunAsync($@"
                         MATCH (c:Chunk)
-                        WHERE c.corpus = 'Conventions' AND c.chunk_type = 'article'
-                          AND toLower(c.doc_id) CONTAINS toLower($frag)
+                        WHERE coalesce(c.corpus, c.folder) = 'Conventions' AND c.chunk_type = 'article'
+                          AND toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag)
                           AND (toLower(c.title) CONTAINS toLower($kw) OR toLower(c.content) CONTAINS toLower($kw))
                         RETURN {F}, (CASE WHEN toLower(c.title) CONTAINS toLower($kw) THEN 0.95 ELSE 0.85 END) AS score
                         ORDER BY (CASE WHEN toLower(c.title) CONTAINS toLower($kw) THEN 0 ELSE 1 END), size(c.title)
@@ -487,7 +490,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
             var res = await session.RunAsync($@"
                 MATCH (c:Chunk)
-                WHERE c.doc_id STARTS WITH $nc AND c.content <> ''
+                WHERE coalesce(c.doc_id, c.document_id) STARTS WITH $nc AND c.content <> ''
                 RETURN {F}, 0.9 AS score
                 ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), c.chunk_index
                 LIMIT 8",
@@ -513,25 +516,23 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         {
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
             // toString() so this matches whether article_number is stored as a string ('52') or an
-            // integer (52) — the import type differs across Neo4j environments and an int-typed graph
-            // silently drops the RS-rate article otherwise. Ordering priorities, in order:
-            //   1. carries an actual rate ('%')      — never a rate-less stub
-            //   2. NEWEST year (doc_id DESC)         — 2026 beats 2020; the LF changes rates yearly
-            //   3. fullest text (size DESC)          — tiebreak within the same year
-            // (2) MUST precede (3): the 2020 Art.52 is physically longer than 2026, so size-first
-            // wrongly picked the stale 2020 text where §a honoraires was still 15% instead of 10%.
+            // integer (52) — the import type differs across Neo4j environments. Ordering: NEWEST
+            // edition first (doc DESC — the LF changes rates yearly), then reading order within the
+            // article (part ASC — taxmindvf splits articles into paragraph-level parts; 0 on the old
+            // whole-article graph). LIMIT is generous: on taxmindvf one article = many small parts;
+            // on taxmind it returns several editions and the workflow's edition-dedup keeps the newest.
             var art = await session.RunAsync($@"
                 MATCH (c:Chunk)
-                WHERE toLower(c.doc_id) CONTAINS 'code_irpp_is'
-                  AND c.chunk_type = 'article'
+                WHERE toLower(coalesce(c.doc_id, c.document_id)) CONTAINS 'code_irpp_is'
+                  AND (c.chunk_type = 'article' OR c.part_number IS NOT NULL)
                   AND (toString(c.article_number) IN ['52','53'] OR c.article_display CONTAINS '52' OR c.article_display CONTAINS '53')
                 RETURN {F}, 0.95 AS score
-                ORDER BY (CASE WHEN c.content CONTAINS '%' THEN 0 ELSE 1 END), c.doc_id DESC, size(c.content) DESC LIMIT 4");
+                ORDER BY coalesce(c.doc_id, c.document_id) DESC, coalesce(c.part_number, 0) ASC, size(c.content) DESC LIMIT 14");
             await foreach (var r in art) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.95); }
 
             var nc = await session.RunAsync($@"
                 MATCH (c:Chunk)
-                WHERE (c.doc_id STARTS WITH $nc3 OR c.doc_id STARTS WITH 'NC_2015_12')
+                WHERE (coalesce(c.doc_id, c.document_id) STARTS WITH $nc3 OR coalesce(c.doc_id, c.document_id) STARTS WITH 'NC_2015_12')
                   AND c.content <> '' AND toLower(c.content) CONTAINS 'honoraires'
                 RETURN {F}, 0.9 AS score LIMIT 3",
                 new { nc3 = NoteCommune3Id });
@@ -556,10 +557,10 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 if (results.Count >= 8) break;
                 var res = await session.RunAsync($@"
                     MATCH (c:Chunk)
-                    WHERE toLower(c.doc_id) CONTAINS $docFrag AND c.content <> ''
+                    WHERE toLower(coalesce(c.doc_id, c.document_id)) CONTAINS $docFrag AND c.content <> ''
                       AND toLower(c.content) CONTAINS toLower($kw)
                     RETURN {F}, 0.87 AS score
-                    ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), c.doc_id DESC LIMIT 3",
+                    ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), coalesce(c.doc_id, c.document_id) DESC LIMIT 3",
                     new { docFrag, kw });
                 await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.87); }
             }
@@ -580,22 +581,22 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
 
             // 1) by article number (precise — taxmind has article-typed chunks with article_number).
-            //    LIMIT 1 = the single fullest exact-match version per hinted article, so every hint
-            //    (…/49/52/53) is actually reached instead of the cap being spent on 3 version-copies
-            //    of the first few articles (which used to starve the RS-rate Art.52 fetch).
+            //    Newest edition only, exact article number first, then reading order (part ASC — on
+            //    taxmindvf an article is many small paragraph parts; LIMIT 8 covers them; on the old
+            //    whole-article graph part is 0 and the workflow's edition-dedup keeps the newest copy).
             foreach (var aref in (articleRefs ?? Array.Empty<string>()).Take(8))
             {
-                if (results.Count >= 16) break;
+                if (results.Count >= 40) break;
                 var num = new string((aref ?? "").Where(char.IsDigit).ToArray());
                 try
                 {
                     var res = await session.RunAsync($@"
                         MATCH (c:Chunk)
-                        WHERE ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
-                          AND c.chunk_type = 'article' AND c.content <> ''{NoAr}
+                        WHERE ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag))
+                          AND (c.chunk_type = 'article' OR c.part_number IS NOT NULL) AND c.content <> ''{NoAr}
                           AND ($num <> '' AND (toString(c.article_number) = $num OR c.article_display CONTAINS $num))
                         RETURN {F}, 0.96 AS score
-                        ORDER BY (CASE WHEN toString(c.article_number) = $num THEN 0 ELSE 1 END), c.doc_id DESC, size(c.content) DESC LIMIT 1",
+                        ORDER BY (CASE WHEN toString(c.article_number) = $num THEN 0 ELSE 1 END), coalesce(c.doc_id, c.document_id) DESC, coalesce(c.part_number, 0) ASC, size(c.content) DESC LIMIT 8",
                         new { frag, num });
                     await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.96); }
                 }
@@ -610,10 +611,10 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 {
                     var res = await session.RunAsync($@"
                         MATCH (c:Chunk)
-                        WHERE ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                        WHERE ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag))
                           AND c.content <> ''{NoAr} AND toLower(c.content) CONTAINS toLower($kw)
                         RETURN {F}, 0.9 AS score
-                        ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), c.doc_id DESC LIMIT 3",
+                        ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), coalesce(c.doc_id, c.document_id) DESC LIMIT 3",
                         new { frag, kw });
                     await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.9); }
                 }
@@ -648,7 +649,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                     var q = SanitizeLucene(string.Join(" ", anchorPhrases!));
                     var res = await session.RunAsync($@"
                         CALL db.index.fulltext.queryNodes('chunk_content', $q) YIELD node AS c, score
-                        WHERE c.content <> '' AND ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                        WHERE c.content <> '' AND ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag))
                         RETURN {F}, 0.92 AS score
                         ORDER BY score DESC LIMIT 3",
                         new { frag, q });
@@ -666,7 +667,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                     var res = await session.RunAsync($@"
                         MATCH (t:Topic) WHERE toLower(t.label) CONTAINS toLower($topic)
                         MATCH (t)<-[:HAS_TOPIC]-(c:Chunk)
-                        WHERE c.content <> '' AND ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                        WHERE c.content <> '' AND ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag))
                         RETURN {F}, 0.85 AS score
                         ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END) LIMIT 2",
                         new { frag, topic });
@@ -683,10 +684,10 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 {
                     var res = await session.RunAsync($@"
                         MATCH (c:Chunk)
-                        WHERE ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                        WHERE ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag))
                           AND c.content <> '' AND toLower(c.content) CONTAINS toLower($kw)
                         RETURN {F}, 0.8 AS score
-                        ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), c.doc_id DESC LIMIT 2",
+                        ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END), coalesce(c.doc_id, c.document_id) DESC LIMIT 2",
                         new { frag, kw });
                     await foreach (var r in res) { var t=r["text"]?.As<string>()??""; if(!ContainsArabic(t)) TryAdd(results, seen, r, 0.8); }
                 }
@@ -702,7 +703,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                         .Concat(topics ?? Array.Empty<string>()).Concat(keywords ?? Array.Empty<string>())));
                     var res = await session.RunAsync($@"
                         CALL db.index.fulltext.queryNodes('chunk_content', $q) YIELD node AS c, score
-                        WHERE c.content <> '' AND ($frag = '' OR toLower(c.doc_id) CONTAINS toLower($frag))
+                        WHERE c.content <> '' AND ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag))
                         RETURN {F}, 0.75 AS score
                         ORDER BY score DESC LIMIT 4",
                         new { frag, q });

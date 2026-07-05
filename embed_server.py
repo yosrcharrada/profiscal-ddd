@@ -193,20 +193,22 @@ def vector_search(query_emb: List[float], top_k: int,
 
     with driver.session(database=NEO4J_DB) as session:
         try:
-            # taxmind: chunk text = c.content, doc id = c.doc_id, article = c.article_display,
-            # doc_type derived from c.corpus, no chunk_type='text' (use content<>'').
+            # DUAL-SCHEMA: taxmind (doc_id/corpus) and taxmindvf (document_id/folder, paragraph
+            # parts). coalesce() lets ONE query serve both graphs — switch via NEO4J_DATABASE.
             proj = """
                     RETURN
                         c.chunk_id AS chunk_id,
                         c.content  AS text,
-                        c.doc_id   AS doc_name,
-                        CASE c.corpus WHEN 'Conventions' THEN 'Convention'
+                        coalesce(c.doc_id, c.document_id) AS doc_name,
+                        CASE coalesce(c.corpus, c.folder)
+                                      WHEN 'Conventions' THEN 'Convention'
                                       WHEN 'Lois_des_Finances' THEN 'LoiFinances'
                                       WHEN 'Notes_Communes' THEN 'Doctrine'
+                                      WHEN 'Faiez' THEN 'Commentaire'
                                       ELSE 'Code' END AS doc_type,
                         coalesce(c.article_display, c.article_number, '') AS article_ref,
                         c.title    AS section_title,
-                        ''         AS annee,
+                        coalesce(toString(c.year), '') AS annee,
                         score
                     ORDER BY score DESC
                     LIMIT $topK
@@ -216,7 +218,7 @@ def vector_search(query_emb: List[float], top_k: int,
                     CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $emb)
                     YIELD node AS c, score
                     WHERE c.content <> '' AND score >= $min_score
-                      AND toLower(c.doc_id) CONTAINS $filter
+                      AND toLower(coalesce(c.doc_id, c.document_id)) CONTAINS $filter
                 """ + proj, topK=fetch_k, emb=query_emb,
                                   min_score=MIN_SCORE, filter=doc_filter)
             else:

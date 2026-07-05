@@ -38,12 +38,34 @@ public abstract class CaseAgentBase : ICaseAgent
     public CompletenessReport VerifyCompleteness(
         CaseBrief brief, List<LegalSourceDto> sources, ICollection<string> countries)
     {
+        // taxmindvf splits an article into paragraph-level parts, so a predicate combination
+        // (e.g. TextContains + RequirePercent) may straddle two parts. Fallback: evaluate items
+        // against the CONCATENATED text of all parts of the same article in the same document.
+        var grouped = sources
+            .GroupBy(s => (s.DocName ?? "") + "|" + Digits(s.ArticleRef))
+            .Where(g => g.Count() > 1)
+            .Select(g =>
+            {
+                var first = g.First();
+                return new LegalSourceDto
+                {
+                    DocName = first.DocName, DocType = first.DocType,
+                    ArticleRef = first.ArticleRef, Year = first.Year,
+                    Text = string.Join("\n", g.Select(x => x.Text)),
+                };
+            })
+            .ToList();
+
         var missing = brief.RequiredSources
-            .Where(req => !sources.Any(s => req.IsSatisfiedBy(s, countries)))
+            .Where(req => !sources.Any(s => req.IsSatisfiedBy(s, countries)) &&
+                          !grouped.Any(s => req.IsSatisfiedBy(s, countries)))
             .ToList();
         return new CompletenessReport(
             missing, missing.Where(m => m.Critical).ToList(), brief.RequiredSources.Count);
     }
+
+    private static string Digits(string? s) =>
+        string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
 
     // ── Shared checklist fragments (métier constants) ──
 
@@ -165,7 +187,7 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
         if (state.Countries.Count > 0)
         {
             list.Add(new("conv_es", "Article « Établissement stable » de la convention applicable",
-                Critical: true, ConventionSubject: new[] { "tablissement stable" }));
+                Critical: true, ConventionSubject: new[] { "tablissement stable" }, ExistenceConditional: true));
             if (!state.Countries.Any(c => c.Contains("allemagne", StringComparison.OrdinalIgnoreCase)))
                 list.Add(new("nc2_2015", "Note commune N°2/2015 (lecture des conventions par pays)",
                     Critical: false, DocFragment: "NC_2015_02",
@@ -251,7 +273,7 @@ public sealed class DividendeAgent : CaseAgentBase
 
         if (state.Countries.Count > 0)
             list.Add(new("conv_dividendes", "Article « Dividendes » de la convention applicable",
-                Critical: true, ConventionSubject: new[] { "Dividendes" }));
+                Critical: true, ConventionSubject: new[] { "Dividendes" }, ExistenceConditional: true));
 
         // Only when the facts say the dividends were paid WITHOUT withholding does the
         // régularisation part of the démarche need its sources (amnistie / déclaration rectificative).
@@ -314,7 +336,7 @@ public sealed class InteretAgent : CaseAgentBase
         };
         if (state.Countries.Count > 0)
             list.Add(new("conv_interets", "Article « Intérêts » de la convention applicable",
-                Critical: true, ConventionSubject: new[] { "Intérêts", "Interets" }));
+                Critical: true, ConventionSubject: new[] { "Intérêts", "Interets" }, ExistenceConditional: true));
         return list;
     }
 }
@@ -372,7 +394,98 @@ public sealed class RedevanceAgent : CaseAgentBase
         };
         if (state.Countries.Count > 0)
             list.Add(new("conv_redevances", "Article « Redevances » de la convention applicable",
-                Critical: true, ConventionSubject: new[] { "Redevances" }));
+                Critical: true, ConventionSubject: new[] { "Redevances" }, ExistenceConditional: true));
         return list;
     }
+}
+
+/// <summary>Services between two RESIDENT entities — the tax team's droit-commun map:
+/// RS: CIRPPIS Art.45/46/49/52 + NC 3/2015 (annexe 2 = the honoraires definition that drives the
+/// qualification). TVA: Art.1/3/5, taux Art.7 + tableaux A/B. NO établissement stable, NO régime
+/// privilégié, NO foreign-transfer formalism — the payment never leaves Tunisia.</summary>
+public sealed class RsServiceLocalAgent : CaseAgentBase
+{
+    public override CaseType Type => CaseType.RsServiceLocal;
+    protected override bool     UsesOwnPrompt    => true;
+    protected override string   CaseSystemPrompt => DomesticSystem;
+    protected override string[] Topics => new[] { "remunerations_techniques", "services_professionnels" };
+    protected override string   Label => "Retenue à la source — services entre entités résidentes (droit commun)";
+
+    protected override string Demarche =>
+        "DÉMARCHE — SERVICES entre deux entités RÉSIDENTES (droit commun) :\n" +
+        "A. QUALIFICATION DU SERVICE — l'étape décisive :\n" +
+        "   A.1 Qualifier chaque prestation au regard de la définition des HONORAIRES donnée par la\n" +
+        "       note commune N°3/2015 (annexe) [Sn] : rémunérations où l'activité INTELLECTUELLE joue\n" +
+        "       un rôle prépondérant (professions techniques : études, ingénierie, conseil, audit,\n" +
+        "       juridique, comptable…). Applique cette définition aux prestations DES FAITS.\n" +
+        "   A.2 Distinguer, le cas échéant, les prestations où l'activité intellectuelle est\n" +
+        "       inexistante et qui sont facturées SÉPARÉMENT — elles relèvent de la ligne des\n" +
+        "       paiements au-delà du seuil prévu par l'Art.52 pour les montants payés au titre des\n" +
+        "       acquisitions de biens et services [Sn].\n" +
+        "B. TAUX DE LA RS — lis dans l'Art.52 [Sn] la LIGNE correspondant à la qualification retenue\n" +
+        "   ET à la qualité du bénéficiaire : pour des honoraires servis à une PERSONNE MORALE\n" +
+        "   SOUMISE À L'IS, c'est la ligne du taux RÉDUIT des honoraires (pas la ligne générale des\n" +
+        "   honoraires du régime réel). Le verdict peut être DOUBLE si les faits le justifient\n" +
+        "   (honoraires → taux réduit ; services non intellectuels facturés séparément → ligne du seuil).\n" +
+        "C. TVA — uniquement si demandée dans l'étendue : territorialité (Art.3) et taux (Art.7) [Sn].\n";
+
+    protected override string ForbiddenSteps =>
+        "INTERDIT : AUCUNE analyse d'établissement stable (les deux entités sont résidentes — la\n" +
+        "notion est sans objet et ne doit même pas être évoquée). AUCUN régime fiscal privilégié.\n" +
+        "AUCUNE section transfert de fonds à l'étranger (paiement domestique). AUCUNE convention\n" +
+        "fiscale internationale.";
+
+    protected override string QualificationGuidance =>
+        "Prestataire ET bénéficiaire sont RÉSIDENTS en Tunisie. La question centrale est la " +
+        "QUALIFICATION du service (honoraires — activité intellectuelle prépondérante au sens de la " +
+        "NC 3/2015 — vs autres services), puis la LIGNE de l'Art.52 correspondant à cette " +
+        "qualification et à la qualité du bénéficiaire (personne morale soumise à l'IS → ligne du " +
+        "taux réduit des honoraires).";
+
+    protected override string RedactedSkeleton =>
+        "Analyse\n" +
+        "En vertu de l'article 52 du CIRPPIS [Sn], la retenue à la source est applicable aux taux\n" +
+        "suivants : [LIGNES APPLICABLES]. L'annexe de la note commune N°3/2015 [Sn] définit les\n" +
+        "honoraires comme [DÉFINITION]. Constituent vraisemblablement des honoraires passibles de la\n" +
+        "retenue au taux de [TAUX], les services de [PRESTATIONS DES FAITS], l'intervention\n" +
+        "intellectuelle y étant prépondérante. Pour autant, la retenue s'effectue au taux de [TAUX]\n" +
+        "pour tout paiement dépassant [SEUIL] lorsque le service se limite à des prestations où\n" +
+        "l'activité intellectuelle est inexistante et qu'il est facturé de façon séparée.\n" +
+        "Verdict : [VERDICT].";
+
+    protected override string JudgeCriteria =>
+        "Cas SERVICES DOMESTIQUES (droit commun) : la qualification honoraires doit être JUSTIFIÉE par " +
+        "la définition de la NC 3/2015 appliquée aux prestations des faits. Le taux doit venir de la " +
+        "ligne RÉDUITE des honoraires servis aux personnes morales soumises à l'IS (pas la ligne " +
+        "générale du régime réel). Un double verdict (honoraires / services non intellectuels facturés " +
+        "séparément) est correct si les faits le justifient. AUCUNE section établissement stable, " +
+        "régime privilégié, convention ou transfert à l'étranger ne doit apparaître.";
+
+    protected override List<RequiredSource> BuildChecklist(ConsultationState state) => new()
+    {
+        Art52("art52_local", "CIRPPIS Art.52 (texte complet avec % — lignes honoraires réduites et seuil acquisitions)", null),
+        Nc3_2015,
+        new("cirppis_45", "CIRPPIS Art.45 (champ IS)", Critical: false,
+            DocFragment: "code_irpp_is", ArticleNumber: "45", FetchDocFragment: "code_irpp_is"),
+        new("cirppis_49", "CIRPPIS Art.49 (taux IS)", Critical: false,
+            DocFragment: "code_irpp_is", ArticleNumber: "49", FetchDocFragment: "code_irpp_is"),
+        new("ctva_3", "CTVA Art.3 (territorialité)", Critical: false,
+            DocFragment: "code_tva", ArticleNumber: "3", FetchDocFragment: "code_tva"),
+        new("ctva_7", "CTVA Art.7 (taux)", Critical: false,
+            DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true, FetchDocFragment: "code_tva"),
+    };
+
+    private const string DomesticSystem =
+        "Tu es Faiez Choyakh — fiscaliste tunisien senior, EY Tunisia.\n" +
+        "CITATIONS : [S1],[S2]… uniquement. Jamais de document en clair. Jamais inventer un article.\n" +
+        "TAUX : LIS chaque taux DEPUIS le texte de l'article cité [Sn] et recopie le chiffre EXACT. " +
+        "Jamais de taux de mémoire, jamais supposé, jamais « à vérifier ».\n" +
+        "TAUX SPÉCIFIQUE (lex specialis) : dans un article de taux, applique la LIGNE correspondant " +
+        "PRÉCISÉMENT à la NATURE du service (honoraires vs autres services) ET à la QUALITÉ du " +
+        "bénéficiaire (personne morale soumise à l'IS) — jamais la première ligne venue, jamais la " +
+        "ligne générale quand une ligne réduite spécifique s'applique.\n" +
+        "HIÉRARCHIE : Codes → Lois de finances → Doctrine (notes communes).\n" +
+        "VERDICTS : le taux chiffré réel lu dans [Sn] ; un double verdict est admis quand les faits " +
+        "distinguent deux catégories de prestations. NON DOCUMENTÉ seulement si aucune source.\n" +
+        "N'introduis AUCUNE condition non étayée par les faits. JSON PUR UNIQUEMENT.";
 }

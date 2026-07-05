@@ -46,7 +46,10 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
         "\"revision_instructions\":\"consignes précises pour corriger le projet\"}\n" +
         "Liste AU PLUS les 6 faiblesses les plus importantes (issues courtes). " +
         "missing_topics: AU PLUS 4. revision_instructions: ≤ 120 mots, à l'impératif, sans reformuler le projet.\n" +
-        "accept=false dès qu'il existe une faiblesse réelle (pas seulement un taux manquant). " +
+        "accept=false UNIQUEMENT en présence d'une faiblesse MAJEURE : verdict faux, manquant ou " +
+        "conditionnel ; taux affirmé sans source ; hallucination ; section obligatoire absente ; " +
+        "contradiction interne. Des améliorations purement stylistiques ou de simples redondances ne " +
+        "justifient PAS un rejet — dans ce cas accept=true (liste-les quand même dans issues).\n" +
         "needs_more_sources=true UNIQUEMENT si la correction exige une source absente; sinon false " +
         "(la faiblesse est corrigeable avec les sources déjà fournies).";
 

@@ -35,6 +35,7 @@ public static class DependencyInjection
         //    ExpertVoice → Finalize, all loops bounded) ──
         services.AddSingleton<ICaseAgent, GenericAgent>();
         services.AddSingleton<ICaseAgent, RsServiceForeignAgent>();
+        services.AddSingleton<ICaseAgent, RsServiceLocalAgent>();
         services.AddSingleton<ICaseAgent, DividendeAgent>();
         services.AddSingleton<ICaseAgent, InteretAgent>();
         services.AddSingleton<ICaseAgent, RedevanceAgent>();

@@ -382,18 +382,9 @@ public sealed class GenerateConsultationCommandHandler(
             Sources         = sources,
         };
 
-        logger.LogInformation("┌─ [GRAPH ‖ PHASE 3] MAF workflow + documents — parallel…");
-        var sw6      = Stopwatch.StartNew();
-        var flowTask = consultationWorkflow.RunAsync(state, ct);
-        var task3    = llmAgent.CompleteAsync(SystemPrompt,
-            BuildPhase3Prompt(cmd, sources, etendueItems),
-            "Phase3", 3500, ct);
-        await Task.WhenAll(flowTask, task3);
-        state = flowTask.Result;
-
-        var p3 = task3.Result is not null ? ParseJsonDict(task3.Result) : null;
-        if (task3.Result is null)
-            logger.LogWarning("│  [PHASE 3] returned null — documents section will be empty");
+        logger.LogInformation("┌─ [GRAPH] MAF workflow…");
+        var sw6 = Stopwatch.StartNew();
+        state   = await consultationWorkflow.RunAsync(state, ct);
 
         sources = state.Sources;                      // graph may have augmented + re-indexed
         var analysesRaw = state.Analyses;
@@ -420,7 +411,11 @@ public sealed class GenerateConsultationCommandHandler(
             Abbreviations   = GetStr(p1, "abbreviations").Trim(),
             SommairExecutif = R(sommaire),
             Analyses        = R(analysesRaw),
-            Documents       = R(p3 is not null ? GetStr(p3, "documents") : ""),
+            // The references section is built DETERMINISTICALLY from the sources actually cited in
+            // the final analyses/table — an LLM used to write it in parallel with the workflow and
+            // its [Sn] numbering drifted when the graph re-indexed sources (garbled label↔target
+            // pairs, alien conventions). Code can't misalign.
+            Documents       = BuildReferences(analysesRaw, table, sources),
             AnalysisTable   = table.Select(r =>
                 new AnalysisRow(R(r.Sujet), R(r.Analyse), R(r.Conclusion))).ToList(),
             Sources         = sources,
@@ -648,20 +643,26 @@ public sealed class GenerateConsultationCommandHandler(
         // The démarche is enforced as TITLED sub-sections (like the EY gold memos), with flowing prose
         // INSIDE each. This prevents the model from collapsing everything into one paragraph and
         // skipping a step (e.g. concluding 'no ES → no tax' and forgetting the Art.52 RS entirely).
+        // MÉTIER: the privileged-regime step (A.3) exists ONLY when NO convention applies — with a
+        // treaty in force it is never examined nor mentioned.
         var demarche =
             "DÉMARCHE OBLIGATOIRE — développe CHAQUE sous-section titrée ci-dessous, sans en sauter AUCUNE:\n" +
             "  A. IMPÔT DIRECT\n" +
             "     A.1 Établissement stable — d'abord selon le droit commun (Art.45/47), puis selon l'Art.5\n" +
-            "         de la convention s'il en existe une → verdict OUI/NON.\n" +
+            "         de la convention s'il en existe une → verdict OUI/NON. Bref et conclusif: 2 courts\n" +
+            "         paragraphes maximum, sans généralités doctrinales.\n" +
             "     A.2 Imposition EN L'ABSENCE d'ES — c'est ICI qu'on tranche le TAUX: qualifier le revenu\n" +
             "         et DONNER le taux chiffré: soit le taux de RS de l'Art.52 pour la catégorie non-\n" +
             "         résident (pays SANS convention — l'absence d'ES N'exonère PAS, elle rend la RS\n" +
             "         libératoire ; lis le chiffre dans le texte de l'Art.52 fourni et écris-le), soit le\n" +
             "         traitement conventionnel (bénéfice d'entreprise = aucune RS ; redevance/dividende/\n" +
             "         intérêt = taux réduit chiffré). NE JAMAIS conclure 'pas de RS' du seul fait de\n" +
-            "         l'absence d'ES pour un pays sans convention.\n" +
-            "     A.3 Régime fiscal privilégié — DIS si le pays figure ou non sur la liste fournie, et\n" +
-            "         conclus (majoration applicable uniquement pour les activités au taux d'IS le plus élevé).\n" +
+            "         l'absence d'ES pour un pays sans convention. NE cite QUE l'alinéa applicable de\n" +
+            "         l'Art.52 — pas les autres lignes.\n" +
+            (hasConvention
+                ? ""   // convention en vigueur → le régime privilégié n'est NI examiné NI mentionné
+                : "     A.3 Régime fiscal privilégié — DIS si le pays figure ou non sur la liste fournie, et\n" +
+                  "         conclus (majoration applicable uniquement pour les activités au taux d'IS le plus élevé).\n") +
             "  B. TVA — territorialité (Art.3) et taux chiffré (Art.7).\n" +
             "  C. AUTRES CONSIDÉRATIONS — C.1 Assiette de la RS (NC 3/2015) ; C.2 Formalisme du transfert\n" +
             "     des fonds (Art.112 CDPF + circ. BCT 9/2016).\n";
@@ -688,21 +689,33 @@ public sealed class GenerateConsultationCommandHandler(
             $"\nORDRE: {(isIntl ? "Convention → Codes → LdF → Doctrine" : "Codes → LdF → Doctrine")}\n" +
             bg + "\n" +
             antiDraft + "\n" +
+            EyStyle.Card + "\n" +
             styleAndFormat + "\n" +
             "[Sn] OBLIGATOIRE par bloc. Tout taux doit citer sa source [Sn].\n\n" +
             "{\"analyses\":\"4. ANALYSES\\n\\n[blocs]\"}";
     }
 
-    private static string BuildPhase3Prompt(GenerateConsultationCommand cmd,
-        List<LegalSourceDto> sources, List<string> etendueItems)
+    // References built DETERMINISTICALLY from the sources actually cited in the final analyses and
+    // table — code cannot misalign the label with the target, and never lists an uncited document.
+    internal static string BuildReferences(
+        string analyses, List<AnalysisRow> table, List<LegalSourceDto> sources)
     {
-        var lst = string.Join("\n", sources.Take(18)
-            .Select(s => $"  [S{s.Index}] {s.DocType} | {s.DocName} ({s.Year}) — {s.ArticleRef}"));
-        return
-            $"PHASE 3 — JSON: documents + analysis_table ({etendueItems.Count} objets).\n\n" +
-            $"Client: {cmd.ClientName}\nSOURCES:\n{lst}\n\n" +
-            "{\"documents\":\"5. RÉFÉRENCES\\n\\n[sources citées]\"," +
-            "\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"OUI/NON\"}]}";
+        var citedText = analyses + " " + string.Join(" ",
+            table.Select(r => r.Sujet + " " + r.Analyse + " " + r.Conclusion));
+        var indexes = Regex.Matches(citedText, @"\[S(\d+)\]")
+            .Select(m => int.TryParse(m.Groups[1].Value, out var i) ? i : -1)
+            .Where(i => i > 0).Distinct().OrderBy(i => i).ToList();
+
+        var lines = indexes
+            .Select(i => sources.FirstOrDefault(s => s.Index == i))
+            .Where(s => s is not null)
+            .Select(s => $"{s!.Citation} — {s.DocType} | {s.DocName}" +
+                         (string.IsNullOrWhiteSpace(s.Year) ? "" : $" ({s.Year})") +
+                         (string.IsNullOrWhiteSpace(s.ArticleRef) ? "" : $" — {s.ArticleRef}"))
+            .Distinct().ToList();
+
+        return lines.Count == 0 ? "5. RÉFÉRENCES\n\n(aucune source citée)"
+                                : "5. RÉFÉRENCES\n\n" + string.Join("\n", lines);
     }
 
     // Synthesis table derived STRICTLY from the finalized analyses (never from raw sources),
@@ -918,17 +931,4 @@ public sealed class GenerateConsultationCommandHandler(
            .Where(s => !string.IsNullOrEmpty(s)).ToList()
         : new();
 
-    private static List<(string Sujet, string Analyse, string Conclusion)> ParseTable(
-        Dictionary<string, JsonElement>? p3)
-    {
-        if (p3 is null || !p3.TryGetValue("analysis_table", out var tbl)
-            || tbl.ValueKind != JsonValueKind.Array) return new();
-        return tbl.EnumerateArray()
-            .Select(r => (GetElStr(r,"sujet"), GetElStr(r,"analyse"), GetElStr(r,"conclusion")))
-            .ToList();
-    }
-
-    private static string GetElStr(JsonElement el, string key) =>
-        el.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
-        ? v.GetString() ?? "" : "";
 }

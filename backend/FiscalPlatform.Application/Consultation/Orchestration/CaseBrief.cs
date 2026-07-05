@@ -40,7 +40,11 @@ public sealed record RequiredSource(
     string[]? ConventionSubject = null,  // DocType=Convention + head contains ANY variant + country match
     // ── fulfilment hints (how to fetch it when missing) ──
     string?   FetchDocFragment  = null,
-    string[]? FetchKeywords     = null)
+    string[]? FetchKeywords     = null,
+    // The document may legitimately NOT EXIST (e.g. no treaty with that country). After the
+    // retrieval loop has genuinely tried, the item stops blocking completeness — its absence is a
+    // legal FACT (pas de convention → droit commun), not a retrieval failure to retry forever.
+    bool      ExistenceConditional = false)
 {
     /// <summary>Deterministic: does this source satisfy the item?</summary>
     public bool IsSatisfiedBy(LegalSourceDto s, ICollection<string> countries)
