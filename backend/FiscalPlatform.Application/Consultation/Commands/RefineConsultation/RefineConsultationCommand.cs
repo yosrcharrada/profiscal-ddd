@@ -55,6 +55,7 @@ public sealed class RefineConsultationCommandHandler
 {
     private readonly Microsoft.SemanticKernel.Kernel _kernel;
     private readonly ISessionStore                   _sessionStore;
+    private readonly Common.Interfaces.Services.IFiscalGuardrails _guardrails;
     private readonly ILogger<RefineConsultationCommandHandler> _logger;
 
     // The agent's system prompt — defines its identity, knowledge, and constraints
@@ -73,16 +74,21 @@ public sealed class RefineConsultationCommandHandler
         "  2. Si l'utilisateur dit qu'une source manque → appelle semantic_search ou keyword_search d'abord\n" +
         "  3. Si l'utilisateur demande plus d'analyse sur un point → appelle analyze_fiscal_point\n" +
         "  4. Citations uniquement via [S1],[S2]... — jamais de nom de document en clair\n" +
-        "  5. Verdicts clairs: OUI/NON/X%/EXONÉRÉ/SOUMIS\n" +
-        "  6. Style professionnel EY — formel, précis, fondé sur les sources";
+        "  5. Verdicts clairs: OUI / NON / le taux chiffré réel lu dans [Sn] / EXONÉRÉ / SOUMIS — " +
+        "jamais le littéral « X% »\n" +
+        "  6. Style professionnel EY — formel, précis, fondé sur les sources\n\n" +
+        FiscalPlatform.Application.Common.FiscalPrompts.MetierCore + "\n" +
+        FiscalPlatform.Application.Consultation.Playbooks.EyStyle.Card;
 
     public RefineConsultationCommandHandler(
         Microsoft.SemanticKernel.Kernel kernel,
         ISessionStore                   sessionStore,
+        Common.Interfaces.Services.IFiscalGuardrails guardrails,
         ILogger<RefineConsultationCommandHandler> logger)
     {
         _kernel       = kernel;
         _sessionStore = sessionStore;
+        _guardrails   = guardrails;
         _logger       = logger;
     }
 
@@ -168,6 +174,10 @@ public sealed class RefineConsultationCommandHandler
 
         if (string.IsNullOrWhiteSpace(reply))
             reply = "Je n'ai pas pu traiter cette demande. Pouvez-vous reformuler?";
+
+        // Output guardrail: grounding scan on the refined text (invalid [Sn], uncited rates,
+        // citation-format hallucinations) — logged, never silently mutates the agent's reply.
+        _guardrails.ValidateTextWarnings(reply, cmd.Sources?.Count ?? 0);
 
         // ── Update session memory ─────────────────────────────────────────────
         session.History.Add(("user",      cmd.UserMessage));

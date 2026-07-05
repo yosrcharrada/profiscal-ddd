@@ -38,6 +38,7 @@ public sealed class ChatQueryHandler(
     IBranchDetector branchDetector,
     ICountryDetector countryDetector,
     IKeywordExtractor keywordExtractor,
+    IFiscalGuardrails guardrails,
     ILogger<ChatQueryHandler> logger)
     : IRequestHandler<ChatQuery, ChatResponseDto>
 {
@@ -66,7 +67,8 @@ public sealed class ChatQueryHandler(
         "Cite chaque affirmation avec [Source N] (N = numéro EXACT de la source utilisée).\n" +
         "Tout taux, article ou règle cité DOIT renvoyer à une [Source N]. Si un point n'est pas " +
         "couvert par les sources, écris 'NON DOCUMENTÉ' pour ce point — n'invente jamais une règle, " +
-        "un taux ou un article. Markdown autorisé (titres, listes, gras).";
+        "un taux ou un article. Markdown autorisé (titres, listes, gras).\n\n" +
+        Common.FiscalPrompts.MetierCore;
 
     // Non-streaming entry point (MediatR). Aggregates the streaming events into one DTO,
     // so there is a SINGLE agent implementation (StreamAsync) behind both endpoints.
@@ -85,6 +87,8 @@ public sealed class ChatQueryHandler(
             }
         }
         var answer = sb.ToString().Trim();
+        // Output guardrail: grounding scan (invalid citations, uncited rates) — logged, non-blocking.
+        guardrails.ValidateTextWarnings(answer, sources.Count);
         return new ChatResponseDto(answer.Length == 0 ? "Je n'ai pas pu répondre." : answer, sources, ms);
     }
 
@@ -98,6 +102,21 @@ public sealed class ChatQueryHandler(
         var sw       = System.Diagnostics.Stopwatch.StartNew();
         var question = (query.Question ?? "").Trim();
         logger.LogInformation("┌─ [CHAT-AGENT] (stream) '{Q}'", question[..Math.Min(question.Length, 60)]);
+
+        // ── Input guardrail: block substantive OFF-TOPIC questions before any LLM/retrieval spend.
+        // Short conversational messages (greetings, thanks, follow-ups) pass through — the agent
+        // handles those without sources.
+        var (inputOk, inputReason) = guardrails.ValidateInput(question, question);
+        var looksSubstantive = question.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 6;
+        if (!inputOk && looksSubstantive)
+        {
+            logger.LogWarning("└─ [CHAT-AGENT] input guardrail blocked: {R}", inputReason);
+            yield return new ChatSourcesEvent(new List<SourceChunkDto>());
+            yield return new ChatTokenEvent(inputReason ??
+                "La question ne semble pas être de nature fiscale. Veuillez préciser votre question fiscale.");
+            yield return new ChatDoneEvent(sw.Elapsed.TotalMilliseconds);
+            yield break;
+        }
 
         var historyText  = BuildHistoryText(query.History);
         var accumulated  = new List<SourceChunkDto>();

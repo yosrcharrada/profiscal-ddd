@@ -30,13 +30,15 @@ public static class DependencyInjection
         services.AddSingleton<IRetrievalPlannerAgent,   RetrievalPlannerAgent>();
         services.AddSingleton<IAcceptanceAgent,         AcceptanceAgent>();
 
-        // ── Case agents (one per income qualification; resolved as IEnumerable<ICaseAgent>,
-        //    the handler qualifies then dispatches to the matching Type) ──
+        // ── Case agents (one per income qualification) + the MAF workflow orchestrator that
+        //    dispatches to them (Qualify → Brief → Fulfil ⇄ Completeness → Writer ⇄ Judge →
+        //    ExpertVoice → Finalize, all loops bounded) ──
         services.AddSingleton<ICaseAgent, GenericAgent>();
         services.AddSingleton<ICaseAgent, RsServiceForeignAgent>();
         services.AddSingleton<ICaseAgent, DividendeAgent>();
         services.AddSingleton<ICaseAgent, InteretAgent>();
         services.AddSingleton<ICaseAgent, RedevanceAgent>();
+        services.AddSingleton<FiscalPlatform.Application.Consultation.Orchestration.ConsultationWorkflow>();
 
         // ── Rule-based retrieval policy (config-driven routing, not hardcoded answers) ──
         services.AddSingleton<IRuleBasedRetrieval,
@@ -53,6 +55,7 @@ public static class DependencyInjection
 
         // ── Guardrails ────────────────────────────────────────────────────────
         services.AddSingleton<FiscalGuardrails>();
+        services.AddSingleton<IFiscalGuardrails>(sp => sp.GetRequiredService<FiscalGuardrails>());
 
         // ── Semantic Kernel (true agent infrastructure) ───────────────────────
         services.AddSingleton<FiscalKernelFactory>();

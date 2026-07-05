@@ -19,7 +19,7 @@ namespace FiscalPlatform.Infrastructure.Guardrails;
 ///   5. All percentages cite their [Sn] source
 ///   6. Art.92 CIRPPIS flagged as LF reference warning
 /// </summary>
-public sealed class FiscalGuardrails
+public sealed class FiscalGuardrails : FiscalPlatform.Application.Common.Interfaces.Services.IFiscalGuardrails
 {
     private readonly ILogger<FiscalGuardrails> _logger;
 
@@ -80,6 +80,38 @@ public sealed class FiscalGuardrails
 
         _logger.LogInformation("INPUT GUARDRAIL: ✅ Valid fiscal question");
         return (true, null);
+    }
+
+    // ── TEXT GUARDRAIL (chat + refinement outputs) ────────────────────────────
+
+    /// <summary>Grounding scan for any produced text: invalid [Sn] indexes, uncited percentages,
+    /// hallucinated citation formats. Warnings only — the callers log them; refinement/chat never
+    /// silently mutate user-visible content.</summary>
+    public List<string> ValidateTextWarnings(string text, int maxSourceIndex)
+    {
+        var warnings = new List<string>();
+        if (string.IsNullOrWhiteSpace(text)) return warnings;
+
+        foreach (Match m in Regex.Matches(text, @"\[S(\d+)\]"))
+            if (int.TryParse(m.Groups[1].Value, out var idx) && idx > maxSourceIndex && maxSourceIndex > 0)
+                warnings.Add($"Citation [S{idx}] hors limite (max S{maxSourceIndex})");
+
+        foreach (var pattern in HallucinationPatterns)
+            if (pattern.IsMatch(text))
+                warnings.Add("Format de citation suspect (document cité en clair au lieu de [Sn])");
+
+        foreach (Match m in PercentagePattern.Matches(text))
+        {
+            var start  = Math.Max(0, m.Index - 150);
+            var window = text[start..Math.Min(text.Length, m.Index + m.Length + 150)];
+            if (!CitationNearby.IsMatch(window) && !Regex.IsMatch(window, @"\[Source\s*\d+\]", RegexOptions.IgnoreCase))
+                warnings.Add($"Taux « {m.Value} » sans citation à proximité");
+        }
+
+        if (warnings.Count > 0)
+            _logger.LogWarning("TEXT GUARDRAIL: {N} warning(s): {W}",
+                warnings.Count, string.Join(" | ", warnings.Take(4)));
+        return warnings;
     }
 
     // ── OUTPUT GUARDRAIL ──────────────────────────────────────────────────────

@@ -1,174 +1,76 @@
 using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+using FiscalPlatform.Application.Consultation.Orchestration;
 using FiscalPlatform.Application.Consultation.Playbooks;
-using Microsoft.Extensions.Logging;
 using H = FiscalPlatform.Application.Consultation.Commands.GenerateConsultation.GenerateConsultationCommandHandler;
 
 namespace FiscalPlatform.Application.Consultation.Agents;
 
 /// <summary>
-/// Shared mechanics for every case agent: run Phase-2, parse, revise, and (for convention-income
-/// cases) acquire + pin the treaty income article and the domestic rate article. Everything that is
-/// SPECIFIC to a case — its démarche, its forbidden steps, its qualification, its structure skeleton,
-/// its source subjects, its judge criteria — is declared IN the concrete agent below, as readable
-/// code, not pulled from a data table. The base is plumbing; the agents are the brains.
+/// Shared mechanics for the case agents: assembling the CaseBrief from the per-case content hooks,
+/// and the deterministic completeness matcher. Everything CASE-SPECIFIC — démarche, forbidden
+/// steps, qualification, skeleton, judge criteria, required-sources checklist — is declared IN the
+/// concrete agent below as readable code. The métier source map from the tax team lives here as
+/// each case's checklist.
 /// </summary>
 public abstract class CaseAgentBase : ICaseAgent
 {
-    protected readonly ILlmAgent       Llm;
-    protected readonly IRetrievalAgent Retrieval;
-    protected readonly ILogger         Logger;
-
-    protected CaseAgentBase(ILlmAgent llm, IRetrievalAgent retrieval, ILogger logger)
-    {
-        Llm = llm; Retrieval = retrieval; Logger = logger;
-    }
-
     public abstract CaseType Type { get; }
 
     // ── Per-case content hooks (defaults = the legacy foreign-service flow) ──
     protected virtual string   Label                 => Type.ToString();
-    /// <summary>False → use the proven legacy Phase-2 builder (Generic / RS-service). True → this
-    /// agent builds its own specialised prompt from the hooks below.</summary>
     protected virtual bool     UsesOwnPrompt         => false;
     protected virtual string   CaseSystemPrompt      => H.SystemPrompt;
-    protected virtual string[] Topics                => System.Array.Empty<string>();
-    protected virtual string[] TreatySubjects        => System.Array.Empty<string>();
-    protected virtual bool     NeedsConventionArticle => false;
+    protected virtual string[] Topics                => Array.Empty<string>();
     protected virtual string   Demarche              => "";
     protected virtual string   ForbiddenSteps        => "";
     protected virtual string   QualificationGuidance => "";
     protected virtual string   RedactedSkeleton      => "";
     protected virtual string   JudgeCriteria         => "";
 
-    public virtual async Task<CaseDraft> DraftAsync(CaseContext ctx, CancellationToken ct = default)
+    /// <summary>The case's required-sources checklist — the tax team's source map, as data.</summary>
+    protected abstract List<RequiredSource> BuildChecklist(ConsultationState state);
+
+    public virtual CaseBrief BuildBrief(ConsultationState state) => new(
+        Label, CaseSystemPrompt, UsesOwnPrompt, Demarche, ForbiddenSteps,
+        QualificationGuidance, RedactedSkeleton, JudgeCriteria, Topics,
+        BuildChecklist(state));
+
+    public CompletenessReport VerifyCompleteness(
+        CaseBrief brief, List<LegalSourceDto> sources, ICollection<string> countries)
     {
-        var sources = ctx.Sources;   // same reference the handler holds — augmentations are visible
-
-        if (UsesOwnPrompt && NeedsConventionArticle && TreatySubjects.Length > 0 && ctx.Countries.Any())
-            await AcquireConventionIncomeSourcesAsync(ctx, sources, ct);
-
-        var system   = CaseSystemPrompt;
-        var user     = BuildUserPrompt(ctx, sources);
-        var raw      = await Llm.CompleteAsync(system, user, "Phase2", 3800, ct);
-        var analyses = H.GetStr(H.ParseJsonDict(raw ?? ""), "analyses");
-        Logger.LogInformation("► [AGENT {T}] draft {N} chars", Type, analyses.Length);
-        return new CaseDraft(analyses, sources, system, JudgeCriteria);
+        var missing = brief.RequiredSources
+            .Where(req => !sources.Any(s => req.IsSatisfiedBy(s, countries)))
+            .ToList();
+        return new CompletenessReport(
+            missing, missing.Where(m => m.Critical).ToList(), brief.RequiredSources.Count);
     }
 
-    public virtual async Task<string> ReviseAsync(
-        CaseContext ctx, CaseDraft draft, string guidance, CancellationToken ct = default)
-    {
-        var user = BuildUserPrompt(ctx, draft.Sources) +
-            "\n\n═══ CORRECTIONS DEMANDÉES (relecture qualité) ═══\n" + guidance +
-            "\nCorrige ces points en conservant strictement le format et le niveau de détail demandé.";
-        var raw     = await Llm.CompleteAsync(draft.SystemPrompt, user, "Phase2-Revise", 3800, ct);
-        var revised = H.GetStr(H.ParseJsonDict(raw ?? ""), "analyses");
-        return string.IsNullOrWhiteSpace(revised) ? draft.Analyses : revised;
-    }
+    // ── Shared checklist fragments (métier constants) ──
 
-    protected virtual string BuildUserPrompt(CaseContext ctx, List<LegalSourceDto> sources) =>
-        UsesOwnPrompt
-            ? BuildOwnPrompt(ctx, sources)
-            : H.BuildPhase2Prompt(ctx.Command, sources, ctx.EtendueItems, ctx.Sommaire, ctx.ContexteFaits,
-                                  ctx.IsInternational, ctx.Branches, ctx.Plan);
+    /// <summary>Art.112 CDPF + circulaire BCT n°9/2016 — formalisme du transfert des fonds.
+    /// Best-effort: the graph carries mostly 112 bis, so we never block the loop on it, but the
+    /// fulfilment always tries.</summary>
+    protected static RequiredSource Cdpf112 => new(
+        Key: "cdpf_112", Critical: false,
+        Description: "Art.112 CDPF + circulaire BCT n°9/2016 (certificat de RS, transfert des fonds)",
+        DocFragment: "code_droits_procedures", ArticleNumber: "112",
+        FetchDocFragment: "code_droits_procedures",
+        FetchKeywords: new[] { "certificat de retenue", "transfert", "attestation de régularisation" });
 
-    // Specialised Phase-2 prompt assembled from this agent's own hooks. No rates, no verdicts — every
-    // number is read from the sources. The universal EY style card supplies the voice.
-    protected string BuildOwnPrompt(CaseContext ctx, List<LegalSourceDto> sources)
-    {
-        var cmd     = ctx.Command;
-        var n       = ctx.EtendueItems.Count;
-        var et      = string.Join("\n", ctx.EtendueItems.Select((x, i) => $"  {i + 1}. {x}"));
-        var concise = string.Equals(cmd.Mode, "concise", System.StringComparison.OrdinalIgnoreCase);
-        var format  = concise
-            ? "FORMAT — VERSION CONCISE : mêmes qualification, mêmes verdicts et mêmes taux que la version " +
-              "détaillée, mais CONDENSÉS (chaque point en quelques phrases). N'omets aucun verdict ni taux.\n"
-            : "FORMAT — VERSION DÉTAILLÉE : prose professionnelle continue, chaque point développé selon la " +
-              "démarche ci-dessus, chaque règle appliquée aux faits et close par une position claire.\n";
+    /// <summary>NC 3/2015 — assiette de la RS (montant brut TVA comprise).</summary>
+    protected static RequiredSource Nc3_2015 => new(
+        Key: "nc3_2015", Critical: true,
+        Description: "Note commune N°3/2015 (assiette de la retenue à la source)",
+        DocFragment: "NC_2015_03",
+        FetchKeywords: new[] { "honoraires", "assiette", "montant brut" });
 
-        return
-            $"PHASE 2 — JSON avec 1 clé: analyses.\n\n" +
-            $"CAS QUALIFIÉ : {Label}\n\n" +
-            $"Client : {cmd.ClientName} | Question : {cmd.FiscalQuestion}\n\n" +
-            $"FAITS ÉTABLIS (section 1.1) :\n{ctx.ContexteFaits}\n\n" +
-            $"ÉTENDUE ({n} point(s) demandé(s)) :\n{et}\n\n" +
-            H.SourcesBlock(sources) + "\n" +
-            "═══ QUALIFICATION ═══\n" + QualificationGuidance + "\n\n" +
-            Demarche + "\n" +
-            (string.IsNullOrWhiteSpace(ForbiddenSteps) ? "" : "═══ À NE PAS FAIRE ═══\n" + ForbiddenSteps + "\n\n") +
-            EyStyle.Card + "\n" +
-            "═══ MODÈLE DE STRUCTURE (forme uniquement — les crochets sont des ESPACES À REMPLIR depuis les " +
-            "faits et les sources ; ne recopie JAMAIS un contenu du modèle) ═══\n" + RedactedSkeleton + "\n\n" +
-            format +
-            $"Organise en blocs « 4.1 » à « 4.{n} » (un par point d'étendue).\n" +
-            "[Sn] OBLIGATOIRE ; tout taux cite sa source [Sn] et est LU dans son texte.\n\n" +
-            "{\"analyses\":\"4. ANALYSES\\n\\n[blocs]\"}";
-    }
-
-    // Fetch the treaty income article (BY SUBJECT — its number varies per convention) and the domestic
-    // rate article (CIRPPIS Art.52/53, newest year), then pin both to the front of the window so the
-    // convention flood a treaty case pulls in cannot crowd them out.
-    protected async Task AcquireConventionIncomeSourcesAsync(
-        CaseContext ctx, List<LegalSourceDto> sources, CancellationToken ct)
-    {
-        var before = sources.Count;
-        try
-        {
-            foreach (var country in ctx.Countries.Where(c => !string.IsNullOrWhiteSpace(c)).Take(2))
-            foreach (var subj in TreatySubjects)
-            {
-                var hits = await Retrieval.FetchBySubjectAsync(
-                    "conv_" + country, new[] { subj }, Topics,
-                    new[] { subj.ToLowerInvariant() }, ct) ?? new List<LegalSourceDto>();
-                var existing = new HashSet<string>(
-                    sources.Select(s => s.ChunkId).Where(id => !string.IsNullOrEmpty(id)));
-                foreach (var h in hits.Where(h => h is not null &&
-                             (string.IsNullOrEmpty(h.ChunkId) || existing.Add(h.ChunkId))))
-                    sources.Add(h);
-            }
-            var dom = await Retrieval.FetchDomesticRetenueAsync(new List<string>(), ct)
-                      ?? new List<LegalSourceDto>();
-            var seenDom = new HashSet<string>(sources.Select(s => s.ChunkId).Where(id => !string.IsNullOrEmpty(id)));
-            foreach (var h in dom.Where(h => h is not null &&
-                         (string.IsNullOrEmpty(h.ChunkId) || seenDom.Add(h.ChunkId))))
-                sources.Add(h);
-        }
-        catch (System.Exception ex) { Logger.LogWarning(ex, "[AGENT {T}] source acquisition failed", Type); }
-
-        PinConventionIncomeSources(sources, ctx.Countries, TreatySubjects);
-        for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
-        Logger.LogInformation("► [AGENT {T}] +{N} src, pinned treaty+Art52", Type, sources.Count - before);
-    }
-
-    // Force the two decisive sources to the front: the treaty income article matching this agent's
-    // subject (Dividendes / Intérêts / Redevances) for a detected country, and CIRPPIS Art.52/53.
-    protected static void PinConventionIncomeSources(
-        List<LegalSourceDto> sources, ICollection<string> countries, string[] treatySubjects)
-    {
-        static string Head(LegalSourceDto s) =>
-            (s.Text ?? "")[..System.Math.Min((s.Text ?? "").Length, 60)];
-
-        bool IsIncomeTreaty(LegalSourceDto s) =>
-            string.Equals(s.DocType, "Convention", System.StringComparison.OrdinalIgnoreCase) &&
-            treatySubjects.Any(subj => Head(s).Contains(subj, System.StringComparison.OrdinalIgnoreCase)) &&
-            (countries.Count == 0 || countries.Any(c =>
-                (s.DocName ?? "").Contains(c, System.StringComparison.OrdinalIgnoreCase)));
-
-        bool IsDomesticRate(LegalSourceDto s) =>
-            (s.DocName ?? "").Contains("code_irpp_is", System.StringComparison.OrdinalIgnoreCase) &&
-            (H.Digits(s.ArticleRef) == "52" || H.Digits(s.ArticleRef) == "53") &&
-            (s.Text ?? "").Contains('%');
-
-        var treaty   = sources.Where(IsIncomeTreaty).ToList();
-        var domestic = sources.Where(s => !IsIncomeTreaty(s) && IsDomesticRate(s)).ToList();
-        var rest     = sources.Where(s => !IsIncomeTreaty(s) && !IsDomesticRate(s)).ToList();
-
-        sources.Clear();
-        sources.AddRange(treaty);
-        sources.AddRange(domestic);
-        sources.AddRange(rest);
-    }
+    /// <summary>CIRPPIS Art.52 — the multi-rate menu. TextContains narrows to the LINE this case
+    /// reads (métier: 'right rate, wrong case' = picking the wrong line).</summary>
+    protected static RequiredSource Art52(string key, string description, string? lineContains) => new(
+        Key: key, Critical: true, Description: description,
+        DocFragment: "code_irpp_is", ArticleNumber: "52",
+        RequirePercent: true, TextContains: lineContains,
+        FetchDocFragment: "code_irpp_is");
 
     // Slim system prompt shared by the convention-income agents (dividende/intérêt/redevance): the
     // universal anti-hallucination + citation rules WITHOUT the foreign-service séquence that must
@@ -192,45 +94,94 @@ public abstract class CaseAgentBase : ICaseAgent
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// One class per big case. Generic / RS-service run the proven legacy flow; the
-// convention-income agents each carry their own démarche/sources/judge as code.
+// One agent per big case. Generic / RS-service brief the proven legacy prompt;
+// the convention-income agents carry their own démarche/checklist/judge as code.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// <summary>Fallback — the general international / foreign-service flow (legacy prompt).</summary>
+/// <summary>Fallback — general international / foreign-service flow (legacy prompt).</summary>
 public sealed class GenericAgent : CaseAgentBase
 {
-    public GenericAgent(ILlmAgent l, IRetrievalAgent r, ILogger<GenericAgent> g) : base(l, r, g) { }
     public override CaseType Type => CaseType.Generic;
     protected override string Label => "Cas général / prestation internationale";
+    protected override string[] Topics =>
+        new[] { "remunerations_techniques", "benefices_entreprises", "etablissement_stable" };
+
+    protected override List<RequiredSource> BuildChecklist(ConsultationState state)
+    {
+        var list = new List<RequiredSource>
+        {
+            Art52("art52_rate", "CIRPPIS Art.52 (article de taux de RS, texte complet avec %)", null),
+            new("ctva_7", "CTVA Art.7 (taux de TVA)", Critical: true,
+                DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true,
+                FetchDocFragment: "code_tva"),
+            Cdpf112,
+        };
+        return list;
+    }
 }
 
-/// <summary>Foreign supplier of SERVICES: établissement stable → RS → TVA → assiette → transfert.
-/// Runs the proven legacy service prompt; owns its qualification emphasis and judge criteria.</summary>
+/// <summary>Foreign supplier of SERVICES — the tax team's map: ES (Art.45/47 + NC 2/2015 +
+/// convention) → RS (Art.52 + convention) → TVA (1/3/5/19, taux Art.7) → assiette (NC 3/2015)
+/// → transfert (Art.112 CDPF + BCT 9/2016).</summary>
 public sealed class RsServiceForeignAgent : CaseAgentBase
 {
-    public RsServiceForeignAgent(ILlmAgent l, IRetrievalAgent r, ILogger<RsServiceForeignAgent> g) : base(l, r, g) { }
     public override CaseType Type => CaseType.RsServiceForeign;
     protected override string Label => "Retenue à la source — fournisseur étranger de services";
     protected override string[] Topics => new[]
         { "remunerations_techniques", "services_professionnels", "etablissement_stable", "benefices_entreprises" };
+
     protected override string JudgeCriteria =>
         "Cas SERVICE / FOURNISSEUR ÉTRANGER : l'établissement stable est tranché d'abord en droit commun " +
         "puis selon l'Art.5 de la convention. La RS applique la ligne de l'Art.52 visant les « non domiciliés " +
         "ni établis » (non les honoraires-résidents). TVA due par retenue de 100% du preneur. Assiette (montant " +
         "brut TVA comprise) et formalisme du transfert (Art.112 CDPF + circ. BCT 9/2016) ne doivent pas manquer.";
+
+    protected override List<RequiredSource> BuildChecklist(ConsultationState state)
+    {
+        var list = new List<RequiredSource>
+        {
+            new("cirppis_45", "CIRPPIS Art.45 (champ IS des non-résidents)", Critical: true,
+                DocFragment: "code_irpp_is", ArticleNumber: "45", FetchDocFragment: "code_irpp_is"),
+            new("cirppis_47", "CIRPPIS Art.47 (bénéfices imposables — établissement en Tunisie)", Critical: true,
+                DocFragment: "code_irpp_is", ArticleNumber: "47", FetchDocFragment: "code_irpp_is"),
+            Art52("art52_nonresident",
+                "CIRPPIS Art.52 — ligne « revenus servis aux non domiciliés ni établis »",
+                lineContains: "non domicili"),
+            Nc3_2015,
+            new("ctva_3", "CTVA Art.3 (territorialité)", Critical: true,
+                DocFragment: "code_tva", ArticleNumber: "3", FetchDocFragment: "code_tva"),
+            new("ctva_7", "CTVA Art.7 (taux)", Critical: true,
+                DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true, FetchDocFragment: "code_tva"),
+            new("ctva_19", "CTVA Art.19 (retenue de 100% de la TVA — prestataire non établi)", Critical: true,
+                DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
+            new("regime_privilegie", "Liste des États/territoires à régime fiscal privilégié", Critical: false,
+                TextContains: "privilégié",
+                FetchKeywords: new[] { "régime fiscal privilégié", "liste des Etats", "taux de l'impôt inférieur" }),
+            Cdpf112,
+        };
+
+        // Convention country → the treaty ES article (by SUBJECT, accent-safe) + NC 2/2015 — the
+        // métier exception: NC 2/2015 is NOT used for Allemagne (superseded by the newer convention).
+        if (state.Countries.Count > 0)
+        {
+            list.Add(new("conv_es", "Article « Établissement stable » de la convention applicable",
+                Critical: true, ConventionSubject: new[] { "tablissement stable" }));
+            if (!state.Countries.Any(c => c.Contains("allemagne", StringComparison.OrdinalIgnoreCase)))
+                list.Add(new("nc2_2015", "Note commune N°2/2015 (lecture des conventions par pays)",
+                    Critical: false, DocFragment: "NC_2015_02",
+                    FetchKeywords: new[] { "convention", "non double imposition" }));
+        }
+        return list;
+    }
 }
 
-/// <summary>Dividends distributed to a non-resident shareholder. NO ES-of-service, NO TVA section.</summary>
+/// <summary>Dividends to a non-resident shareholder. NO ES-of-service, NO TVA section.</summary>
 public sealed class DividendeAgent : CaseAgentBase
 {
-    public DividendeAgent(ILlmAgent l, IRetrievalAgent r, ILogger<DividendeAgent> g) : base(l, r, g) { }
     public override CaseType Type => CaseType.Dividende;
-
-    protected override bool     UsesOwnPrompt          => true;
-    protected override string   CaseSystemPrompt       => ConventionIncomeSystem;
-    protected override bool     NeedsConventionArticle => true;
-    protected override string[] TreatySubjects         => new[] { "Dividendes" };
-    protected override string[] Topics                 =>
+    protected override bool     UsesOwnPrompt    => true;
+    protected override string   CaseSystemPrompt => ConventionIncomeSystem;
+    protected override string[] Topics =>
         new[] { "dividendes", "elimination_double_imposition", "obligations_societes" };
     protected override string   Label => "Retenue à la source sur DIVIDENDES versés à un non-résident";
 
@@ -285,19 +236,44 @@ public sealed class DividendeAgent : CaseAgentBase
         "détaillée (dividendes hors champ). Si les dividendes ont été servis sans retenue, le risque " +
         "(prise en charge, pénalités) doit être quantifié. L'article « Dividendes » de la convention " +
         "doit être visé.";
+
+    protected override List<RequiredSource> BuildChecklist(ConsultationState state)
+    {
+        var list = new List<RequiredSource>
+        {
+            Art52("art52_distribues",
+                "CIRPPIS Art.52 — ligne « revenus distribués » (taux de RS sur dividendes)",
+                lineContains: "distribu"),
+            new("cirppis_29", "CIRPPIS Art.29 (définition des revenus distribués)", Critical: false,
+                DocFragment: "code_irpp_is", ArticleNumber: "29", FetchDocFragment: "code_irpp_is"),
+            Cdpf112,
+        };
+
+        if (state.Countries.Count > 0)
+            list.Add(new("conv_dividendes", "Article « Dividendes » de la convention applicable",
+                Critical: true, ConventionSubject: new[] { "Dividendes" }));
+
+        // Only when the facts say the dividends were paid WITHOUT withholding does the
+        // régularisation part of the démarche need its sources (amnistie / déclaration rectificative).
+        var hay = (state.Command.Situation + " " + state.ContexteFaits).ToLowerInvariant();
+        if (hay.Contains("aucune retenue") || hay.Contains("sans retenue") ||
+            (hay.Contains("retenue") && (hay.Contains("n'a pas") || hay.Contains("non opérée") || hay.Contains("non operee"))))
+            list.Add(new("lf_regularisation",
+                "Mesure LF en vigueur : amnistie / déclaration rectificative (abandon des pénalités)",
+                Critical: false, TextContains: "rectificative",
+                FetchKeywords: new[] { "déclaration rectificative", "amnistie", "abandon des pénalités" }));
+
+        return list;
+    }
 }
 
-/// <summary>Interest paid to a non-resident creditor. Convention interest article + Art 52 line.</summary>
+/// <summary>Interest paid to a non-resident creditor.</summary>
 public sealed class InteretAgent : CaseAgentBase
 {
-    public InteretAgent(ILlmAgent l, IRetrievalAgent r, ILogger<InteretAgent> g) : base(l, r, g) { }
     public override CaseType Type => CaseType.Interet;
-
-    protected override bool     UsesOwnPrompt          => true;
-    protected override string   CaseSystemPrompt       => ConventionIncomeSystem;
-    protected override bool     NeedsConventionArticle => true;
-    protected override string[] TreatySubjects         => new[] { "Interets" };
-    protected override string[] Topics                 => new[] { "interets", "elimination_double_imposition" };
+    protected override bool     UsesOwnPrompt    => true;
+    protected override string   CaseSystemPrompt => ConventionIncomeSystem;
+    protected override string[] Topics => new[] { "interets", "elimination_double_imposition" };
     protected override string   Label => "Retenue à la source sur INTÉRÊTS versés à un non-résident";
 
     protected override string Demarche =>
@@ -328,19 +304,28 @@ public sealed class InteretAgent : CaseAgentBase
     protected override string JudgeCriteria =>
         "Cas INTÉRÊTS : taux lu dans la ligne intérêts de l'Art.52 et l'article « Intérêts » de la " +
         "convention ; pas de séquence ES-service ni de TVA détaillée.";
+
+    protected override List<RequiredSource> BuildChecklist(ConsultationState state)
+    {
+        var list = new List<RequiredSource>
+        {
+            Art52("art52_interets", "CIRPPIS Art.52 (texte complet avec % — ligne des intérêts)", null),
+            Cdpf112,
+        };
+        if (state.Countries.Count > 0)
+            list.Add(new("conv_interets", "Article « Intérêts » de la convention applicable",
+                Critical: true, ConventionSubject: new[] { "Intérêts", "Interets" }));
+        return list;
+    }
 }
 
-/// <summary>Royalties (redevances) paid to a non-resident. Treaty royalties article + Art 52 line.</summary>
+/// <summary>Royalties (redevances) paid to a non-resident.</summary>
 public sealed class RedevanceAgent : CaseAgentBase
 {
-    public RedevanceAgent(ILlmAgent l, IRetrievalAgent r, ILogger<RedevanceAgent> g) : base(l, r, g) { }
     public override CaseType Type => CaseType.Redevance;
-
-    protected override bool     UsesOwnPrompt          => true;
-    protected override string   CaseSystemPrompt       => ConventionIncomeSystem;
-    protected override bool     NeedsConventionArticle => true;
-    protected override string[] TreatySubjects         => new[] { "Redevances" };
-    protected override string[] Topics                 => new[] { "redevances", "elimination_double_imposition" };
+    protected override bool     UsesOwnPrompt    => true;
+    protected override string   CaseSystemPrompt => ConventionIncomeSystem;
+    protected override string[] Topics => new[] { "redevances", "elimination_double_imposition" };
     protected override string   Label => "Retenue à la source sur REDEVANCES versées à un non-résident";
 
     protected override string Demarche =>
@@ -371,4 +356,23 @@ public sealed class RedevanceAgent : CaseAgentBase
     protected override string JudgeCriteria =>
         "Cas REDEVANCE : article « Redevances » de la convention + ligne redevances de l'Art.52 ; pas de " +
         "requalification en bénéfice d'entreprise.";
+
+    protected override List<RequiredSource> BuildChecklist(ConsultationState state)
+    {
+        var list = new List<RequiredSource>
+        {
+            Art52("art52_redevances", "CIRPPIS Art.52 (texte complet avec % — ligne des redevances)", null),
+            new("ctva_3", "CTVA Art.3 (territorialité)", Critical: true,
+                DocFragment: "code_tva", ArticleNumber: "3", FetchDocFragment: "code_tva"),
+            new("ctva_7", "CTVA Art.7 (taux)", Critical: true,
+                DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true, FetchDocFragment: "code_tva"),
+            new("ctva_19", "CTVA Art.19 (retenue de la TVA — prestataire non établi)", Critical: false,
+                DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
+            Cdpf112,
+        };
+        if (state.Countries.Count > 0)
+            list.Add(new("conv_redevances", "Article « Redevances » de la convention applicable",
+                Critical: true, ConventionSubject: new[] { "Redevances" }));
+        return list;
+    }
 }

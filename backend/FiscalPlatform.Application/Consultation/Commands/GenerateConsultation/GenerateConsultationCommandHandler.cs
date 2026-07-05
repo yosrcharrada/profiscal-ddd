@@ -51,10 +51,10 @@ public sealed class GenerateConsultationCommandHandler(
     IEmbedSearchAgent        embedAgent,
     IRetrievalAgent          retrievalAgent,
     IRuleBasedRetrieval      ruleRetrieval,
-    IAcceptanceAgent         acceptanceAgent,
     ILlmAgent                llmAgent,
     IDocumentGenerationAgent docAgent,
-    IEnumerable<ICaseAgent>  caseAgents,
+    Orchestration.ConsultationWorkflow consultationWorkflow,
+    IFiscalGuardrails        guardrails,
     IConsultationRepository  repository,
     ILogger<GenerateConsultationCommandHandler> logger)
     : IRequestHandler<GenerateConsultationCommand, ConsultationGeneratedDto>
@@ -181,6 +181,11 @@ public sealed class GenerateConsultationCommandHandler(
         GenerateConsultationCommand cmd, CancellationToken ct,
         Stopwatch total, List<TimingEntry> timings)
     {
+        // ── Step 0: INPUT GUARDRAIL — block off-topic requests before any LLM spend ──
+        var (inputOk, inputReason) = guardrails.ValidateInput(cmd.Situation, cmd.FiscalQuestion);
+        if (!inputOk)
+            throw new ConsultationGenerationException("Guardrail d'entrée : " + inputReason);
+
         // ── Step 1: Non-LLM detection ─────────────────────────────────────────
         var sw1 = Stopwatch.StartNew();
         var branches            = branchDetector.Detect(cmd.Situation, cmd.FiscalQuestion);
@@ -360,133 +365,51 @@ public sealed class GenerateConsultationCommandHandler(
             }
         }
 
-        // ── Step 5c: Qualify the income type → select the CASE AGENT ──────────
-        // Determines WHAT KIND of income this is (service / dividend / interest / royalty) and picks
-        // the agent that owns that case. Generic / RS-service keep the legacy proven flow; dividende
-        // & co. run their own specialised démarche (no ES-of-service, no forced TVA section).
-        var sw5c = Stopwatch.StartNew();
-        var caseType = await QualifyCaseAsync(cmd, etendueItems, contexteFaits, plan, ct);
-        var agent    = caseAgents.FirstOrDefault(a => a.Type == caseType)
-                       ?? caseAgents.FirstOrDefault(a => a.Type == CaseType.Generic)
-                       ?? throw new ConsultationGenerationException("No case agent registered");
-        var ctx = new CaseContext(cmd, etendueItems, contexteFaits, sommaire, sources,
-                                  countries.ToList(), isIntl, branches, plan);
-        sw5c.Stop();
-        timings.Add(new("5c. Qualify + agent", sw5c.Elapsed.TotalMilliseconds, caseType.ToString()));
+        // ── Step 6: THE ORCHESTRATOR — Microsoft Agent Framework state graph ──
+        // Qualify → CaseBrief → Fulfil ⇄ Completeness (bounded) → Writer ⇄ Judge (bounded,
+        // judge can also route back to retrieval) → ExpertVoice (hard guards) → Finalize (table).
+        // Phase-3 (documents/references) runs in PARALLEL with the graph, exactly as before.
+        var state = new Orchestration.ConsultationState
+        {
+            Command         = cmd,
+            EtendueItems    = etendueItems,
+            ContexteFaits   = contexteFaits,
+            Sommaire        = sommaire,
+            Countries       = countries.ToList(),
+            IsInternational = isIntl,
+            Branches        = branches,
+            Plan            = plan,
+            Sources         = sources,
+        };
 
-        // ── Step 6: Case agent drafts the analyses ‖ Phase-3 table — PARALLEL ──
-        logger.LogInformation("┌─ [PHASE 2+3] agent={A} analyses ‖ table — parallel…", agent.Type);
-        var sw6       = Stopwatch.StartNew();
-        var draftTask = agent.DraftAsync(ctx, ct);
-        var task3     = llmAgent.CompleteAsync(SystemPrompt,
+        logger.LogInformation("┌─ [GRAPH ‖ PHASE 3] MAF workflow + documents — parallel…");
+        var sw6      = Stopwatch.StartNew();
+        var flowTask = consultationWorkflow.RunAsync(state, ct);
+        var task3    = llmAgent.CompleteAsync(SystemPrompt,
             BuildPhase3Prompt(cmd, sources, etendueItems),
             "Phase3", 3500, ct);
-        await Task.WhenAll(draftTask, task3);
-        var draft = draftTask.Result;
-        sources   = draft.Sources;   // the agent may have augmented + re-indexed the source list
+        await Task.WhenAll(flowTask, task3);
+        state = flowTask.Result;
 
-        var p3    = task3.Result is not null ? ParseJsonDict(task3.Result) : null;
-        var table = ParseTable(p3);
-
+        var p3 = task3.Result is not null ? ParseJsonDict(task3.Result) : null;
         if (task3.Result is null)
-            logger.LogWarning("│  [PHASE 3] returned null — table will be empty");
+            logger.LogWarning("│  [PHASE 3] returned null — documents section will be empty");
+
+        sources = state.Sources;                      // graph may have augmented + re-indexed
+        var analysesRaw = state.Analyses;
+        var table       = state.Table;
+        if (string.IsNullOrWhiteSpace(analysesRaw))
+            throw new ConsultationGenerationException("Workflow returned empty analyses");
 
         sw6.Stop();
-        timings.Add(new("6. LLM Phase 2+3 (‖)", sw6.Elapsed.TotalMilliseconds,
-            $"table={table.Count}/{etendueItems.Count}"));
-        logger.LogInformation("└─ [PHASE 2+3] ✓ ({Ms:F0}ms / {Min:F2}min) | table={T}/{N}",
-            sw6.Elapsed.TotalMilliseconds, sw6.Elapsed.TotalMinutes,
-            table.Count, etendueItems.Count);
-
-        // ── Step 6b: Acceptance agent (validate generation) + bounded self-correction ──
-        var analysesRaw = draft.Analyses;
-        if (string.IsNullOrWhiteSpace(analysesRaw))
-            throw new ConsultationGenerationException("Case agent returned empty analyses");
-        var sw6b = Stopwatch.StartNew();
-        var sourcesList = string.Join("\n", sources.Take(18)
-            .Select(s => $"[S{s.Index}] {s.DocType} {s.DocName} {s.ArticleRef}"));
-        // Feed the judge the agent's per-case criteria so a dividend isn't judged against
-        // service-RS expectations (ES/TVA) and vice-versa.
-        if (!string.IsNullOrWhiteSpace(draft.JudgeCriteria))
-            sourcesList += "\n\n═══ CRITÈRES SPÉCIFIQUES AU CAS ═══\n" + draft.JudgeCriteria;
-        var verdict = await acceptanceAgent.ReviewAsync(
-            new AcceptanceRequest(cmd.FiscalQuestion, BuildEtendue(etendueItems, ""),
-                analysesRaw, sourcesList), ct);
-
-        // Revise on ANY rejection (missing rate, hallucination, hedged verdict, draft tone,
-        // contradiction, generic analysis, skipped ES step…), not only missing rates.
-        if (!verdict.Accept)
-        {
-            var addedCount = 0;
-
-            // (a) Only re-retrieve when the fix genuinely needs sources we don't have.
-            if (verdict.NeedsMoreSources && verdict.MissingTopics.Any())
-            {
-                logger.LogInformation("► [STEP 6b] REVISE — targeted re-retrieval for: {T}",
-                    string.Join(", ", verdict.MissingTopics));
-                var extra = await ruleRetrieval.RetrieveAsync(
-                    new RuleContext(branches, isIntl, countries, cmd.FiscalQuestion, cmd.Situation,
-                        verdict.MissingTopics), ct);
-                var more = await retrievalAgent.FetchTargetedAsync(
-                    "", Array.Empty<string>(), verdict.MissingTopics.ToArray(), ct);
-
-                var existing = new HashSet<string>(sources.Select(s => s.ChunkId)
-                    .Where(id => !string.IsNullOrEmpty(id)));
-                var addable = extra.Concat(more)
-                    .Where(s => string.IsNullOrEmpty(s.ChunkId) || existing.Add(s.ChunkId))
-                    .ToList();
-                if (addable.Any())
-                {
-                    // APPEND at the end (never insert at front): existing [Sn] must stay stable so the
-                    // citations already written in the analyses/table keep resolving to the right source.
-                    var start = sources.Count;
-                    sources.AddRange(addable);
-                    for (int i = start; i < sources.Count; i++) sources[i].Index = i + 1;
-                    addedCount = addable.Count;
-                }
-            }
-
-            // (b) One bounded revision pass with the judge's concrete corrective guidance,
-            //     fixing tone/grounding/decision/coverage with whatever sources we now have.
-            var guidance = string.IsNullOrWhiteSpace(verdict.RevisionGuidance)
-                ? (verdict.Issues.Any() ? "Corrige: " + string.Join(" ; ", verdict.Issues)
-                                        : "Corrige les faiblesses de qualité.")
-                : verdict.RevisionGuidance;
-            logger.LogInformation("► [STEP 6b] REVISE — {N} issue(s); +{A} sources",
-                verdict.Issues.Count, addedCount);
-
-            // The case agent owns its revision (same prompt/démarche, plus the judge's guidance).
-            analysesRaw = await agent.ReviseAsync(ctx, draft, guidance, ct);
-
-            logger.LogInformation("└─ [STEP 6b] revised by agent {A}", agent.Type);
-        }
-        sw6b.Stop();
-        timings.Add(new("6b. Acceptance + revise", sw6b.Elapsed.TotalMilliseconds,
-            verdict.Accept ? "accepted" : $"revised: {string.Join(",", verdict.MissingTopics)}"));
-
-        // ── Step 6b': Senior-review polish (universal EY house form; form-only, guarded) ──
-        var swSr = Stopwatch.StartNew();
-        var polished = await SeniorReviewAsync(draft.SystemPrompt, analysesRaw, ct);
-        var srApplied = !ReferenceEquals(polished, analysesRaw) && polished != analysesRaw;
-        analysesRaw = polished;
-        swSr.Stop();
-        timings.Add(new("6b'. Senior review", swSr.Elapsed.TotalMilliseconds, srApplied ? "polished" : "kept draft"));
-
-        // ── Step 6c: DERIVE the synthesis table from the FINALIZED analyses ──────
-        // The parallel Phase-3 table is generated from raw sources and never revised, so it
-        // drifts (e.g. "NON DOCUMENTÉ" while the body states 15%). We regenerate the table here,
-        // strictly from the final analyses, so it can never contradict them.
-        var sw6c = Stopwatch.StartNew();
-        try
-        {
-            var tableRaw = await llmAgent.CompleteAsync(SystemPrompt,
-                BuildTablePrompt(etendueItems, analysesRaw), "Table", 1800, ct);
-            var derived = ParseTable(tableRaw is not null ? ParseJsonDict(tableRaw) : null);
-            if (derived.Count > 0) table = derived;
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "│  [TABLE] derivation failed — keeping Phase-3 table"); }
-        sw6c.Stop();
-        timings.Add(new("6c. Table from analyses", sw6c.Elapsed.TotalMilliseconds, $"rows={table.Count}"));
+        foreach (var (step, ms, note) in state.Timings)
+            timings.Add(new(step, ms, note));
+        timings.Add(new("6. MAF workflow (‖ P3)", sw6.Elapsed.TotalMilliseconds,
+            $"case={state.CaseType} rl={state.RetrievalLoops} wl={state.WriterLoops} expert={(state.ExpertApplied ? "y" : "n")}"));
+        logger.LogInformation(
+            "└─ [GRAPH] ✓ ({Ms:F0}ms) | case={C} | retrievalLoops={R} writerLoops={W} | judge={J} | expert={E} | table={T}",
+            sw6.Elapsed.TotalMilliseconds, state.CaseType, state.RetrievalLoops, state.WriterLoops,
+            state.JudgeAccepted ? "accepted" : "bounded", state.ExpertApplied, table.Count);
 
         // ── Step 7: Build output ──────────────────────────────────────────────
         string R(string t) => ResolveCitations(t, sources);
@@ -784,7 +707,7 @@ public sealed class GenerateConsultationCommandHandler(
 
     // Synthesis table derived STRICTLY from the finalized analyses (never from raw sources),
     // so it always matches the body — no "NON DOCUMENTÉ" while the analysis states a rate.
-    private static string BuildTablePrompt(List<string> etendueItems, string finalAnalyses)
+    internal static string BuildTablePrompt(List<string> etendueItems, string finalAnalyses)
     {
         var n  = etendueItems.Count;
         var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
@@ -801,106 +724,9 @@ public sealed class GenerateConsultationCommandHandler(
             "{\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"\"}]}";
     }
 
-    // ── Case qualifier + playbook (income-type routing) ────────────────────────
-
-    // LLM-primary qualification of the consultation into an income CaseType, with a light
-    // deterministic contradiction check. Qualification is a semantic judgement (services vs
-    // dividend vs interest vs royalty), so the LLM decides; determinism only guards against an
-    // obviously wrong call (e.g. "dividende" with no distribution/shareholder cue in the facts).
-    private async Task<CaseType> QualifyCaseAsync(
-        GenerateConsultationCommand cmd, List<string> etendueItems, string contexteFaits,
-        RetrievalPlan plan, CancellationToken ct)
-    {
-        var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
-        var sys =
-            "Tu es un fiscaliste tunisien senior. Tu CLASSES la nature du revenu d'une consultation, " +
-            "à partir de l'ÉTENDUE des travaux et des faits. Réponds UNIQUEMENT en JSON:\n" +
-            "{\"case_type\":\"rs_service_foreign|dividende|interet|redevance|autre\",\"rationale\":\"...\"}\n" +
-            "- dividende: distribution de bénéfices / dividendes à un actionnaire (société mère, associé…).\n" +
-            "- interet: intérêts d'un prêt / d'une créance.\n" +
-            "- redevance: usage d'un droit, marque, brevet, logiciel, savoir-faire, licence.\n" +
-            "- rs_service_foreign: prestation de services rendue par un fournisseur ÉTRANGER (étude, " +
-            "engineering, assistance technique, conseil…).\n" +
-            "- autre: tout le reste (transaction purement interne, cas non couvert).\n" +
-            "Choisis la catégorie DOMINANTE de la question posée.";
-        var user = $"ÉTENDUE:\n{et}\n\nFAITS:\n{contexteFaits}\n\nQUESTION: {cmd.FiscalQuestion}\n\n" +
-                   $"(indice préliminaire du planner: {plan.IncomeType})\nClasse. JSON.";
-
-        CaseType llmType = CaseType.Generic;
-        try
-        {
-            var raw    = await llmAgent.CompleteAsync(sys, user, "Qualifier", 300, ct);
-            var parsed = raw is not null ? ParseJsonDict(raw) : null;
-            var label  = (parsed is not null ? GetStr(parsed, "case_type") : "").Trim().ToLowerInvariant();
-            llmType = label switch
-            {
-                "dividende"          => CaseType.Dividende,
-                "interet"            => CaseType.Interet,
-                "redevance"          => CaseType.Redevance,
-                "rs_service_foreign" => CaseType.RsServiceForeign,
-                _                    => CaseType.Generic,
-            };
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "[QUALIFY] failed — Generic"); }
-
-        // Deterministic contradiction guard: only for the qualifications whose démarche diverges
-        // hard from the legacy flow. If the LLM picked dividende/interet/redevance but no supporting
-        // cue exists in the facts, fall back to the safe legacy path rather than skip ES/TVA wrongly.
-        var hay = ((cmd.Situation ?? "") + " " + (cmd.FiscalQuestion ?? "") + " " + (contexteFaits ?? "")
-                   + " " + string.Join(" ", etendueItems)).ToLowerInvariant();
-        bool Cue(params string[] terms) => terms.Any(hay.Contains);
-        var validated = llmType switch
-        {
-            CaseType.Dividende when !Cue("dividend", "distribu", "actionnaire", "société mère",
-                "societe mere", "filiale", "participation", "associé", "associe", "bénéfices dist",
-                "benefices dist") => CaseType.Generic,
-            CaseType.Interet when !Cue("intérêt", "interet", "prêt", "pret", "créance", "creance",
-                "emprunt", "coupon") => CaseType.Generic,
-            CaseType.Redevance when !Cue("redevance", "royalt", "licence", "marque", "brevet",
-                "logiciel", "savoir-faire", "savoir faire", "droit d'usage") => CaseType.Generic,
-            _ => llmType,
-        };
-
-        if (validated != llmType)
-            logger.LogInformation("[QUALIFY] LLM said {L} but no supporting cue → {V}", llmType, validated);
-        logger.LogInformation("► [QUALIFY] case type = {T}", validated);
-        return validated;
-    }
-
-    // Universal "senior review" polish: a bounded rewrite that improves the drafting to EY house
-    // form WITHOUT touching any figure, citation, verdict or article. Guarded — if the rewrite drops
-    // citations or introduces a spurious "NON DOCUMENTÉ", we keep the original. Fixes "reads like a
-    // draft" for every case, since it operates on form, not content.
-    private async Task<string> SeniorReviewAsync(string systemPrompt, string analyses, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(analyses) || analyses.Length < 200) return analyses;
-        try
-        {
-            var prompt =
-                EyStyle.Card + "\n\n" +
-                "Voici un PROJET d'analyse. Réécris-le pour qu'il se lise comme un mémo EY final et fluide, " +
-                "sous CONTRAINTES STRICTES :\n" +
-                "- NE CHANGE AUCUN chiffre, AUCUN taux, AUCUNE citation [Sn], AUCUN verdict, AUCUN numéro d'article.\n" +
-                "- CONSERVE toutes les sections, sous-sections, titres et leur ordre, ainsi que les « Verdict : ».\n" +
-                "- Améliore UNIQUEMENT la fluidité, les liaisons et le ton ; supprime les tournures de brouillon.\n" +
-                "- Réponds en JSON : {\"analyses\":\"...\"}.\n\n" +
-                "PROJET :\n" + analyses;
-            var raw     = await llmAgent.CompleteAsync(systemPrompt, prompt, "SeniorReview", 3800, ct);
-            var parsed  = raw is not null ? ParseJsonDict(raw) : null;
-            var revised = parsed is not null ? GetStr(parsed, "analyses") : "";
-            if (string.IsNullOrWhiteSpace(revised) || revised.Length < analyses.Length / 2) return analyses;
-            // Guard: never accept a rewrite that lost citations or invented "NON DOCUMENTÉ".
-            if (CountCitations(revised) + 1 < CountCitations(analyses)) return analyses;
-            if (revised.Contains("NON DOCUMENT") && !analyses.Contains("NON DOCUMENT")) return analyses;
-            return revised;
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "[SENIOR-REVIEW] failed — keeping draft"); return analyses; }
-    }
-
-    private static int CountCitations(string text) =>
-        System.Text.RegularExpressions.Regex.Matches(text ?? "", @"\[S\d+\]").Count;
-
     // ── Source merging ────────────────────────────────────────────────────────
+    // (Qualification, senior review and the judge/revision loop moved into the MAF workflow —
+    //  see Orchestration/ConsultationWorkflow.cs.)
 
     // The rate-driving domestic articles (CIRPPIS Art.52/53 for the withholding rate, CTVA Art.7 for
     // the VAT rate) MUST be inside the model's visible source window — otherwise the model truthfully
