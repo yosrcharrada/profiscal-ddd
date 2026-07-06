@@ -170,7 +170,7 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
         "Cas SERVICE / FOURNISSEUR ÉTRANGER : l'établissement stable est tranché d'abord en droit commun " +
         "puis selon l'Art.5 de la convention. La RS applique la ligne de l'Art.52 visant les « non domiciliés " +
         "ni établis » (non les honoraires-résidents). TVA due par retenue de 100% du preneur. Assiette (montant " +
-        "brut TVA comprise) et formalisme du transfert (Art.112 CDPF + circ. BCT 9/2016) ne doivent pas manquer.";
+        "brut TVA comprise) et formalisme du transfert (certificat de retenue à la source) ne doivent pas manquer.";
 
     protected override List<RequiredSource> BuildChecklist(ConsultationState state)
     {
@@ -240,8 +240,9 @@ public sealed class DividendeAgent : CaseAgentBase
         "     loi de finances en vigueur si elle est retrouvée dans les sources [Sn].\n" +
         "C. AUTRES OBLIGATIONS\n" +
         "   C.1 Assiette = montant brut des dividendes distribués.\n" +
-        "   C.2 Formalisme du transfert des fonds = Art.112 CDPF + circulaire BCT n°9/2016\n" +
-        "       (certificat de retenue à la source) ; obligations déclaratives de la société distributrice.\n";
+        "   C.2 Formalisme du transfert des fonds : certificat de retenue à la source et attestation de\n" +
+        "       régularisation, obligations déclaratives de la société distributrice. Cite UNIQUEMENT les\n" +
+        "       textes réellement fournis [Sn] — n'invente ni numéro d'article ni numéro de circulaire.\n";
 
     protected override string ForbiddenSteps =>
         "INTERDIT : ne PAS dérouler la séquence des prestations de services (établissement stable\n" +
@@ -323,7 +324,7 @@ public sealed class InteretAgent : CaseAgentBase
         "   A.2 Taux de droit commun : lis-le dans la ligne de l'Art.52 CIRPPIS visant les intérêts\n" +
         "       servis aux non-résidents [Sn]. Retiens le plus favorable (plafond conventionnel vs droit commun).\n" +
         "B. AUTRES OBLIGATIONS — C.1 assiette = montant brut des intérêts ; C.2 formalisme du transfert\n" +
-        "   (Art.112 CDPF + circulaire BCT n°9/2016).\n";
+        "   (certificat de retenue à la source ; cite uniquement les textes fournis [Sn]).\n";
 
     protected override string ForbiddenSteps =>
         "INTERDIT la séquence des prestations de services (ES chantier, RS de TVA 100%). Les intérêts\n" +
@@ -376,7 +377,7 @@ public sealed class RedevanceAgent : CaseAgentBase
         "       non-résidents [Sn]. Retiens le plus favorable.\n" +
         "B. TVA — une redevance pour service utilisé en Tunisie peut être taxable (Art.3) au taux de\n" +
         "   l'Art.7 [Sn], avec retenue de la TVA par le preneur (Art.19) si le prestataire n'est pas établi.\n" +
-        "C. AUTRES — C.1 assiette ; C.2 formalisme du transfert (Art.112 CDPF + circulaire BCT n°9/2016).\n";
+        "C. AUTRES — C.1 assiette ; C.2 formalisme du transfert (certificat de retenue ; textes fournis [Sn] uniquement).\n";
 
     protected override string ForbiddenSteps =>
         "N'assimile PAS une redevance à un simple bénéfice d'entreprise : l'article « Redevances » de la\n" +

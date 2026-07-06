@@ -65,26 +65,19 @@ public sealed class ConsultationWorkflow(
             .WithOutputFrom(finalize)
             .Build(validateOrphans: false);
 
-        ConsultationState? final = null;
+        // The graph mutates ONE `state` instance in place as it flows the edges, so that reference
+        // IS the result — we just drive the stream to completion and return it. (No YieldOutput;
+        // see FinalizeAsync.)
         await using var run = await InProcessExecution.RunStreamingAsync(workflow, state, cancellationToken: ct);
         await foreach (var evt in run.WatchStreamAsync(ct))
         {
             switch (evt)
             {
-                case WorkflowOutputEvent output when output.Is<ConsultationState>(out var s) && s is not null:
-                    final = s;
-                    break;
-                case WorkflowErrorEvent err:
-                    logger.LogError("[GRAPH] workflow error: {E}", err);
-                    break;
-                case ExecutorFailedEvent fail:
-                    logger.LogError("[GRAPH] executor failed: {E}", fail);
-                    break;
+                case WorkflowErrorEvent err:   logger.LogError("[GRAPH] workflow error: {E}", err);   break;
+                case ExecutorFailedEvent fail: logger.LogError("[GRAPH] executor failed: {E}", fail); break;
             }
         }
-        // The state object is mutated in place as it flows the edges, so even if the output event
-        // were missed the original reference carries the result.
-        return final ?? state;
+        return state;
     }
 
     private static ExecutorBinding Bind<TIn, TOut>(
@@ -568,28 +561,30 @@ public sealed class ConsultationWorkflow(
         return state;
     }
 
-    /// <summary>The immutability contract: rates (multiset), citations (set), article numbers (set),
-    /// verdict count and section count must all survive the rewrite; length may not collapse.</summary>
+    /// <summary>The immutability contract. Rates and citations are compared as NORMALISED DISTINCT
+    /// SETS (not multisets): the polish may legitimately consolidate « 35% ou 40% » or drop a
+    /// redundant repeat of a rate — that must NOT revert it. What must never happen: a distinct rate
+    /// VALUE appears or disappears (hallucinated or lost figure), a citation is dropped, an article
+    /// number changes, a verdict/section is lost, or the length collapses. This precise boundary is
+    /// what lets the EY-voice rewrite actually apply instead of reverting on every reformatting.</summary>
     public static (bool Ok, string Why) InvariantsPreserved(string before, string after)
     {
         if (string.IsNullOrWhiteSpace(after))              return (false, "empty rewrite");
-        if (after.Length < before.Length * 0.6)            return (false, "length collapsed");
+        if (after.Length < before.Length * 0.55)           return (false, "length collapsed");
 
-        static string Rates(string t) => string.Join("|",
-            Regex.Matches(t, @"\d+(?:[.,]\d+)?\s*%").Select(m => m.Value.Replace(" ", ""))
-                 .OrderBy(x => x, StringComparer.Ordinal));
-        static string Cites(string t) => string.Join("|",
-            Regex.Matches(t, @"\[S\d+\]").Select(m => m.Value).Distinct().OrderBy(x => x, StringComparer.Ordinal));
-        static string Arts(string t) => string.Join("|",
-            Regex.Matches(t, @"(?i)art(?:icle)?\.?\s*(\d+(?:\s*(?:bis|ter))?)")
-                 .Select(m => m.Groups[1].Value.Replace(" ", "").ToLowerInvariant())
-                 .Distinct().OrderBy(x => x, StringComparer.Ordinal));
+        // distinct rate VALUES, comma/dot and spacing normalised (« 1,5 % » == « 1.5% »)
+        static HashSet<string> Rates(string t) => Regex.Matches(t, @"\d+(?:[.,]\d+)?\s*%")
+            .Select(m => m.Value.Replace(" ", "").Replace(",", ".")).ToHashSet();
+        static HashSet<string> Cites(string t) => Regex.Matches(t, @"\[S\d+\]")
+            .Select(m => m.Value).ToHashSet();
+        static HashSet<string> Arts(string t) => Regex.Matches(t, @"(?i)art(?:icle)?\.?\s*(\d+(?:\s*(?:bis|ter))?)")
+            .Select(m => m.Groups[1].Value.Replace(" ", "").ToLowerInvariant()).ToHashSet();
         static int Verdicts(string t) => Regex.Matches(t, @"(?im)^\s*Verdict").Count;
         static int Sections(string t) => Regex.Matches(t, @"(?m)^\s*(?:4\.\d|[A-C]\.\d?|[A-C]\.)").Count;
 
-        if (Rates(before) != Rates(after))                 return (false, "rates changed");
-        if (Cites(before) != Cites(after))                 return (false, "citations changed");
-        if (Arts(before)  != Arts(after))                  return (false, "article numbers changed");
+        if (!Rates(before).SetEquals(Rates(after)))        return (false, "rate value added/removed");
+        if (!Cites(before).SetEquals(Cites(after)))        return (false, "citation added/removed");
+        if (!Arts(before).SetEquals(Arts(after)))          return (false, "article number changed");
         if (Verdicts(after) < Verdicts(before))            return (false, "verdict dropped");
         if (Sections(after) < Sections(before))            return (false, "section dropped");
         return (true, "");
@@ -623,7 +618,11 @@ public sealed class ConsultationWorkflow(
         sw.Stop();
         state.Timings.Add(("W8. Finalize (table)", sw.Elapsed.TotalMilliseconds, $"rows={state.Table.Count}"));
 
-        await ctx.YieldOutputAsync(state, ct);
+        // NOTE: we do NOT ctx.YieldOutputAsync(state) — MAF requires the output TYPE to be declared
+        // on the builder, and a graph carrying a mutable domain state uses that same instance as the
+        // result. Finalize is terminal (sends no message), so the workflow goes idle and the handler
+        // reads the mutated `state` reference directly. Yielding here threw
+        // "Cannot output object of type ConsultationState. Expecting one of []" on every run.
     }
 
     private ICaseAgent Agent(CaseType type) =>

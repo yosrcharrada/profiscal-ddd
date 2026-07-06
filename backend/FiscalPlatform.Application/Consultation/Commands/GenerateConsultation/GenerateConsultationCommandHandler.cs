@@ -109,8 +109,9 @@ public sealed class GenerateConsultationCommandHandler(
         "     tableaux annexes A/B si l'opération y figure). Prestataire NON établi = RETENUE À LA SOURCE DE\n" +
         "     100% DE LA TVA par le preneur (TVA déductible).\n" +
         "  5. SECTIONS OBLIGATOIRES (cas RS/international): (a) ASSIETTE DE LA RS = montant BRUT, TVA COMPRISE\n" +
-        "     (Art.52/53 + NC 3/2015) ; (b) FORMALISME TRANSFERT DE FONDS = Art.112 CDPF + circulaire BCT\n" +
-        "     n°9/2016 (certificat de RS ; attestation de régularisation non exigée si la RS a été opérée).\n" +
+        "     [Sn] ; (b) FORMALISME TRANSFERT DE FONDS = certificat de retenue à la source (attestation de\n" +
+        "     régularisation non exigée si la RS a été opérée). Cite UNIQUEMENT les textes réellement fournis\n" +
+        "     [Sn] — n'invente AUCUN numéro d'article ni de circulaire absent des sources.\n" +
         "  6. NE JAMAIS introduire de condition non étayée par les faits.\n" +
         "CONVENTION: Art.5=ES, Art.7=bénéfices, Art.10=dividendes, Art.11=intérêts,\n" +
         "  Art.12=redevances, Art.14=prof.indép., Art.15=salaires.\n" +
@@ -608,8 +609,9 @@ public sealed class GenerateConsultationCommandHandler(
             bg.AppendLine("  4. TVA : champ Art.1, TERRITORIALITÉ Art.3, Art.5 → taux Art.7 [Sn] (ou taux réduit des tableaux " +
                           "annexes A/B si l'opération y figure). Prestataire non établi = RETENUE À LA SOURCE DE 100% DE LA TVA par le preneur (TVA déductible).");
             bg.AppendLine("  5. SECTIONS OBLIGATOIRES — ne jamais omettre : (a) ASSIETTE DE LA RS = montant brut TVA comprise " +
-                          "(Art.52/53 + NC 3/2015) [Sn] ; (b) FORMALISME DU TRANSFERT DES FONDS = Art.112 CDPF + circulaire BCT " +
-                          "n°9/2016 (certificat de RS ; attestation de régularisation non exigée si la RS a été opérée) [Sn].");
+                          "[Sn] ; (b) FORMALISME DU TRANSFERT DES FONDS = certificat de retenue à la source (attestation de " +
+                          "régularisation non exigée si la RS a été opérée). Cite UNIQUEMENT les textes réellement fournis [Sn] " +
+                          "— n'invente AUCUN numéro d'article ni de circulaire absent des sources.");
             bg.AppendLine("  6. Ne PAS introduire de condition non étayée par les faits.");
         }
         if (plan.NoteCommune2Used)
@@ -665,7 +667,7 @@ public sealed class GenerateConsultationCommandHandler(
                   "         conclus (majoration applicable uniquement pour les activités au taux d'IS le plus élevé).\n") +
             "  B. TVA — territorialité (Art.3) et taux chiffré (Art.7).\n" +
             "  C. AUTRES CONSIDÉRATIONS — C.1 Assiette de la RS (NC 3/2015) ; C.2 Formalisme du transfert\n" +
-            "     des fonds (Art.112 CDPF + circ. BCT 9/2016).\n";
+            "     des fonds (certificat de retenue à la source) — cite UNIQUEMENT les textes fournis [Sn].\n";
 
         var styleAndFormat = concise
             ? "═══ FORMAT — VERSION CONCISE ═══\n" + demarche +
