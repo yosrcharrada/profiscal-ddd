@@ -69,20 +69,28 @@ public abstract class CaseAgentBase : ICaseAgent
 
     // ── Shared checklist fragments (métier constants) ──
 
-    /// <summary>Art.112 CDPF + circulaire BCT n°9/2016 — formalisme du transfert des fonds.
-    /// Best-effort: the graph carries mostly 112 bis, so we never block the loop on it, but the
-    /// fulfilment always tries.</summary>
+    /// <summary>CDPF Art.112 (attestation de régularisation — transfert des fonds). TEXT-anchored,
+    /// not number-anchored: in both graphs the real Art.112 régime text lives inside chunks stamped
+    /// with the WRONG article numbers (an=110 section chunks; an=3 chunks carrying the Décret
+    /// 2008-1858 d'application) while an=112 chunks are all « 112 bis ». Only the distinctive
+    /// phrase reaches the actual provision. French CDPF editions stop at 2025 (2026 is Arabic-only
+    /// and rightly excluded).</summary>
     protected static RequiredSource Cdpf112 => new(
-        Key: "cdpf_112", Critical: false,
-        Description: "Art.112 CDPF + circulaire BCT n°9/2016 (certificat de RS, transfert des fonds)",
-        DocFragment: "code_droits_procedures", ArticleNumber: "112",
-        // "transfert" filters the line-precise fetch: some CDPF parts carry a wrong
-        // article_number=112 stamp (médiateur fiscal, Art.114/117) — without the text filter they
-        // would enter the window as noise. The REAL Art.112 text is absent from both graphs anyway
-        // (only 112 bis exists), so this item stays best-effort until the tax team adds the text.
-        TextContains: "transfert",
+        Key: "cdpf_112", Critical: true,
+        Description: "Art.112 CDPF (attestation de régularisation, transfert des fonds) + décret d'application",
+        DocFragment: "code_droits_procedures",
+        TextContains: "régularisation de leur situation fiscale",
         FetchDocFragment: "code_droits_procedures",
-        FetchKeywords: new[] { "certificat de retenue", "transfert", "attestation de régularisation" });
+        FetchKeywords: new[] { "régularisation de leur situation fiscale", "attestation", "article 112" });
+
+    /// <summary>NC 14/2013 — the Note Commune entirely dedicated to commenting CDPF Art.112:
+    /// the best-grounded doctrine for the transfer-formalism section (present in both graphs).</summary>
+    protected static RequiredSource Nc112Doctrine => new(
+        Key: "nc112_doctrine", Critical: false,
+        Description: "Note commune N°14/2013 (commentaire de l'article 112 CDPF)",
+        DocFragment: "NC_2013_14",
+        FetchDocFragment: "NC_2013_14",
+        FetchKeywords: new[] { "régularisation", "transfert", "attestation" });
 
     /// <summary>NC 3/2015 — assiette de la RS (montant brut TVA comprise).</summary>
     protected static RequiredSource Nc3_2015 => new(
@@ -142,6 +150,7 @@ public sealed class GenericAgent : CaseAgentBase
                 DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true,
                 FetchDocFragment: "code_tva"),
             Cdpf112,
+            Nc112Doctrine,
         };
         return list;
     }
@@ -185,6 +194,7 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
                 TextContains: "privilégié",
                 FetchKeywords: new[] { "régime fiscal privilégié", "liste des Etats", "taux de l'impôt inférieur" }),
             Cdpf112,
+            Nc112Doctrine,
         };
 
         // Convention country → the treaty ES article (by SUBJECT, accent-safe) + NC 2/2015 — the
@@ -274,6 +284,7 @@ public sealed class DividendeAgent : CaseAgentBase
             new("cirppis_29", "CIRPPIS Art.29 (définition des revenus distribués)", Critical: false,
                 DocFragment: "code_irpp_is", ArticleNumber: "29", FetchDocFragment: "code_irpp_is"),
             Cdpf112,
+            Nc112Doctrine,
         };
 
         if (state.Countries.Count > 0)
@@ -338,6 +349,7 @@ public sealed class InteretAgent : CaseAgentBase
         {
             Art52("art52_interets", "CIRPPIS Art.52 (texte complet avec % — ligne des intérêts)", null),
             Cdpf112,
+            Nc112Doctrine,
         };
         if (state.Countries.Count > 0)
             list.Add(new("conv_interets", "Article « Intérêts » de la convention applicable",
@@ -396,6 +408,7 @@ public sealed class RedevanceAgent : CaseAgentBase
             new("ctva_19", "CTVA Art.19 (retenue de la TVA — prestataire non établi)", Critical: false,
                 DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
             Cdpf112,
+            Nc112Doctrine,
         };
         if (state.Countries.Count > 0)
             list.Add(new("conv_redevances", "Article « Redevances » de la convention applicable",
