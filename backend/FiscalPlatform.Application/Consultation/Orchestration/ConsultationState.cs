@@ -46,6 +46,14 @@ public sealed class ConsultationState
     public List<string> JudgeMissingTopics{ get; set; } = new();
     public bool         JudgeNeedsSources { get; set; }
     public bool         JudgeRan          { get; set; }
+    /// <summary>Judge-driven retrieval passes used so far. Capped hard: chasing the judge's
+    /// requested sources across many loops re-fetched nothing (the topics are either absent from
+    /// the corpus or already present) while each pass cost a full writer+judge cycle.</summary>
+    public int  JudgeRetrievalsUsed { get; set; }
+    public const int MaxJudgeRetrievals = 1;
+    /// <summary>Set false by a fulfil pass that added ZERO new sources — the progress guard that
+    /// stops the graph from re-retrieving/re-writing when retrieval cannot make progress.</summary>
+    public bool LastFulfilProgressed { get; set; } = true;
 
     // ── [7]/[8] Expert voice + finalize ──
     public bool ExpertApplied { get; set; }
@@ -60,6 +68,8 @@ public sealed class ConsultationState
 
     public bool NeedsJudgeRetrieval =>
         JudgeRan && !JudgeAccepted && JudgeNeedsSources && JudgeMissingTopics.Count > 0
+        && JudgeRetrievalsUsed < MaxJudgeRetrievals   // hard cap: at most one judge-driven fetch
+        && WriterLoops < MaxWriterLoops               // never re-retrieve once the writer budget is spent
         && RetrievalLoops < MaxRetrievalLoops;
 
     public bool NeedsWriterRevision =>

@@ -32,7 +32,6 @@ namespace FiscalPlatform.Application.Consultation.Orchestration;
 public sealed class ConsultationWorkflow(
     ILlmAgent llm,
     IRetrievalAgent retrieval,
-    IRetrievalPlannerAgent planner,
     IAcceptanceAgent acceptance,
     IEnumerable<ICaseAgent> caseAgents,
     ILogger<ConsultationWorkflow> logger)
@@ -165,12 +164,13 @@ public sealed class ConsultationWorkflow(
         return ValueTask.FromResult(state);
     }
 
-    // ── [3] Fulfil the brief — case-aware planner (ONCE) + deterministic fetchers ────────
-    // On the FIRST pass the case agent's brief goes to the autonomous ReAct planner for open-ended
-    // recall. On completeness-retry and judge-driven passes we DO NOT re-invoke the planner: it
-    // re-derived the same plan and re-fetched the same sources on every pass (~15s / 2 LLM calls
-    // each — most of the log's 188s workflow), while the deterministic checklist fetchers — which
-    // encode the tax team's exact source map — are what actually close each item. Those always run.
+    // ── [3] Fulfil the brief — DETERMINISTIC métier fetchers ─────────────────────────────
+    // The case-aware autonomous ReAct planner runs ONCE, pre-graph (handler Step 2), for open-ended
+    // recall. It is deliberately NOT re-invoked here: on every in-graph pass it re-derived the same
+    // plan and re-fetched an identical source set (~16s / 2 LLM calls each — a large slice of the
+    // workflow time), while the deterministic checklist fetchers — which encode the tax team's exact
+    // source map (line-precise parts, treaty-by-subject, newest edition) — are what actually close
+    // each item. Those always run.
     private async ValueTask<ConsultationState> FulfilAsync(
         ConsultationState state, IWorkflowContext ctx, CancellationToken ct)
     {
@@ -179,41 +179,22 @@ public sealed class ConsultationWorkflow(
         var agent = Agent(state.CaseType);
         state.RetrievalLoops++;
 
-        var report   = agent.VerifyCompleteness(brief, state.Sources, state.Countries);
-        var before   = state.Sources.Count;
-        var hasDraft = !string.IsNullOrEmpty(state.Analyses);
+        var report      = agent.VerifyCompleteness(brief, state.Sources, state.Countries);
+        var before      = state.Sources.Count;
+        var hasDraft    = !string.IsNullOrEmpty(state.Analyses);
+        var judgeDriven = state.JudgeMissingTopics.Count > 0;
+        if (judgeDriven) state.JudgeRetrievalsUsed++;   // this pass consumes the one judge-retrieval budget
 
-        if (report.Missing.Count > 0 || state.JudgeMissingTopics.Count > 0)
+        if (report.Missing.Count > 0 || judgeDriven)
         {
-            // (a) the autonomous planner — first pass only.
-            if (state.RetrievalLoops == 1)
-            {
-                var items = report.Missing.Select(m => $"- {m.Description}").ToList();
-                try
-                {
-                    logger.LogInformation("► [GRAPH:Fulfil #{L}] planner mission — {N} item(s): {M}",
-                        state.RetrievalLoops, items.Count,
-                        string.Join(" | ", report.Missing.Select(m => m.Key)));
-                    var mission = await planner.PlanAndRetrieveAsync(
-                        situation: $"CAS QUALIFIÉ : {brief.Label}.\nFAITS : {state.ContexteFaits}",
-                        fiscalQuestion:
-                            "MISSION DE RECHERCHE CIBLÉE — retrouve PRÉCISÉMENT les sources juridiques " +
-                            "suivantes, requises pour ce cas (utilise tes outils, reformule si nécessaire ; " +
-                            "pour les conventions cherche l'article PAR SUJET, jamais par numéro) :\n" +
-                            string.Join("\n", items),
-                        state.Branches, state.Countries, state.IsInternational, ct);
-                    AddDeduped(state.Sources, mission?.Sources ?? new List<LegalSourceDto>());
-                }
-                catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] planner failed"); }
-            }
-            else
-            {
-                logger.LogInformation("► [GRAPH:Fulfil #{L}] deterministic fetchers (planner skipped on retry) — {N} item(s)",
-                    state.RetrievalLoops, report.Missing.Count + state.JudgeMissingTopics.Count);
-            }
+            // The case-aware autonomous planner already ran ONCE pre-graph (handler Step 2); a second
+            // pass here returned an identical source set at full LLM cost. So fulfilment is owned by the
+            // DETERMINISTIC métier fetchers below — line-precise parts, treaty-by-subject, newest
+            // edition, Arabic exclusion — which are what actually satisfy the checklist.
+            logger.LogInformation("► [GRAPH:Fulfil #{L}] deterministic fetchers — {N} checklist item(s){J}",
+                state.RetrievalLoops, report.Missing.Count,
+                judgeDriven ? $" + {state.JudgeMissingTopics.Count} judge topic(s)" : "");
 
-            // (b) deterministic métier fetchers — line-precise parts, treaty-by-subject, newest
-            // edition, Arabic exclusion — for every still-missing checklist item. ALWAYS runs.
             var still = agent.VerifyCompleteness(brief, state.Sources, state.Countries);
             foreach (var item in still.Missing.Take(8))
             {
@@ -221,7 +202,7 @@ public sealed class ConsultationWorkflow(
                 catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] net item {K}", item.Key); }
             }
 
-            // (c) judge-flagged topics → keyword fetches (previously only reachable via the planner).
+            // judge-flagged topics → keyword fetches.
             foreach (var topic in state.JudgeMissingTopics.Take(4))
             {
                 try   { AddDeduped(state.Sources, await retrieval.FetchTargetedAsync("", System.Array.Empty<string>(), new[] { topic }, ct)); }
@@ -258,11 +239,14 @@ public sealed class ConsultationWorkflow(
             for (int i = before; i < state.Sources.Count; i++) state.Sources[i].Index = i + 1;
         }
 
+        var added = state.Sources.Count - before;
+        state.LastFulfilProgressed = added > 0;   // progress guard — read by the routing predicates
+
         sw.Stop();
         state.Timings.Add(($"W3. Fulfil #{state.RetrievalLoops}", sw.Elapsed.TotalMilliseconds,
-            $"+{state.Sources.Count - before} src, {report.Missing.Count} asked"));
+            $"+{added} src, {report.Missing.Count} asked"));
         logger.LogInformation("► [GRAPH:Fulfil #{L}] +{N} sources ({M} items missing before)",
-            state.RetrievalLoops, state.Sources.Count - before, report.Missing.Count);
+            state.RetrievalLoops, added, report.Missing.Count);
         return state;
     }
 

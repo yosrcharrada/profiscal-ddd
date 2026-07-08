@@ -49,9 +49,16 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
         "accept=false UNIQUEMENT en présence d'une faiblesse MAJEURE : verdict faux, manquant ou " +
         "conditionnel ; taux affirmé sans source ; hallucination ; section obligatoire absente ; " +
         "contradiction interne. Des améliorations purement stylistiques ou de simples redondances ne " +
-        "justifient PAS un rejet — dans ce cas accept=true (liste-les quand même dans issues).\n" +
-        "needs_more_sources=true UNIQUEMENT si la correction exige une source absente; sinon false " +
-        "(la faiblesse est corrigeable avec les sources déjà fournies).";
+        "justifient PAS un rejet — dans ce cas accept=true (liste-les quand même dans issues). " +
+        "En cas de doute, si les verdicts principaux sont chiffrés, corrects et ancrés [Sn], accept=true.\n" +
+        "needs_more_sources / missing_topics — RÈGLES STRICTES (ne fais pas boucler la recherche pour rien) :\n" +
+        "• AVANT de réclamer une source, VÉRIFIE qu'elle n'est pas DÉJÀ dans « SOURCES DISPONIBLES » " +
+        "ci-dessus : si le texte y figure, needs_more_sources=false et n'ajoute PAS ce sujet à missing_topics.\n" +
+        "• Ne réclame JAMAIS une convention/traité de non-double-imposition lorsqu'AUCUNE convention n'a " +
+        "été fournie : cela signifie que le pays n'a pas de convention avec la Tunisie, et la bonne réponse " +
+        "est alors le DROIT COMMUN — ce n'est PAS une source manquante.\n" +
+        "• missing_topics doit rester VIDE et needs_more_sources=false dès que la faiblesse est corrigeable " +
+        "avec les sources déjà fournies (reformulation, application aux faits, choix du verdict).";
 
     public async Task<AcceptanceVerdict> ReviewAsync(AcceptanceRequest req, CancellationToken ct = default)
     {

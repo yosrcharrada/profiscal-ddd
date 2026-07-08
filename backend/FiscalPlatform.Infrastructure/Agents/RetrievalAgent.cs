@@ -55,7 +55,10 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
     // FRENCH article. Without this, ~40 Arabic duplicates sort first and the number/keyword paths
     // return nothing usable. (The consultation is always French; the C# ContainsArabic filter is a
     // second net.) Interpolate {NoAr} into F-projection ($@) queries — never into plain @ queries.
-    private const string NoAr = " AND NOT c.content =~ '(?s).*[؀-ۿ].*' ";
+    // Match only the HEAD of the content, not the whole body: Arabic chunks are Arabic from the very
+    // first characters, so left(...,160) catches every one while turning a full-content regex scan
+    // (the dominant cost across the parallel rule-policy fetches) into a cheap fixed-window test.
+    private const string NoAr = " AND NOT left(c.content, 160) =~ '(?s).*[؀-ۿ].*' ";
 
     private static readonly Dictionary<string, int> TypeRank = new()
     {
