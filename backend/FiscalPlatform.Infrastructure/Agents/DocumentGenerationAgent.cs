@@ -172,14 +172,22 @@ public sealed class DocumentGenerationAgent(
 
             void AddCell(string text, int pct, bool bold)
             {
-                var w = ((int)(9640 * pct / 100.0)).ToString();
-                tr.AppendChild(new TableCell(
-                    new TableCellProperties(
-                        new TableCellWidth { Width = w, Type = TableWidthUnitValues.Dxa },
-                        new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = fill }),
-                    new Paragraph(new Run(
+                var w    = ((int)(9640 * pct / 100.0)).ToString();
+                var cell = new TableCell(new TableCellProperties(
+                    new TableCellWidth { Width = w, Type = TableWidthUnitValues.Dxa },
+                    new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = fill }));
+
+                // Render each "\n"-separated line as its own paragraph so a multi-verdict conclusion
+                // reads as a stacked list ("Établissement stable : NON" / "Retenue à la source : 15%")
+                // instead of one crammed blob.
+                var lines = (text ?? "").Replace("\r", "").Split('\n')
+                    .Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+                if (lines.Length == 0) lines = new[] { "" };
+                foreach (var line in lines)
+                    cell.AppendChild(new Paragraph(new Run(
                         new RunProperties(bold ? new Bold() : null!, new FontSize { Val = "16" }),
-                        new Text(text) { Space = SpaceProcessingModeValues.Preserve }))));
+                        new Text(line) { Space = SpaceProcessingModeValues.Preserve })));
+                tr.AppendChild(cell);
             }
 
             var conclusionBold = verdicts.Any(v => row.Conclusion.ToUpper().StartsWith(v));

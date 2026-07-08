@@ -127,29 +127,38 @@ public sealed class GenerateConsultationCommandHandler(
 
     private void LogTimingTable(List<TimingEntry> timings, string reference)
     {
-        const string sep = "╠══════════════════════════════╬═════════════════════════╬═══════════════════════════════╣";
-        const string top = "╔══════════════════════════════╦═════════════════════════╦═══════════════════════════════╗";
-        const string bot = "╚══════════════════════════════╩═════════════════════════╩═══════════════════════════════╝";
-        const string hdr = "║  Step                        ║  Duration               ║  Notes                        ║";
-        logger.LogInformation(top);
-        logger.LogInformation("║  TIMING — {Ref}", reference);
-        logger.LogInformation(sep); logger.LogInformation(hdr); logger.LogInformation(sep);
-        foreach (var t in timings.Where(x => x.Step != "TOTAL"))
-        {
-            var step  = t.Step.Length  > 28 ? t.Step[..28]  : t.Step.PadRight(28);
-            var notes = t.Notes.Length > 29 ? t.Notes[..29] : t.Notes.PadRight(29);
-            var dur   = $"{t.Ms:F0}ms / {t.Ms / 60000.0:F2}min".PadRight(23);
-            logger.LogInformation("║  {S}  ║  {D}  ║  {N}  ║", step, dur, notes);
-        }
-        var total = timings.FirstOrDefault(x => x.Step == "TOTAL");
+        // Built as ONE multi-line string and logged with a SINGLE call, so the console shows a
+        // contiguous box instead of wrapping every row in the logger's category/timestamp prefix.
+        const int wStep = 34, wDur = 10, wNote = 34;
+        string Bar(char l, char m, char r) => l + new string('─', wStep + 2) + m +
+            new string('─', wDur + 2) + m + new string('─', wNote + 2) + r;
+        string Row(string s, string d, string n) =>
+            "│ " + Clip(s, wStep).PadRight(wStep) + " │ " + d.PadLeft(wDur) + " │ " +
+            Clip(n, wNote).PadRight(wNote) + " │";
+        static string Clip(string s, int w) => (s ?? "").Length > w ? s![..(w - 1)] + "…" : (s ?? "");
+        static string Dur(double ms) => ms >= 1000 ? $"{ms / 1000.0:F1}s" : $"{ms:F0}ms";
+
+        // inner width so a merged title row equals the data-row total width (88):
+        //   data row = "│ "+34+" │ "+10+" │ "+34+" │"  → title pad = 34+10+34 + 6 = 84
+        const int inner = wStep + wDur + wNote + 6;
+        string TitleRow(string t) => "│ " + Clip(t, inner).PadRight(inner) + " │";
+
+        var sb = new StringBuilder("\n");
+        sb.AppendLine(Bar('┌', '┬', '┐').Replace('┬', '─'));
+        sb.AppendLine(TitleRow("CHRONOMÉTRAGE — consultation " + reference));
+        sb.AppendLine(Bar('├', '┬', '┤'));
+        sb.AppendLine(Row("Étape", "Durée", "Détail"));
+        sb.AppendLine(Bar('├', '┼', '┤'));
+        foreach (var t in timings.Where(x => !x.Step.StartsWith("TOTAL", StringComparison.Ordinal)))
+            sb.AppendLine(Row(t.Step, Dur(t.Ms), t.Notes));
+        var total = timings.FirstOrDefault(x => x.Step.StartsWith("TOTAL", StringComparison.Ordinal));
         if (total is not null)
         {
-            logger.LogInformation(sep);
-            var dur = $"{total.Ms:F0}ms / {total.Ms / 60000.0:F2}min".PadRight(23);
-            logger.LogInformation("║  {S}  ║  {D}  ║  {N}  ║",
-                "TOTAL".PadRight(28), dur, total.Notes.PadRight(29));
+            sb.AppendLine(Bar('├', '┼', '┤'));
+            sb.AppendLine(Row(total.Step, Dur(total.Ms), total.Notes));
         }
-        logger.LogInformation(bot);
+        sb.Append(Bar('└', '┴', '┘'));
+        logger.LogInformation("{Table}", sb.ToString());
     }
 
     public async Task<ConsultationGeneratedDto> Handle(
@@ -730,12 +739,15 @@ public sealed class GenerateConsultationCommandHandler(
             $"TABLEAU DE SYNTHÈSE — JSON: analysis_table ({n} objets, un par point d'étendue, même ordre).\n\n" +
             $"POINTS D'ÉTENDUE:\n{et}\n\n" +
             $"ANALYSES FINALES (SEULE source de vérité — n'invente rien hors de ce texte):\n{finalAnalyses}\n\n" +
-            "RÈGLES STRICTES:\n" +
-            "- sujet: le point d'étendue.\n" +
-            "- analyse: 1–2 phrases résumant la position RETENUE dans les analyses, avec les mêmes [Sn].\n" +
-            "- conclusion: le VERDICT EXACT tranché dans les analyses (taux %, OUI/NON, EXONÉRÉ, SOUMIS…). " +
-            "INTERDIT d'écrire « NON DOCUMENTÉ » si les analyses tranchent le point : recopie fidèlement le " +
-            "verdict et le taux figurant dans les analyses. Le tableau NE DOIT JAMAIS contredire les analyses.\n\n" +
+            "RÈGLES STRICTES (le tableau doit être LISIBLE et SYNTHÉTIQUE) :\n" +
+            "- sujet : le point d'étendue, en 1 ligne courte (pas de recopie intégrale).\n" +
+            "- analyse : 2 à 3 phrases MAXIMUM résumant la position retenue, avec les mêmes [Sn].\n" +
+            "- conclusion : LE verdict chiffré essentiel, TRÈS COURT (ex. « RS 15% ; TVA 19% » ou " +
+            "« EXONÉRÉ »). Si le point porte plusieurs sous-verdicts, mets-en UN par ligne (séparés par " +
+            "un retour à la ligne « \\n »), format « Établissement stable : NON », « Retenue à la source : " +
+            "15% », etc. — JAMAIS un paragraphe. Recopie fidèlement les taux/verdicts des analyses ; " +
+            "INTERDIT d'écrire « NON DOCUMENTÉ » si les analyses tranchent le point. Le tableau NE DOIT " +
+            "JAMAIS contredire les analyses.\n\n" +
             "{\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"\"}]}";
     }
 
