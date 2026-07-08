@@ -165,12 +165,12 @@ public sealed class ConsultationWorkflow(
         return ValueTask.FromResult(state);
     }
 
-    // ── [3] RetrievalPlannerAgent — CASE-AWARE fulfilment of the brief ────────
-    // The case agent's brief goes STRAIGHT to the autonomous ReAct planner: it receives the
-    // still-missing checklist items as its mission, reasons about where they live, and hunts them
-    // with its own tools. The deterministic métier fetchers act only as a SAFETY NET inside the
-    // node — (a) if the planner call itself fails (LLM outage), and (b) as a final sweep for any
-    // item the planner missed — so the completeness guarantee survives the planner's autonomy.
+    // ── [3] Fulfil the brief — case-aware planner (ONCE) + deterministic fetchers ────────
+    // On the FIRST pass the case agent's brief goes to the autonomous ReAct planner for open-ended
+    // recall. On completeness-retry and judge-driven passes we DO NOT re-invoke the planner: it
+    // re-derived the same plan and re-fetched the same sources on every pass (~15s / 2 LLM calls
+    // each — most of the log's 188s workflow), while the deterministic checklist fetchers — which
+    // encode the tax team's exact source map — are what actually close each item. Those always run.
     private async ValueTask<ConsultationState> FulfilAsync(
         ConsultationState state, IWorkflowContext ctx, CancellationToken ct)
     {
@@ -179,49 +179,53 @@ public sealed class ConsultationWorkflow(
         var agent = Agent(state.CaseType);
         state.RetrievalLoops++;
 
-        var report  = agent.VerifyCompleteness(brief, state.Sources, state.Countries);
-        var before  = state.Sources.Count;
+        var report   = agent.VerifyCompleteness(brief, state.Sources, state.Countries);
+        var before   = state.Sources.Count;
         var hasDraft = !string.IsNullOrEmpty(state.Analyses);
-        var plannerOk = false;
 
         if (report.Missing.Count > 0 || state.JudgeMissingTopics.Count > 0)
         {
-            // The MISSION: the brief's missing items (+ anything the judge flagged), described in
-            // métier terms. The planner decides which of its tools to call, and how.
-            var items = report.Missing.Select(m => $"- {m.Description}")
-                .Concat(state.JudgeMissingTopics.Select(t => $"- {t}"))
-                .ToList();
-            try
+            // (a) the autonomous planner — first pass only.
+            if (state.RetrievalLoops == 1)
             {
-                logger.LogInformation("► [GRAPH:Fulfil #{L}] planner mission — {N} item(s): {M}",
-                    state.RetrievalLoops, items.Count,
-                    string.Join(" | ", report.Missing.Select(m => m.Key)));
-                var mission = await planner.PlanAndRetrieveAsync(
-                    situation:
-                        $"CAS QUALIFIÉ : {brief.Label}.\n" +
-                        $"FAITS : {state.ContexteFaits}",
-                    fiscalQuestion:
-                        "MISSION DE RECHERCHE CIBLÉE — retrouve PRÉCISÉMENT les sources juridiques " +
-                        "suivantes, requises pour ce cas (utilise tes outils, reformule si nécessaire ; " +
-                        "pour les conventions cherche l'article PAR SUJET, jamais par numéro) :\n" +
-                        string.Join("\n", items),
-                    state.Branches, state.Countries, state.IsInternational, ct);
-                AddDeduped(state.Sources, mission?.Sources ?? new List<LegalSourceDto>());
-                plannerOk = true;
+                var items = report.Missing.Select(m => $"- {m.Description}").ToList();
+                try
+                {
+                    logger.LogInformation("► [GRAPH:Fulfil #{L}] planner mission — {N} item(s): {M}",
+                        state.RetrievalLoops, items.Count,
+                        string.Join(" | ", report.Missing.Select(m => m.Key)));
+                    var mission = await planner.PlanAndRetrieveAsync(
+                        situation: $"CAS QUALIFIÉ : {brief.Label}.\nFAITS : {state.ContexteFaits}",
+                        fiscalQuestion:
+                            "MISSION DE RECHERCHE CIBLÉE — retrouve PRÉCISÉMENT les sources juridiques " +
+                            "suivantes, requises pour ce cas (utilise tes outils, reformule si nécessaire ; " +
+                            "pour les conventions cherche l'article PAR SUJET, jamais par numéro) :\n" +
+                            string.Join("\n", items),
+                        state.Branches, state.Countries, state.IsInternational, ct);
+                    AddDeduped(state.Sources, mission?.Sources ?? new List<LegalSourceDto>());
+                }
+                catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] planner failed"); }
             }
-            catch (Exception ex)
+            else
             {
-                logger.LogWarning(ex, "[GRAPH:Fulfil] planner failed — deterministic net takes over");
+                logger.LogInformation("► [GRAPH:Fulfil #{L}] deterministic fetchers (planner skipped on retry) — {N} item(s)",
+                    state.RetrievalLoops, report.Missing.Count + state.JudgeMissingTopics.Count);
             }
 
-            // SAFETY NET: deterministic métier fetchers (year preference, Arabic exclusion,
-            // treaty-by-subject) for whatever the planner did not satisfy — or everything, if the
-            // planner call failed outright. Runs AFTER the planner; never replaces it.
+            // (b) deterministic métier fetchers — line-precise parts, treaty-by-subject, newest
+            // edition, Arabic exclusion — for every still-missing checklist item. ALWAYS runs.
             var still = agent.VerifyCompleteness(brief, state.Sources, state.Countries);
-            foreach (var item in (plannerOk ? still.Missing : report.Missing).Take(8))
+            foreach (var item in still.Missing.Take(8))
             {
                 try   { AddDeduped(state.Sources, await FetchForAsync(item, brief, state, ct)); }
                 catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] net item {K}", item.Key); }
+            }
+
+            // (c) judge-flagged topics → keyword fetches (previously only reachable via the planner).
+            foreach (var topic in state.JudgeMissingTopics.Take(4))
+            {
+                try   { AddDeduped(state.Sources, await retrieval.FetchTargetedAsync("", System.Array.Empty<string>(), new[] { topic }, ct)); }
+                catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] judge topic {T}", topic); }
             }
         }
         state.JudgeMissingTopics.Clear();
@@ -391,10 +395,13 @@ public sealed class ConsultationWorkflow(
         var agent  = Agent(state.CaseType);
         var report = agent.VerifyCompleteness(state.Brief!, state.Sources, state.Countries);
 
-        // Existence-conditional items (treaty articles): after the loop has genuinely tried, their
-        // absence becomes a legal FACT (no convention with that country → droit commun applies), not
-        // a retrieval failure to chase forever. Stop them from blocking completeness.
-        if (state.RetrievalLoops >= 2 && report.MissingCritical.Any(m => m.ExistenceConditional))
+        // Existence-conditional items (treaty articles): the FIRST fulfil pass already ran the
+        // planner's convention search AND the deterministic treaty-by-subject fetch. If the treaty
+        // article still isn't found, its absence is a legal FACT (no convention with that country →
+        // droit commun applies), not a retrieval failure to chase for another loop. Firing at loop 1
+        // (instead of 2) saves a whole redundant fulfil pass for treaty-less countries like Hong Kong,
+        // and is MORE correct — it's a known legal fact, not something to keep empirically probing.
+        if (state.RetrievalLoops >= 1 && report.MissingCritical.Any(m => m.ExistenceConditional))
         {
             var stillCritical = report.MissingCritical.Where(m => !m.ExistenceConditional).ToList();
             foreach (var m in report.MissingCritical.Where(m => m.ExistenceConditional))
