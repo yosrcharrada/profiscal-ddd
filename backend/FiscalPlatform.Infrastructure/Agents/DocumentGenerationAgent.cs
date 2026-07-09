@@ -14,7 +14,8 @@ namespace FiscalPlatform.Infrastructure.Agents;
 /// Placeholders: [NOM_CLIENT], [REFERENCE], [DATE], [FAITS], [ETENDUE],
 ///               [ABREVIATIONS], [SOMMAIRE], [ANALYSES], [DOCUMENTS]
 /// Builds EY-branded analysis table (1F3864 header, EBF2FA alternating rows).
-/// Strips numeric Word artifacts from headers (^\d{7,}).
+/// Token replacement is drawing-safe: runs carrying images/shapes/fields are never
+/// touched, so the EY logo, the yellow client box and the header survive intact.
 /// </summary>
 public sealed class DocumentGenerationAgent(
     IConfiguration config,
@@ -91,26 +92,41 @@ public sealed class DocumentGenerationAgent(
 
     private static void ApplyTokensInParagraph(Paragraph para, Dictionary<string, string> tokens)
     {
-        var runs  = para.Elements<Run>().ToList();
-        if (!runs.Any()) return;
-        var merged = string.Concat(runs.Select(r => r.InnerText));
-        // Strip leading numeric Word artifacts e.g. "7543802613660"
-        merged = Regex.Replace(merged, @"^\d{7,}(?=[^\d])", "");
+        // Operate ONLY on this paragraph's plain-text runs. Any run carrying a drawing, picture,
+        // embedded object or field is left completely untouched — otherwise its internal geometry
+        // (EMU coordinates like "-864235") leaks out as text and the image/shape is deleted.
+        // Text INSIDE a drawing text box is a paragraph of its own and is handled when the
+        // Descendants<Paragraph>() walk reaches it, so tokens in the yellow box still get replaced.
+        var textRuns = para.Elements<Run>()
+            .Where(r => r.Elements<Text>().Any()
+                     && !r.Descendants<Drawing>().Any()
+                     && !r.Descendants<Picture>().Any()
+                     && !r.Descendants<EmbeddedObject>().Any()
+                     && !r.Descendants<FieldChar>().Any())
+            .ToList();
+        if (textRuns.Count == 0) return;
+
+        var merged = string.Concat(textRuns.Select(r => string.Concat(r.Elements<Text>().Select(t => t.Text))));
+
+        // Fast path: no token in this paragraph → leave it byte-for-byte as the template had it
+        // (this is what preserves the header, the logo and every unrelated paragraph).
+        if (!tokens.Keys.Any(merged.Contains)) return;
 
         foreach (var (k, v) in tokens) merged = merged.Replace(k, v);
 
-        var first = runs[0];
-        var rPr   = first.RunProperties?.CloneNode(true) as RunProperties;
-        foreach (var r in runs) r.Remove();
+        // Collapse the matched text runs into the first (keeping its formatting); clear the rest.
+        var first = textRuns[0];
+        for (int i = 1; i < textRuns.Count; i++) textRuns[i].Remove();
+        foreach (var child in first.Elements<Text>().ToList()) child.Remove();
+        foreach (var child in first.Elements<Break>().ToList()) child.Remove();
 
-        var newRun = new Run();
-        if (rPr is not null) newRun.AppendChild(rPr);
+        bool wrote = false;
         foreach (var line in merged.Split('\n'))
         {
-            if (newRun.ChildElements.Any(c => c is Text)) newRun.AppendChild(new Break());
-            newRun.AppendChild(new Text(line) { Space = SpaceProcessingModeValues.Preserve });
+            if (wrote) first.AppendChild(new Break());
+            first.AppendChild(new Text(line) { Space = SpaceProcessingModeValues.Preserve });
+            wrote = true;
         }
-        para.AppendChild(newRun);
     }
 
     // ─── Section replacement ──────────────────────────────────────────────────
