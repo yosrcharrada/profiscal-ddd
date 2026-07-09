@@ -266,14 +266,20 @@ public sealed class ConsultationWorkflow(
             return all;
         }
 
-        // LINE-PRECISE: the item's own predicates (TextContains / RequirePercent) drive the part
-        // selection — on the part-split graph the writer receives the article header plus ONLY the
-        // alinéas this case needs (with NEXT_PART neighbours for straddles), never the whole menu.
+        // LINE-PRECISE: the item's own predicates drive the part selection — on the part-split graph
+        // the writer receives the article header plus ONLY the alinéas this case needs (with NEXT_PART
+        // neighbours for straddles), never the whole menu.
+        // mustContain narrows a MULTI-RATE article (Art.52) to the applicable rate LINE, so it only
+        // applies when we are selecting a rate line (RequirePercent). For a single-regime article like
+        // CDPF Art.112, TextContains is a DISAMBIGUATION guard for IsSatisfiedBy (112 vs « 112 bis »,
+        // which share the same leading digits), NOT a line selector — passing it to the fetch would
+        // clip the article to the one part carrying the phrase; leave it null so all parts come back.
         if (item.ArticleNumber is not null)
         {
+            var mustContain = item.RequirePercent ? item.TextContains : null;
             var lines = await retrieval.FetchArticleLinesAsync(
                 item.FetchDocFragment ?? item.DocFragment ?? "",
-                item.ArticleNumber, item.TextContains, item.RequirePercent, ct) ?? new();
+                item.ArticleNumber, mustContain, item.RequirePercent, ct) ?? new();
             if (lines.Count > 0) return lines;
             // fallback: the broader by-number fetch (older editions, display-based matches)
             return await retrieval.FetchTargetedAsync(
