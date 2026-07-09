@@ -70,11 +70,14 @@ builder.Services.AddValidatorsFromAssemblyContaining<
 builder.Services.AddScoped<
     FiscalPlatform.Application.Chat.Queries.Chat.ChatQueryHandler>();
 
-// Legal search engine: taxmind ships a native Neo4j full-text (BM25/Lucene) index
-// `chunk_content`, so Neo4jSearchAgent gives real BM25 ranking with no Elasticsearch
-// instance required. (Swap back to ElasticsearchSearchAgent only if you point this
-// build at an ES `tunisian_legal` index instead.)
-builder.Services.AddSingleton<ISearchAgent, Profiscal.API.Fiscal.Neo4jSearchAgent>();
+// Legal search engine: the dedicated /api/fiscal/search endpoint is backed by
+// Elasticsearch (fuzziness AUTO multi_match over the `tunisian_legal` index — the
+// typo/accent tolerance the tax team relies on). Neo4jSearchAgent (BM25 via the
+// native `chunk_content` full-text index, no ES required) is kept below as the
+// fallback: it has NO fuzzy/edit-distance matching, only exact-term OR, so only use
+// it if no Elasticsearch instance is available for this build.
+builder.Services.AddSingleton<ISearchAgent, FiscalPlatform.Infrastructure.Search.ElasticsearchSearchAgent>();
+// builder.Services.AddSingleton<ISearchAgent, Profiscal.API.Fiscal.Neo4jSearchAgent>();
 
 // EF replacements for consultations/ratings persistence.
 builder.Services.AddScoped<IConsultationRepository, EfConsultationRepository>();
