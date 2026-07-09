@@ -110,8 +110,10 @@ public sealed class GenerateConsultationCommandHandler(
         "     100% DE LA TVA par le preneur (TVA déductible).\n" +
         "  5. SECTIONS OBLIGATOIRES (cas RS/international): (a) ASSIETTE DE LA RS = montant BRUT, TVA COMPRISE\n" +
         "     [Sn] ; (b) FORMALISME TRANSFERT DE FONDS = certificat de retenue à la source (attestation de\n" +
-        "     régularisation non exigée si la RS a été opérée). Cite UNIQUEMENT les textes réellement fournis\n" +
-        "     [Sn] — n'invente AUCUN numéro d'article ni de circulaire absent des sources.\n" +
+        "     régularisation, Art.112 CDPF [Sn], non exigée si la RS a été opérée) ; si l'Art.21 de la\n" +
+        "     circulaire BCT N°2016-9 figure parmi les sources [Sn], vise-le pour les justificatifs exigés.\n" +
+        "     Cite UNIQUEMENT les textes réellement fournis [Sn] — n'invente AUCUN numéro d'article ni de\n" +
+        "     circulaire absent des sources.\n" +
         "  6. NE JAMAIS introduire de condition non étayée par les faits.\n" +
         "CONVENTION: Art.5=ES, Art.7=bénéfices, Art.10=dividendes, Art.11=intérêts,\n" +
         "  Art.12=redevances, Art.14=prof.indép., Art.15=salaires.\n" +
@@ -619,8 +621,9 @@ public sealed class GenerateConsultationCommandHandler(
                           "annexes A/B si l'opération y figure). Prestataire non établi = RETENUE À LA SOURCE DE 100% DE LA TVA par le preneur (TVA déductible).");
             bg.AppendLine("  5. SECTIONS OBLIGATOIRES — ne jamais omettre : (a) ASSIETTE DE LA RS = montant brut TVA comprise " +
                           "[Sn] ; (b) FORMALISME DU TRANSFERT DES FONDS = certificat de retenue à la source (attestation de " +
-                          "régularisation non exigée si la RS a été opérée). Cite UNIQUEMENT les textes réellement fournis [Sn] " +
-                          "— n'invente AUCUN numéro d'article ni de circulaire absent des sources.");
+                          "régularisation, Art.112 CDPF [Sn], non exigée si la RS a été opérée) ; si l'Art.21 de la circulaire " +
+                          "BCT N°2016-9 figure parmi les sources [Sn], vise-le pour les justificatifs exigés. Cite UNIQUEMENT " +
+                          "les textes réellement fournis [Sn] — n'invente AUCUN numéro d'article ni de circulaire absent des sources.");
             bg.AppendLine("  6. Ne PAS introduire de condition non étayée par les faits.");
         }
         if (plan.NoteCommune2Used)
@@ -799,8 +802,24 @@ public sealed class GenerateConsultationCommandHandler(
         for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
     }
 
-    internal static string Digits(string? s) =>
-        string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
+    // The FIRST contiguous digit run, not every digit in the string concatenated — see the matching
+    // fix + rationale in CaseBrief.cs's RequiredSource.Digits (same bug, same fix, kept in sync).
+    // This one is load-bearing for DropOlderEditions (edition dedup) and PinCaseSources (Art.52/53,
+    // Art.7 pinning) — both silently no-opped for every multi-part article on taxmindvf, since
+    // "ARTICLE 52 (Part 1/37)" concatenated to "52137", never equal to "52".
+    internal static string Digits(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var start = -1;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (char.IsDigit(s[i])) { start = i; break; }
+        }
+        if (start < 0) return "";
+        var end = start;
+        while (end < s.Length && char.IsDigit(s[end])) end++;
+        return s[start..end];
+    }
 
     private static List<LegalSourceDto> MergeAllSources(
         List<LegalSourceDto> plannerSources,

@@ -64,24 +64,51 @@ public abstract class CaseAgentBase : ICaseAgent
             missing, missing.Where(m => m.Critical).ToList(), brief.RequiredSources.Count);
     }
 
-    private static string Digits(string? s) =>
-        string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
+    // The FIRST contiguous digit run, not every digit in the string concatenated — see the matching
+    // fix + rationale in CaseBrief.cs's RequiredSource.Digits (same bug, same fix, kept in sync).
+    private static string Digits(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var start = -1;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (char.IsDigit(s[i])) { start = i; break; }
+        }
+        if (start < 0) return "";
+        var end = start;
+        while (end < s.Length && char.IsDigit(s[end])) end++;
+        return s[start..end];
+    }
 
     // ── Shared checklist fragments (métier constants) ──
 
-    /// <summary>CDPF Art.112 (attestation de régularisation — transfert des fonds). TEXT-anchored,
-    /// not number-anchored: in both graphs the real Art.112 régime text lives inside chunks stamped
-    /// with the WRONG article numbers (an=110 section chunks; an=3 chunks carrying the Décret
-    /// 2008-1858 d'application) while an=112 chunks are all « 112 bis ». Only the distinctive
-    /// phrase reaches the actual provision. French CDPF editions stop at 2025 (2026 is Arabic-only
-    /// and rightly excluded).</summary>
+    /// <summary>CDPF Art.112 (attestation de régularisation — transfert des fonds). The taxmindvf
+    /// graph had the real Art.112 text mis-stamped under the WRONG article number (an=110) while
+    /// an=112 chunks were actually « 112 bis » — that data was corrected (a clean article_number=112
+    /// group, header + 7 alinéas, re-imported from a graph where the chunker got it right), so this
+    /// is now NUMBER-anchored via ArticleNumber and routes through the line-precise
+    /// FetchArticleLinesAsync fetcher. TextContains is kept as an extra guard against ever picking
+    /// up a stray un-migrated copy. French CDPF editions stop at 2025 (2026 is Arabic-only).</summary>
     protected static RequiredSource Cdpf112 => new(
         Key: "cdpf_112", Critical: true,
         Description: "Art.112 CDPF (attestation de régularisation, transfert des fonds) + décret d'application",
-        DocFragment: "code_droits_procedures",
+        DocFragment: "code_droits_procedures", ArticleNumber: "112",
         TextContains: "régularisation de leur situation fiscale",
         FetchDocFragment: "code_droits_procedures",
         FetchKeywords: new[] { "régularisation de leur situation fiscale", "attestation", "article 112" });
+
+    /// <summary>Circulaire de la BCT aux intermédiaires agréés N°2016-9 (transferts au titre des
+    /// opérations courantes) — the concrete BCT text governing the transfer-of-funds formalism that
+    /// CDPF Art.112 refers to. Art.21 is the provision the tax team actually cites for the
+    /// justificatifs required when a Tunisian debtor transfers taxable income/profits abroad.
+    /// Previously absent from the corpus entirely (writer-facing text forbade naming a circulaire
+    /// because none was ever grounded); now a real, retrievable document — number-anchored.</summary>
+    protected static RequiredSource BctCirculaire => new(
+        Key: "bct_circulaire_21", Critical: false,
+        Description: "Circulaire BCT N°2016-9, Art.21 (justificatifs du transfert de fonds à l'étranger)",
+        DocFragment: "circulaire_bct", ArticleNumber: "21",
+        FetchDocFragment: "circulaire_bct",
+        FetchKeywords: new[] { "règlements au titre des opérations courantes", "transfert", "justificatif" });
 
     /// <summary>NC 14/2013 — the Note Commune entirely dedicated to commenting CDPF Art.112:
     /// the best-grounded doctrine for the transfer-formalism section (present in both graphs).</summary>
@@ -151,6 +178,7 @@ public sealed class GenericAgent : CaseAgentBase
                 FetchDocFragment: "code_tva"),
             Cdpf112,
             Nc112Doctrine,
+            BctCirculaire,
         };
         return list;
     }
@@ -195,6 +223,7 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
                 FetchKeywords: new[] { "régime fiscal privilégié", "liste des Etats", "taux de l'impôt inférieur" }),
             Cdpf112,
             Nc112Doctrine,
+            BctCirculaire,
         };
 
         // Convention country → the treaty ES article (by SUBJECT, accent-safe) + NC 2/2015 — the
@@ -241,8 +270,10 @@ public sealed class DividendeAgent : CaseAgentBase
         "C. AUTRES OBLIGATIONS\n" +
         "   C.1 Assiette = montant brut des dividendes distribués.\n" +
         "   C.2 Formalisme du transfert des fonds : certificat de retenue à la source et attestation de\n" +
-        "       régularisation, obligations déclaratives de la société distributrice. Cite UNIQUEMENT les\n" +
-        "       textes réellement fournis [Sn] — n'invente ni numéro d'article ni numéro de circulaire.\n";
+        "       régularisation (Art.112 CDPF [Sn]) ; si l'Art.21 de la circulaire BCT N°2016-9 figure parmi\n" +
+        "       les sources [Sn], vise-le explicitement pour les justificatifs exigés par l'intermédiaire\n" +
+        "       agréé. Cite UNIQUEMENT les textes réellement fournis [Sn] — n'invente ni numéro d'article\n" +
+        "       ni numéro de circulaire absent des sources.\n";
 
     protected override string ForbiddenSteps =>
         "INTERDIT : ne PAS dérouler la séquence des prestations de services (établissement stable\n" +
@@ -286,6 +317,7 @@ public sealed class DividendeAgent : CaseAgentBase
                 DocFragment: "code_irpp_is", ArticleNumber: "29", FetchDocFragment: "code_irpp_is"),
             Cdpf112,
             Nc112Doctrine,
+            BctCirculaire,
         };
 
         if (state.Countries.Count > 0)
@@ -324,7 +356,9 @@ public sealed class InteretAgent : CaseAgentBase
         "   A.2 Taux de droit commun : lis-le dans la ligne de l'Art.52 CIRPPIS visant les intérêts\n" +
         "       servis aux non-résidents [Sn]. Retiens le plus favorable (plafond conventionnel vs droit commun).\n" +
         "B. AUTRES OBLIGATIONS — C.1 assiette = montant brut des intérêts ; C.2 formalisme du transfert\n" +
-        "   (certificat de retenue à la source ; cite uniquement les textes fournis [Sn]).\n";
+        "   (certificat de retenue à la source, Art.112 CDPF [Sn] ; si l'Art.21 de la circulaire BCT\n" +
+        "   N°2016-9 figure parmi les sources [Sn], vise-le pour les justificatifs exigés — cite\n" +
+        "   uniquement les textes réellement fournis [Sn]).\n";
 
     protected override string ForbiddenSteps =>
         "INTERDIT la séquence des prestations de services (ES chantier, RS de TVA 100%). Les intérêts\n" +
@@ -351,6 +385,7 @@ public sealed class InteretAgent : CaseAgentBase
             Art52("art52_interets", "CIRPPIS Art.52 (texte complet avec % — ligne des intérêts)", null),
             Cdpf112,
             Nc112Doctrine,
+            BctCirculaire,
         };
         if (state.Countries.Count > 0)
             list.Add(new("conv_interets", "Article « Intérêts » de la convention applicable",
@@ -377,7 +412,9 @@ public sealed class RedevanceAgent : CaseAgentBase
         "       non-résidents [Sn]. Retiens le plus favorable.\n" +
         "B. TVA — une redevance pour service utilisé en Tunisie peut être taxable (Art.3) au taux de\n" +
         "   l'Art.7 [Sn], avec retenue de la TVA par le preneur (Art.19) si le prestataire n'est pas établi.\n" +
-        "C. AUTRES — C.1 assiette ; C.2 formalisme du transfert (certificat de retenue ; textes fournis [Sn] uniquement).\n";
+        "C. AUTRES — C.1 assiette ; C.2 formalisme du transfert (certificat de retenue, Art.112 CDPF [Sn] ;\n" +
+        "   si l'Art.21 de la circulaire BCT N°2016-9 figure parmi les sources [Sn], vise-le pour les\n" +
+        "   justificatifs exigés — cite uniquement les textes réellement fournis [Sn]).\n";
 
     protected override string ForbiddenSteps =>
         "N'assimile PAS une redevance à un simple bénéfice d'entreprise : l'article « Redevances » de la\n" +
@@ -410,6 +447,7 @@ public sealed class RedevanceAgent : CaseAgentBase
                 DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
             Cdpf112,
             Nc112Doctrine,
+            BctCirculaire,
         };
         if (state.Countries.Count > 0)
             list.Add(new("conv_redevances", "Article « Redevances » de la convention applicable",

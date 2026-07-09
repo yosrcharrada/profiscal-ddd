@@ -75,8 +75,24 @@ public sealed record RequiredSource(
         return true;
     }
 
-    private static string Digits(string? s) =>
-        string.IsNullOrEmpty(s) ? "" : new string(s.Where(char.IsDigit).ToArray());
+    // The FIRST contiguous digit run, not every digit in the string concatenated: ArticleRef is
+    // populated from article_display when present, which on taxmindvf carries a pagination suffix
+    // ("ARTICLE 52 (Part 1/37)"). Concatenating all digits produced "52137" for part 1 — never
+    // equal to a clean ArticleNumber like "52" — so this predicate silently failed for every
+    // multi-part article on every consultation; matching only the leading run fixes it uniformly.
+    private static string Digits(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var start = -1;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (char.IsDigit(s[i])) { start = i; break; }
+        }
+        if (start < 0) return "";
+        var end = start;
+        while (end < s.Length && char.IsDigit(s[end])) end++;
+        return s[start..end];
+    }
 }
 
 /// <summary>Result of the deterministic completeness check.</summary>
