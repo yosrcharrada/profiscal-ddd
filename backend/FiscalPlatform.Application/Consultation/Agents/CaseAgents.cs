@@ -263,9 +263,13 @@ public sealed class DividendeAgent : CaseAgentBase
         "       convention applicable [Sn] (son numéro varie selon la convention). La convention\n" +
         "       attribue à l'État de la source (Tunisie) le droit d'imposer les dividendes, dans la\n" +
         "       limite de sa législation interne et du plafond conventionnel s'il en fixe un.\n" +
-        "   A.2 Taux de RS de droit commun : lis-le dans la LIGNE de l'Art.52 CIRPPIS visant les\n" +
-        "       « revenus distribués » [Sn] — PAS la ligne des honoraires ni des services. Retiens\n" +
-        "       le traitement le plus favorable entre plafond conventionnel et droit commun.\n" +
+        "   A.2 Taux de RS de droit commun — QUALIFICATION DÉCISIVE : un dividende est un « REVENU\n" +
+        "       DISTRIBUÉ ». Lis le taux dans la LIGNE de l'Art.52 CIRPPIS visant EXPRESSÉMENT les\n" +
+        "       « revenus distribués » [Sn]. NE JAMAIS le qualifier de « revenus de capitaux\n" +
+        "       mobiliers » : cette ligne-là vise d'AUTRES revenus (intérêts, etc.) et son taux ne\n" +
+        "       s'applique PAS aux dividendes — la retenir est l'erreur de qualification type.\n" +
+        "       Ne pas retenir non plus les lignes honoraires/services. Retiens ensuite le\n" +
+        "       traitement le plus favorable entre plafond conventionnel et droit commun.\n" +
         "B. RISQUE & RÉGULARISATION (uniquement si les dividendes ont été servis SANS retenue)\n" +
         "   • Quantifier, à partir du montant distribué et du taux lu : la RS non opérée par prise\n" +
         "     en charge (formule montant × taux / (100 − taux)), les pénalités de retard, la\n" +
@@ -299,9 +303,11 @@ public sealed class DividendeAgent : CaseAgentBase
         "seule phrase suffit (hors champ).";
 
     protected override string QualificationGuidance =>
-        "Revenu = DIVIDENDE (distribution de bénéfices à l'actionnaire non-résident). Dans l'Art.52 " +
-        "CIRPPIS, la ligne applicable est celle des « revenus distribués ». Dans la convention, c'est " +
-        "l'article intitulé « Dividendes » (retrouvé par sujet, quel que soit son numéro).";
+        "Revenu = DIVIDENDE (distribution de bénéfices à l'actionnaire non-résident). Qualification " +
+        "fiscale tunisienne : « REVENUS DISTRIBUÉS » — jamais « revenus de capitaux mobiliers », qui " +
+        "est une catégorie DIFFÉRENTE de l'Art.52 visant d'autres revenus. Dans l'Art.52 CIRPPIS, la " +
+        "ligne applicable est exclusivement celle visant expressément les « revenus distribués ». Dans " +
+        "la convention, c'est l'article intitulé « Dividendes » (retrouvé par sujet, quel que soit son numéro).";
 
     protected override string RedactedSkeleton =>
         "Analyse\n" +
@@ -316,14 +322,16 @@ public sealed class DividendeAgent : CaseAgentBase
         "Verdict : [VERDICT].";
 
     protected override string JudgeCriteria =>
-        "Cas DIVIDENDE : le taux doit être lu dans la ligne « revenus distribués » de l'Art.52 (et non " +
-        "honoraires/services). AUCUNE mention d'établissement stable où que ce soit (analyse, verdict, " +
-        "tableau) — sa seule présence est une faute rédhibitoire. AUCUNE section TVA détaillée " +
-        "(dividendes hors champ). Si les dividendes ont été servis sans retenue, le risque (prise en " +
-        "charge, pénalités) doit être quantifié. L'article « Dividendes » de la convention doit être " +
-        "visé. Dès que l'étendue porte sur le TRANSFERT DES FONDS à l'étranger, l'Art.112 CDPF (avec " +
-        "ses conditions d'exonération du certificat de régularisation) ET l'Art.21 de la circulaire BCT " +
-        "N°2016-9 doivent être visés s'ils figurent dans les sources [Sn].";
+        "Cas DIVIDENDE : le taux doit être lu dans la ligne « revenus distribués » de l'Art.52. Toute " +
+        "qualification des dividendes en « revenus de capitaux mobiliers » est une ERREUR DE " +
+        "QUALIFICATION rédhibitoire (catégorie différente, taux différent) — rejeter le projet. Idem " +
+        "pour les lignes honoraires/services. AUCUNE mention d'établissement stable où que ce soit " +
+        "(analyse, verdict, tableau) — sa seule présence est une faute rédhibitoire. AUCUNE section TVA " +
+        "détaillée (dividendes hors champ). Si les dividendes ont été servis sans retenue, le risque " +
+        "(prise en charge, pénalités) doit être quantifié. L'article « Dividendes » de la convention " +
+        "doit être visé. Dès que l'étendue porte sur le TRANSFERT DES FONDS à l'étranger, l'Art.112 " +
+        "CDPF (avec ses conditions d'exonération du certificat de régularisation) ET l'Art.21 de la " +
+        "circulaire BCT N°2016-9 doivent être visés s'ils figurent dans les sources [Sn].";
 
     protected override List<RequiredSource> BuildChecklist(ConsultationState state)
     {
@@ -367,25 +375,43 @@ public sealed class InteretAgent : CaseAgentBase
     protected override string   Label => "Retenue à la source sur INTÉRÊTS versés à un non-résident";
 
     protected override string Demarche =>
-        "DÉMARCHE — INTÉRÊTS versés à un créancier NON-RÉSIDENT :\n" +
-        "A. QUALIFICATION & TAUX\n" +
+        "DÉMARCHE — INTÉRÊTS versés à un créancier NON-RÉSIDENT (le « régime fiscal » des intérêts\n" +
+        "couvre TOUJOURS : RS + TVA + déductibilité le cas échéant + formalisme — même si l'étendue\n" +
+        "ne détaille pas chaque impôt) :\n" +
+        "A. QUALIFICATION & TAUX DE RS\n" +
         "   A.1 Qualifier comme INTÉRÊTS au sens de l'article « Intérêts » de la convention [Sn]\n" +
         "       (numéro propre à la convention). La convention plafonne généralement le taux de la\n" +
         "       source.\n" +
         "   A.2 Taux de droit commun : lis-le dans la ligne de l'Art.52 CIRPPIS visant les intérêts\n" +
         "       servis aux non-résidents [Sn]. Retiens le plus favorable (plafond conventionnel vs droit commun).\n" +
-        "B. AUTRES OBLIGATIONS — C.1 assiette = montant brut des intérêts ; C.2 formalisme du transfert\n" +
+        "B. TVA — À TRAITER SYSTÉMATIQUEMENT : qualifier l'opération (rémunération d'un crédit /\n" +
+        "   opération financière) et déterminer son régime TVA à partir des textes du CTVA retrouvés\n" +
+        "   [Sn] (champ, territorialité, exonérations) — CITE le texte qui fonde le verdict ; ne\n" +
+        "   conclus JAMAIS sur la TVA de mémoire, sans un [Sn] à l'appui. Si la TVA est due et que le\n" +
+        "   prêteur n'est pas établi, mentionner la retenue de la TVA par le preneur [Sn].\n" +
+        "C. DÉDUCTIBILITÉ DES INTÉRÊTS (uniquement si le prêteur est un ASSOCIÉ / la société mère) :\n" +
+        "   examiner les conditions de déductibilité des intérêts servis aux associés prévues par\n" +
+        "   l'Art.48 du CIRPPIS [Sn] — LIS dans le texte cité les conditions (libération du capital,\n" +
+        "   taux maximal, plafond par rapport au capital) et APPLIQUE-les aux faits (capital libéré ?\n" +
+        "   montant du prêt vs capital ?). Conclus sur la part déductible/réintégrable.\n" +
+        "D. AUTRES OBLIGATIONS — D.1 assiette = montant brut des intérêts ; D.2 formalisme du transfert\n" +
         "   (certificat de retenue à la source, Art.112 CDPF [Sn] ; si l'Art.21 de la circulaire BCT\n" +
         "   N°2016-9 figure parmi les sources [Sn], vise-le pour les justificatifs exigés — cite\n" +
         "   uniquement les textes réellement fournis [Sn]).\n";
 
     protected override string ForbiddenSteps =>
-        "INTERDIT la séquence des prestations de services (ES chantier, RS de TVA 100%). Les intérêts\n" +
-        "ne relèvent pas de la TVA — une phrase suffit si la question la soulève.";
+        "INTERDIT ABSOLU — ÉTABLISSEMENT STABLE : ne JAMAIS évoquer, mentionner ni analyser\n" +
+        "l'établissement stable — ni en droit interne, ni au sens de la convention (Art.5/7) — même\n" +
+        "d'une phrase, même pour l'écarter. Un intérêt est un revenu de créance : la notion d'ES est\n" +
+        "SANS OBJET et ne doit apparaître NULLE PART (ni analyse, ni verdict, ni tableau).\n" +
+        "INTERDIT aussi : la séquence des prestations de services (ES de chantier, présence de\n" +
+        "personnel). Le point TVA se traite sur la base des textes du CTVA fournis [Sn], jamais par\n" +
+        "affirmation non sourcée.";
 
     protected override string QualificationGuidance =>
-        "Revenu = INTÉRÊTS. Dans l'Art.52, ligne des intérêts servis aux non-résidents. Dans la " +
-        "convention, l'article « Intérêts » (par sujet).";
+        "Revenu = INTÉRÊTS (rémunération d'une créance/prêt). Dans l'Art.52, ligne des intérêts servis " +
+        "aux non-résidents. Dans la convention, l'article « Intérêts » (par sujet). Si le prêteur est " +
+        "un associé ou la société mère, la déductibilité (Art.48 CIRPPIS) fait partie du régime fiscal.";
 
     protected override string RedactedSkeleton =>
         "Analyse\n" +
@@ -395,13 +421,26 @@ public sealed class InteretAgent : CaseAgentBase
 
     protected override string JudgeCriteria =>
         "Cas INTÉRÊTS : taux lu dans la ligne intérêts de l'Art.52 et l'article « Intérêts » de la " +
-        "convention ; pas de séquence ES-service ni de TVA détaillée.";
+        "convention. Le point TVA doit être TRAITÉ et fondé sur un texte du CTVA cité [Sn] — un " +
+        "verdict TVA sans citation, ou l'absence totale du point TVA quand le régime fiscal global " +
+        "est demandé, justifie le rejet. AUCUNE mention d'établissement stable où que ce soit " +
+        "(analyse, verdict, tableau) — sa seule présence est une faute rédhibitoire. Si le prêteur " +
+        "est un associé/société mère, la déductibilité des intérêts (Art.48 CIRPPIS) doit être " +
+        "examinée avec ses conditions appliquées aux faits. Formalisme du transfert : Art.112 CDPF " +
+        "et Art.21 de la circulaire BCT N°2016-9 visés ensemble s'ils figurent dans les sources.";
 
     protected override List<RequiredSource> BuildChecklist(ConsultationState state)
     {
         var list = new List<RequiredSource>
         {
             Art52("art52_interets", "CIRPPIS Art.52 (texte complet avec % — ligne des intérêts)", null),
+            // The TVA regime of loan interest must come from a CITED CTVA provision, never from
+            // memory — the miss the tax team flagged. No verdict is encoded here: the writer reads
+            // whatever the retrieved text says (champ / exonération / taux).
+            new("ctva_regime_interets", "CTVA — régime TVA des intérêts / opérations financières (champ, exonérations)",
+                Critical: true, DocFragment: "code_tva", TextContains: "intérêts",
+                FetchDocFragment: "code_tva",
+                FetchKeywords: new[] { "intérêts", "opérations financières", "crédit", "exonéré" }),
             Cdpf112,
             Nc112Doctrine,
             BctCirculaire,
@@ -409,6 +448,19 @@ public sealed class InteretAgent : CaseAgentBase
         if (state.Countries.Count > 0)
             list.Add(new("conv_interets", "Article « Intérêts » de la convention applicable",
                 Critical: true, ConventionSubject: new[] { "Intérêts", "Interets" }, ExistenceConditional: true));
+
+        // Lender is an associate / the parent → interest-deductibility conditions (Art.48 CIRPPIS:
+        // capital fully paid-up, rate cap, ceiling vs capital) become part of the régime fiscal.
+        // RequirePercent narrows the part-split article to the rate-bearing associate lines.
+        var hay = (state.Command.Situation + " " + state.ContexteFaits).ToLowerInvariant();
+        if (new[] { "associé", "associe", "société mère", "societe mere", "actionnaire", "filiale", "groupe" }
+            .Any(hay.Contains))
+            list.Add(new("cirppis_48_interets_associes",
+                "CIRPPIS Art.48 — conditions de déductibilité des intérêts servis aux associés",
+                Critical: false, DocFragment: "code_irpp_is", ArticleNumber: "48",
+                TextContains: "associés", RequirePercent: true,
+                FetchDocFragment: "code_irpp_is"));
+
         return list;
     }
 }
