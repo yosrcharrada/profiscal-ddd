@@ -83,7 +83,12 @@ public sealed class GenerateConsultationCommandHandler(
         "  CONCURRENTS pour la MÊME situation (convention vs droit commun ; régime standard vs régime réduit\n" +
         "  dont les conditions sont remplies), jamais entre sous-taux de catégories différentes.\n" +
         "PRESTATAIRE ÉTRANGER — séquence obligatoire:\n" +
-        "  1. ES (établissement stable): trancher OUI/NON, d'abord SELON LE DROIT COMMUN (Art.45/47 CIRPPIS\n" +
+        "  0. RÉGIME FISCAL PRIVILÉGIÉ (À VÉRIFIER EN PREMIER): le pays du bénéficiaire figure-t-il dans la\n" +
+        "     liste des États/territoires à régime fiscal privilégié [Sn] ? SI OUI → NE PAS analyser NI\n" +
+        "     mentionner l'établissement stable (notion écartée pour un bénéficiaire à régime privilégié) :\n" +
+        "     passer directement à la RS (pt.2), sans verdict d'ES. SI NON → dérouler l'ES au pt.1.\n" +
+        "  1. ES (établissement stable) — SEULEMENT si le bénéficiaire n'est PAS à régime privilégié:\n" +
+        "     trancher OUI/NON, d'abord SELON LE DROIT COMMUN (Art.45/47 CIRPPIS\n" +
         "     + doctrine: interprétation extensive, règle des 6 mois même pour une seule prestation), PUIS\n" +
         "     SELON l'ART.5 de la convention. Si ES en Tunisie → imposition (IS/RS) selon le régime de l'ES.\n" +
         "  2. EN L'ABSENCE D'ES — qualifier le revenu et appliquer le régime correspondant:\n" +
@@ -584,7 +589,13 @@ public sealed class GenerateConsultationCommandHandler(
         if (isIntl || plan.EsRiskPossible)
         {
             bg.AppendLine("  CAS INTERNATIONAL — séquence d'analyse:");
-            bg.AppendLine("  1. ÉTABLISSEMENT STABLE — trancher OUI/NON, d'abord selon le DROIT COMMUN " +
+            bg.AppendLine("  0. RÉGIME FISCAL PRIVILÉGIÉ — À VÉRIFIER EN TOUT PREMIER : le pays du bénéficiaire " +
+                          "figure-t-il dans la liste des États/territoires à régime fiscal privilégié retrouvée [Sn] ? " +
+                          "SI OUI → NE PAS analyser NI MENTIONNER l'établissement stable DU TOUT (la notion est écartée " +
+                          "pour un bénéficiaire à régime privilégié) : sauter directement à la RS (point 2), puis TVA et " +
+                          "formalisme. NE PAS écrire de verdict d'établissement stable. SI NON → dérouler l'ES au point 1.");
+            bg.AppendLine("  1. ÉTABLISSEMENT STABLE — UNIQUEMENT si le bénéficiaire n'est PAS à régime privilégié : " +
+                          "trancher OUI/NON, d'abord selon le DROIT COMMUN " +
                           "(Art.45/47 CIRPPIS + doctrine: interprétation extensive, règle des 6 mois même pour " +
                           "une seule prestation), puis selon l'ART.5 de la convention si elle existe.");
             bg.AppendLine("     a) Présence directe du prestataire étranger (lieu fixe, personnel propre, durée) → ES OUI/NON.");

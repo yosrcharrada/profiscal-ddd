@@ -43,3 +43,5 @@ venv/
 
 # Local notes
 todo.txt
+# migration backup dumps (large, machine-local)
+taxmindvf_cdpf_backup.json

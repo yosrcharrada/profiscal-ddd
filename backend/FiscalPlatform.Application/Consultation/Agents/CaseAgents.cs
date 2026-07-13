@@ -195,10 +195,15 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
         { "remunerations_techniques", "services_professionnels", "etablissement_stable", "benefices_entreprises" };
 
     protected override string JudgeCriteria =>
-        "Cas SERVICE / FOURNISSEUR ÉTRANGER : l'établissement stable est tranché d'abord en droit commun " +
-        "puis selon l'Art.5 de la convention. La RS applique la ligne de l'Art.52 visant les « non domiciliés " +
-        "ni établis » (non les honoraires-résidents). TVA due par retenue de 100% du preneur. Assiette (montant " +
-        "brut TVA comprise) et formalisme du transfert (certificat de retenue à la source) ne doivent pas manquer.";
+        "Cas SERVICE / FOURNISSEUR ÉTRANGER. RÈGLE PRIORITAIRE : si le pays du bénéficiaire figure dans la " +
+        "liste des États à régime fiscal privilégié [Sn], l'établissement stable NE doit PAS être analysé ni " +
+        "même mentionné — sa présence dans ce cas est une faute ; on passe directement à la RS. Sinon " +
+        "(pays sans régime privilégié), l'ES est tranché d'abord en droit commun puis selon l'Art.5 de la " +
+        "convention. La RS applique la ligne de l'Art.52 visant les « non domiciliés ni établis » (non les " +
+        "honoraires-résidents). TVA due par retenue de 100% du preneur. Ne doivent pas manquer : l'assiette " +
+        "(montant brut TVA comprise) et le formalisme du transfert des fonds à l'étranger — Art.112 CDPF ET " +
+        "Art.21 de la circulaire BCT N°2016-9 (les deux ensemble) lorsqu'ils figurent dans les sources [Sn], " +
+        "avec les conditions d'exonération du certificat de régularisation prévues par l'Art.112.";
 
     protected override List<RequiredSource> BuildChecklist(ConsultationState state)
     {
@@ -267,20 +272,31 @@ public sealed class DividendeAgent : CaseAgentBase
         "     pénalité fixe éventuelle. Rappeler la prescription.\n" +
         "   • Mentionner toute mesure d'amnistie / dépôt de déclaration rectificative prévue par la\n" +
         "     loi de finances en vigueur si elle est retrouvée dans les sources [Sn].\n" +
-        "C. AUTRES OBLIGATIONS\n" +
+        "C. TRANSFERT DES FONDS À L'ÉTRANGER & FORMALISME (à traiter EN DÉTAIL dès que l'étendue\n" +
+        "   porte sur le transfert en devises ou le certificat de régularisation)\n" +
         "   C.1 Assiette = montant brut des dividendes distribués.\n" +
-        "   C.2 Formalisme du transfert des fonds : certificat de retenue à la source et attestation de\n" +
-        "       régularisation (Art.112 CDPF [Sn]) ; si l'Art.21 de la circulaire BCT N°2016-9 figure parmi\n" +
-        "       les sources [Sn], vise-le explicitement pour les justificatifs exigés par l'intermédiaire\n" +
-        "       agréé. Cite UNIQUEMENT les textes réellement fournis [Sn] — n'invente ni numéro d'article\n" +
-        "       ni numéro de circulaire absent des sources.\n";
+        "   C.2 Le transfert en devises des dividendes vers le non-résident est régi CONJOINTEMENT par\n" +
+        "       l'Art.112 du CDPF [Sn] et l'Art.21 de la circulaire BCT N°2016-9 [Sn] — les DEUX textes\n" +
+        "       du transfert de fonds à l'étranger : les citer ENSEMBLE lorsqu'ils sont fournis.\n" +
+        "   C.3 L'Art.112 CDPF subordonne le transfert à un CERTIFICAT DE RÉGULARISATION de la situation\n" +
+        "       fiscale, SAUF si l'une de ses conditions d'exonération est remplie — LIS-les dans le texte\n" +
+        "       cité [Sn] : revenus exonérés ; revenus hors champ ; revenus AYANT DÉJÀ FAIT L'OBJET DE LA\n" +
+        "       RETENUE À LA SOURCE (sur présentation du certificat de retenue) ; non-résidents au sens de\n" +
+        "       la réglementation de change. Applique aux FAITS la condition pertinente et conclus\n" +
+        "       (ex. : si la RS a déjà été opérée et un certificat de retenue établi, le transfert peut se\n" +
+        "       faire sur ce seul certificat, sans certificat de régularisation distinct). Cite UNIQUEMENT\n" +
+        "       les textes réellement fournis [Sn] — n'invente ni numéro d'article ni numéro de circulaire.\n";
 
     protected override string ForbiddenSteps =>
-        "INTERDIT : ne PAS dérouler la séquence des prestations de services (établissement stable\n" +
-        "de type chantier/présence, retenue de TVA de 100% par le preneur). Les dividendes sont\n" +
-        "HORS CHAMP de la TVA : si la TVA est demandée, une seule phrase suffit (hors champ). " +
-        "L'établissement stable ne se discute que pour dire, brièvement, que la simple détention du\n" +
-        "capital n'en crée pas un.";
+        "INTERDIT ABSOLU — ÉTABLISSEMENT STABLE : ne JAMAIS évoquer, mentionner ni analyser\n" +
+        "l'établissement stable — ni en droit interne, ni au sens de la convention (Art.4/5) — même\n" +
+        "d'une seule phrase, même pour dire qu'il n'y en a pas, même pour écarter la détention du\n" +
+        "capital. Un dividende est un revenu de capitaux mobiliers : la notion d'établissement stable\n" +
+        "est SANS OBJET et ne doit apparaître NULLE PART (ni dans l'analyse, ni dans un verdict, ni\n" +
+        "dans le tableau de synthèse). Sa seule présence est une faute.\n" +
+        "INTERDIT aussi : la séquence des prestations de services (ES de chantier, retenue de TVA de\n" +
+        "100% par le preneur). Les dividendes sont HORS CHAMP de la TVA : si la TVA est demandée, une\n" +
+        "seule phrase suffit (hors champ).";
 
     protected override string QualificationGuidance =>
         "Revenu = DIVIDENDE (distribution de bénéfices à l'actionnaire non-résident). Dans l'Art.52 " +
@@ -301,10 +317,13 @@ public sealed class DividendeAgent : CaseAgentBase
 
     protected override string JudgeCriteria =>
         "Cas DIVIDENDE : le taux doit être lu dans la ligne « revenus distribués » de l'Art.52 (et non " +
-        "honoraires/services). AUCUNE séquence d'établissement stable de prestation ni section TVA " +
-        "détaillée (dividendes hors champ). Si les dividendes ont été servis sans retenue, le risque " +
-        "(prise en charge, pénalités) doit être quantifié. L'article « Dividendes » de la convention " +
-        "doit être visé.";
+        "honoraires/services). AUCUNE mention d'établissement stable où que ce soit (analyse, verdict, " +
+        "tableau) — sa seule présence est une faute rédhibitoire. AUCUNE section TVA détaillée " +
+        "(dividendes hors champ). Si les dividendes ont été servis sans retenue, le risque (prise en " +
+        "charge, pénalités) doit être quantifié. L'article « Dividendes » de la convention doit être " +
+        "visé. Dès que l'étendue porte sur le TRANSFERT DES FONDS à l'étranger, l'Art.112 CDPF (avec " +
+        "ses conditions d'exonération du certificat de régularisation) ET l'Art.21 de la circulaire BCT " +
+        "N°2016-9 doivent être visés s'ils figurent dans les sources [Sn].";
 
     protected override List<RequiredSource> BuildChecklist(ConsultationState state)
     {
