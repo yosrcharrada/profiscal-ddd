@@ -151,17 +151,25 @@ public sealed class ConsultationWorkflow(
         return state;
     }
 
-    // ── [2] Case brief: the selected case agent declares WHAT this case needs ──
-    private ValueTask<ConsultationState> BriefAsync(
+    // ── [2] Case brief + coverage: the case agent declares WHAT this case typically needs,
+    // then the CoveragePlanner (one bounded LLM call, closed aspect library) reads the étendue
+    // and adds the aspects THIS consultation implies beyond the static checklist — the fix for
+    // "régime fiscal demanded TVA but nobody fetched or wrote it". Fail-open on any LLM error. ──
+    private async ValueTask<ConsultationState> BriefAsync(
         ConsultationState state, IWorkflowContext ctx, CancellationToken ct)
     {
+        var sw    = Stopwatch.StartNew();
         var agent = Agent(state.CaseType);
-        state.Brief = agent.BuildBrief(state);
-        state.Timings.Add(("W2. Case brief", 0,
-            $"{state.Brief.RequiredSources.Count} required src"));
-        logger.LogInformation("► [GRAPH:Brief] {L} — checklist: {N} items",
-            state.Brief.Label, state.Brief.RequiredSources.Count);
-        return ValueTask.FromResult(state);
+        var baseBrief = agent.BuildBrief(state);
+        var baseCount = baseBrief.RequiredSources.Count;
+        state.Brief = await CoveragePlanner.ExpandAsync(baseBrief, state, llm, logger, ct);
+        sw.Stop();
+        state.Timings.Add(("W2. Brief + coverage", sw.Elapsed.TotalMilliseconds,
+            $"{baseCount}+{state.Brief.RequiredSources.Count - baseCount} required src"));
+        logger.LogInformation("► [GRAPH:Brief] {L} — checklist: {N} items ({S} static + {D} coverage)",
+            state.Brief.Label, state.Brief.RequiredSources.Count,
+            baseCount, state.Brief.RequiredSources.Count - baseCount);
+        return state;
     }
 
     // ── [3] Fulfil the brief — DETERMINISTIC métier fetchers ─────────────────────────────
@@ -239,14 +247,15 @@ public sealed class ConsultationWorkflow(
             for (int i = before; i < state.Sources.Count; i++) state.Sources[i].Index = i + 1;
         }
 
-        var added = state.Sources.Count - before;
-        state.LastFulfilProgressed = added > 0;   // progress guard — read by the routing predicates
+        var added = state.Sources.Count - before;   // NET change: curation may drop older editions
+        state.LastFulfilProgressed = added > 0;     // progress guard — read by the routing predicates
 
         sw.Stop();
+        var netTxt = added >= 0 ? $"+{added}" : $"{added} (curation)";
         state.Timings.Add(($"W3. Fulfil #{state.RetrievalLoops}", sw.Elapsed.TotalMilliseconds,
-            $"+{added} src, {report.Missing.Count} asked"));
-        logger.LogInformation("► [GRAPH:Fulfil #{L}] +{N} sources ({M} items missing before)",
-            state.RetrievalLoops, added, report.Missing.Count);
+            $"net {netTxt} src, {report.Missing.Count} asked"));
+        logger.LogInformation("► [GRAPH:Fulfil #{L}] net {N} sources ({M} items missing before)",
+            state.RetrievalLoops, netTxt, report.Missing.Count);
         return state;
     }
 

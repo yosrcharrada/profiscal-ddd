@@ -82,15 +82,53 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
     public RetrievalAgent(IConfiguration config, ILogger<RetrievalAgent> logger)
     {
         _logger = logger;
-        var uri  = (config["Neo4j:Uri"]      is { Length: > 0 } u) ? u
-                 : (Environment.GetEnvironmentVariable("NEO4J_URI")      ?? "neo4j://127.0.0.1:7687");
-        var user = (config["Neo4j:Username"] is { Length: > 0 } n) ? n
-                 : (Environment.GetEnvironmentVariable("NEO4J_USERNAME") ?? "neo4j");
-        var pass = (config["Neo4j:Password"] is { Length: > 0 } p) ? p
-                 : (Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "neo4j");
-        _db      = (config["Neo4j:Database"] is { Length: > 0 } d) ? d
-                 : (Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "taxmind");
+        // PRECEDENCE: the .env NEO4J_* vars WIN over appsettings/user-secrets. The single root .env
+        // is documented as driving BOTH the Python embed server and this API; the old order
+        // (appsettings first) silently sent the API to a different graph than embed_server on any
+        // machine whose appsettings/user-secrets disagreed with .env — the root cause of a week of
+        // "the data is there but the app can't see it".
+        var envDb = Environment.GetEnvironmentVariable("NEO4J_DATABASE");
+        var uri  = Environment.GetEnvironmentVariable("NEO4J_URI")
+                 ?? (config["Neo4j:Uri"]      is { Length: > 0 } u ? u : "neo4j://127.0.0.1:7687");
+        var user = Environment.GetEnvironmentVariable("NEO4J_USERNAME")
+                 ?? (config["Neo4j:Username"] is { Length: > 0 } n ? n : "neo4j");
+        var pass = Environment.GetEnvironmentVariable("NEO4J_PASSWORD")
+                 ?? (config["Neo4j:Password"] is { Length: > 0 } p ? p : "neo4j");
+        _db      = !string.IsNullOrWhiteSpace(envDb) ? envDb!
+                 : (config["Neo4j:Database"] is { Length: > 0 } d ? d : "taxmind");
         _driver  = GraphDatabase.Driver(uri, AuthTokens.Basic(user, pass));
+        _logger.LogInformation("[NEO4J] database = '{Db}' (source: {Src}) | uri = {Uri}",
+            _db, !string.IsNullOrWhiteSpace(envDb) ? ".env NEO4J_DATABASE" : "appsettings Neo4j:Database", uri);
+    }
+
+    // One-per-process graph fingerprint: proves at a glance WHICH data the app actually sees.
+    // Logged on the first retrieval of the process — if this says MISSING, the corrected CDPF/BCT
+    // data is not in the database this API is querying (wrong DB name or import not run), and no
+    // amount of prompt/code change will make Art.112/BCT appear in consultations.
+    private static int _fingerprinted;
+    private async Task FingerprintOnceAsync(IAsyncSession session)
+    {
+        if (Interlocked.Exchange(ref _fingerprinted, 1) == 1) return;
+        try
+        {
+            async Task<long> CountAsync(string cypher)
+            {
+                var cur = await session.RunAsync(cypher);
+                return (await cur.SingleAsync())["n"].As<long>();
+            }
+            var total  = await CountAsync("MATCH (c:Chunk) RETURN count(c) AS n");
+            var art112 = await CountAsync(
+                "MATCH (c:Chunk) WHERE toLower(coalesce(c.doc_id,c.document_id)) CONTAINS 'code_droits_procedures' " +
+                "AND toString(c.article_number) = '112' " +
+                "AND NOT left(c.content,160) =~ '(?s).*[؀-ۿ].*' RETURN count(c) AS n");
+            var bct    = await CountAsync(
+                "MATCH (c:Chunk) WHERE toLower(coalesce(c.doc_id,c.document_id)) CONTAINS 'circulaire_bct' RETURN count(c) AS n");
+            var ok = art112 >= 8 && bct >= 40;
+            _logger.LogInformation(
+                "[NEO4J FINGERPRINT] db='{Db}' | chunks={T} | CDPF-art112 parts={A} (expect ≥8) | BCT chunks={B} (expect 47) → corrected data {V}",
+                _db, total, art112, bct, ok ? "PRESENT ✅" : "MISSING ❌ — wrong database or import not run on this machine");
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[NEO4J FINGERPRINT] probe failed"); }
     }
 
     // ── HEALTH + STATS ─────────────────────────────────────────────────────────
@@ -152,6 +190,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         var all  = new List<LegalSourceDto>();
         var seen = new HashSet<string>();
         await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
+        await FingerprintOnceAsync(session);
 
         // STEP 0 — convention (international)
         if (isInternational && countries.Any())
@@ -686,8 +725,11 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             { var t = r["text"]?.As<string>() ?? ""; if (!ContainsArabic(t)) TryAdd(results, seen, r, 0.97); }
         }
         catch (Exception ex) { _logger.LogWarning(ex, "FetchArticleLines {D} art {A}", docFragment, articleNumber); }
-        _logger.LogInformation("FetchArticleLines doc='{D}' art={A} contains='{C}' pct={P}: {N} parts",
-            docFragment, articleNumber, mustContain, requirePercent, results.Count);
+        // Log the RESOLVED document id, not just the fragment — on the corrected graph art=112
+        // resolves to code_droits_procedures_fiscaux_2025 and returns 8 parts; 1 part from a doc
+        // with no part numbers means the app is looking at the old whole-article graph.
+        _logger.LogInformation("FetchArticleLines doc='{D}' → resolved='{R}' art={A} contains='{C}' pct={P}: {N} parts",
+            docFragment, results.FirstOrDefault()?.DocName ?? "(none)", articleNumber, mustContain, requirePercent, results.Count);
         return results;
     }
 

@@ -18,16 +18,17 @@ public sealed class Neo4jSearchAgent : ISearchAgent, IDisposable
     public Neo4jSearchAgent(IConfiguration config, ILogger<Neo4jSearchAgent> logger)
     {
         _logger = logger;
-        // Read config first, then fall back to the single-underscore NEO4J_* env vars
-        // (same convention the engine's RetrievalAgent uses, so one root .env drives both).
-        var uri  = config["Neo4j:Uri"]      is { Length: > 0 } u ? u
-                 : Environment.GetEnvironmentVariable("NEO4J_URI")      ?? "neo4j://127.0.0.1:7687";
-        var user = config["Neo4j:Username"] is { Length: > 0 } n ? n
-                 : Environment.GetEnvironmentVariable("NEO4J_USERNAME") ?? "neo4j";
-        var pass = config["Neo4j:Password"] is { Length: > 0 } p ? p
-                 : Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "";
-        _db      = config["Neo4j:Database"] is { Length: > 0 } d ? d
-                 : Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "taxmind";
+        // .env NEO4J_* vars WIN over appsettings/user-secrets (same precedence as RetrievalAgent):
+        // the single root .env drives every Neo4j consumer, .NET and Python alike.
+        var uri  = Environment.GetEnvironmentVariable("NEO4J_URI")
+                 ?? (config["Neo4j:Uri"]      is { Length: > 0 } u ? u : "neo4j://127.0.0.1:7687");
+        var user = Environment.GetEnvironmentVariable("NEO4J_USERNAME")
+                 ?? (config["Neo4j:Username"] is { Length: > 0 } n ? n : "neo4j");
+        var pass = Environment.GetEnvironmentVariable("NEO4J_PASSWORD")
+                 ?? (config["Neo4j:Password"] is { Length: > 0 } p ? p : "");
+        var envDb = Environment.GetEnvironmentVariable("NEO4J_DATABASE");
+        _db      = !string.IsNullOrWhiteSpace(envDb) ? envDb!
+                 : (config["Neo4j:Database"] is { Length: > 0 } d ? d : "taxmind");
         _driver  = GraphDatabase.Driver(uri, AuthTokens.Basic(user, pass));
     }
 

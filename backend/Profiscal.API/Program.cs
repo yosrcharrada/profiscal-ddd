@@ -42,6 +42,13 @@ else
     Console.WriteLine("[env] no .env found — using appsettings / environment only");
 }
 
+// BUILD STAMP — proves in the log WHICH binary is running (catches "pulled but ran the old build").
+// The assembly write time changes on every rebuild; if this timestamp predates your last git pull,
+// you are not running the code you think you are.
+var asmPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+Console.WriteLine($"[build] Profiscal.API compiled {File.GetLastWriteTime(asmPath):yyyy-MM-dd HH:mm:ss} | " +
+                  $"NEO4J_DATABASE(.env)='{Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "(unset)"}'");
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
