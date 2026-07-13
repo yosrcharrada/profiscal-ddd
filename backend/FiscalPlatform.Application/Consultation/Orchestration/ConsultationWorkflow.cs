@@ -237,6 +237,14 @@ public sealed class ConsultationWorkflow(
             //     of the same article (keeps all parts of the newest edition; NC/conventions exempt).
             DropOlderEditions(state.Sources);
 
+            // (3) COALESCE paragraph-parts of the same article into ONE citable source. taxmindvf
+            //     splits an article into many parts (Art.52=37, Art.7=12…); without this a case that
+            //     needs ~10 articles floods the writer's 18-slot window with fragments of 2–3 articles
+            //     and the rest ("NC régime privilégié", CTVA 7, CDPF 112…) falls off-screen → the
+            //     writer truthfully says NON DOCUMENTÉ for sources that WERE fetched. Also cleans the
+            //     "(Part 6/37)" citations. Safe here: no draft exists yet, so re-indexing is allowed.
+            CoalesceArticleParts(state.Sources);
+
             PinCaseSources(state.Sources, state.Countries, brief);
             for (int i = 0; i < state.Sources.Count; i++) state.Sources[i].Index = i + 1;
         }
@@ -345,8 +353,61 @@ public sealed class ConsultationWorkflow(
         if (toDrop.Count > 0) sources.RemoveAll(toDrop.Contains);
     }
 
+    // Merge the paragraph-level PARTS of one article (same document + same article number) into a
+    // single citable source: concatenated text (reading order), clean article ref (no "(Part x/y)").
+    // Non-article chunks (doctrine passages, notes without an article number) stay as-is. This is what
+    // makes "1 article = 1 slot" hold again on the part-split graph.
+    internal static void CoalesceArticleParts(List<LegalSourceDto> sources)
+    {
+        static string ArtNum(string? aref)
+        {
+            if (string.IsNullOrEmpty(aref)) return "";
+            var m = Regex.Match(aref, @"\d+(?:\s*(?:bis|ter))?", RegexOptions.IgnoreCase);
+            return m.Success ? m.Value.Replace(" ", "").ToLowerInvariant() : "";
+        }
+        static string CleanRef(string? aref) => string.IsNullOrEmpty(aref) ? "" :
+            Regex.Replace(aref, @"\s*\(\s*Part\s*\d+\s*/\s*\d+\s*\)\s*", "", RegexOptions.IgnoreCase).Trim();
+
+        var order  = new List<string>();
+        var groups = new Dictionary<string, List<LegalSourceDto>>();
+        foreach (var s in sources)
+        {
+            var num = ArtNum(s.ArticleRef);
+            // Only real article parts merge; everything else is its own singleton (unique key).
+            var key = num.Length > 0
+                ? "A|" + (s.DocName ?? "").ToLowerInvariant() + "|" + num
+                : "S|" + (s.ChunkId ?? Guid.NewGuid().ToString("N"));
+            if (!groups.TryGetValue(key, out var list)) { groups[key] = list = new(); order.Add(key); }
+            list.Add(s);
+        }
+
+        var merged = new List<LegalSourceDto>(order.Count);
+        foreach (var key in order)
+        {
+            var parts = groups[key];
+            if (parts.Count == 1) { merged.Add(parts[0]); continue; }
+            var first = parts[0];
+            merged.Add(new LegalSourceDto
+            {
+                ChunkId      = first.ChunkId,
+                DocName      = first.DocName,
+                DocType      = first.DocType,
+                ArticleRef   = CleanRef(first.ArticleRef),
+                SectionTitle = first.SectionTitle,
+                Year         = first.Year,
+                Text         = string.Join("\n", parts.Select(p => p.Text)),
+                Score        = parts.Max(p => p.Score),
+                IsExpert     = first.IsExpert,
+            });
+        }
+        sources.Clear();
+        sources.AddRange(merged);
+    }
+
     // Pin the decisive sources to the front of the visible window: treaty income articles matching
-    // the brief's subjects, then the %-bearing CIRPPIS 52/53 and CTVA 7 (newest year first).
+    // the brief's subjects, then the %-bearing CIRPPIS 52/53 and CTVA 7, then EVERY source that
+    // satisfies a checklist item (régime-privilégié list, CDPF 112, BCT, NC 3/2015, CTVA 3/19…) —
+    // so nothing the case explicitly requires can be crowded out of the writer's window.
     private static void PinCaseSources(
         List<LegalSourceDto> sources, ICollection<string> countries, CaseBrief brief)
     {
@@ -377,13 +438,22 @@ public sealed class ConsultationWorkflow(
             return m.Success ? int.Parse(m.Value) : 0;
         }
 
+        bool SatisfiesChecklist(LegalSourceDto s) =>
+            brief.RequiredSources.Any(req => req.IsSatisfiedBy(s, countries));
+
         var treaty   = sources.Where(IsTreaty).ToList();
-        var domestic = sources.Where(s => !IsTreaty(s) && IsDomesticRate(s)).OrderByDescending(Year).ToList();
-        var rest     = sources.Where(s => !IsTreaty(s) && !IsDomesticRate(s)).ToList();
+        var seen     = new HashSet<LegalSourceDto>(treaty);
+        var domestic = sources.Where(s => !seen.Contains(s) && IsDomesticRate(s))
+                              .OrderByDescending(Year).ToList();
+        foreach (var s in domestic) seen.Add(s);
+        var checklist = sources.Where(s => !seen.Contains(s) && SatisfiesChecklist(s)).ToList();
+        foreach (var s in checklist) seen.Add(s);
+        var rest     = sources.Where(s => !seen.Contains(s)).ToList();
 
         sources.Clear();
         sources.AddRange(treaty);
         sources.AddRange(domestic);
+        sources.AddRange(checklist);
         sources.AddRange(rest);
     }
 

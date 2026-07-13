@@ -492,7 +492,11 @@ public sealed class GenerateConsultationCommandHandler(
         // line is ~char 1000, the non-résident b) 15% ~char 2 830, the DIVIDENDES c bis) ~char 4 450,
         // the cession f) 2,5% ~char 7 660. A 3 300 cap hid the dividend line and the model guessed the
         // wrong rate — the cap must cover the whole menu so the model reads the RIGHT paragraph.
-        const int MaxSources = 18, RateChars = 8600, PlainChars = 1100;
+        // Sources are now coalesced to ONE entry per article (parts merged upstream), so 18 slots =
+        // ~18 distinct articles — enough for even the widest case (RS foreign: ES + RS + TVA 3/7/19 +
+        // NC + CDPF 112 + BCT). PlainChars raised because a coalesced non-rate article (e.g. CTVA
+        // territorialité) is several parts long and 1100 chars used to clip the operative rule.
+        const int MaxSources = 18, RateChars = 8600, PlainChars = 2600;
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
         foreach (var s in sources.Take(MaxSources))
         {
