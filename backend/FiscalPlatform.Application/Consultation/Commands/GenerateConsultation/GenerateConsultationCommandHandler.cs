@@ -589,25 +589,45 @@ public sealed class GenerateConsultationCommandHandler(
             "actionnariat", "participation", "détention", "groupe"
         }.Any(hay.Contains);
 
+        // DETERMINISTIC régime-privilégié detection (no hardcoded country list — reads the retrieved
+        // list itself): a source that IS the privileged-regime list AND names the detected country.
+        // Métier rule: for a beneficiary in a privileged regime, ES is NOT analysed at all — so we
+        // don't leave that to the model reading the list; we detect it here and hard-forbid ES below.
+        var country = (plan.DetectedCountry ?? "").Trim().ToLowerInvariant();
+        var countryKey = country.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        bool privilegedRegime = country.Length > 0 && sources.Any(s =>
+        {
+            var t = (s.Text ?? "").ToLowerInvariant();
+            return t.Contains("privilég") && countryKey.Length >= 3 && t.Contains(countryKey);
+        });
+
         var bg = new StringBuilder();
+        if (privilegedRegime)
+            bg.AppendLine($"  ⚠️ RÉGIME FISCAL PRIVILÉGIÉ DÉTECTÉ — le pays du bénéficiaire ({country}) figure " +
+                          "dans la liste des États/territoires à régime fiscal privilégié retrouvée [Sn]. " +
+                          "EN CONSÉQUENCE : INTERDICTION ABSOLUE d'analyser OU DE MENTIONNER l'établissement " +
+                          "stable (ni en droit interne, ni au sens de la convention) — aucune sous-section, " +
+                          "aucun verdict, aucune phrase à son sujet. Applique DIRECTEMENT la retenue à la " +
+                          "source (majorée si le taux de la majoration figure dans les sources [Sn] ; sinon " +
+                          "droit commun de l'Art.52 [Sn]), puis la TVA et le formalisme du transfert.");
         if (isIntl || plan.EsRiskPossible)
         {
             bg.AppendLine("  CAS INTERNATIONAL — séquence d'analyse:");
-            bg.AppendLine("  0. RÉGIME FISCAL PRIVILÉGIÉ — À VÉRIFIER EN TOUT PREMIER : le pays du bénéficiaire " +
-                          "figure-t-il dans la liste des États/territoires à régime fiscal privilégié retrouvée [Sn] ? " +
-                          "SI OUI → NE PAS analyser NI MENTIONNER l'établissement stable DU TOUT (la notion est écartée " +
-                          "pour un bénéficiaire à régime privilégié) : sauter directement à la RS (point 2), puis TVA et " +
-                          "formalisme. NE PAS écrire de verdict d'établissement stable. SI NON → dérouler l'ES au point 1.");
-            bg.AppendLine("  1. ÉTABLISSEMENT STABLE — UNIQUEMENT si le bénéficiaire n'est PAS à régime privilégié : " +
-                          "trancher OUI/NON, d'abord selon le DROIT COMMUN " +
-                          "(Art.45/47 CIRPPIS + doctrine: interprétation extensive, règle des 6 mois même pour " +
-                          "une seule prestation), puis selon l'ART.5 de la convention si elle existe.");
-            bg.AppendLine("     a) Présence directe du prestataire étranger (lieu fixe, personnel propre, durée) → ES OUI/NON.");
-            if (groupLink)
-                bg.AppendLine("     b) Lien capitalistique (sociétés du MÊME GROUPE) : le simple contrôle NE crée PAS " +
-                              "un ES (la filiale n'est pas un ES de sa mère), sauf locaux mis à disposition ou agent " +
-                              "dépendant concluant des contrats au nom de l'étranger → verdict OUI/NON.");
-            // (Pas de lien capitalistique → ne PAS évoquer la société mère / le groupe.)
+            if (!privilegedRegime)
+            {
+                // ES step is EMITTED only when the beneficiary is NOT in a privileged regime.
+                // When privileged (detected deterministically above), the ES sub-section is not even
+                // shown to the writer — the blunt directive at the top already routed straight to RS.
+                bg.AppendLine("  1. ÉTABLISSEMENT STABLE — trancher OUI/NON, d'abord selon le DROIT COMMUN " +
+                              "(Art.45/47 CIRPPIS + doctrine: interprétation extensive, règle des 6 mois même pour " +
+                              "une seule prestation), puis selon l'ART.5 de la convention si elle existe.");
+                bg.AppendLine("     a) Présence directe du prestataire étranger (lieu fixe, personnel propre, durée) → ES OUI/NON.");
+                if (groupLink)
+                    bg.AppendLine("     b) Lien capitalistique (sociétés du MÊME GROUPE) : le simple contrôle NE crée PAS " +
+                                  "un ES (la filiale n'est pas un ES de sa mère), sauf locaux mis à disposition ou agent " +
+                                  "dépendant concluant des contrats au nom de l'étranger → verdict OUI/NON.");
+                // (Pas de lien capitalistique → ne PAS évoquer la société mère / le groupe.)
+            }
 
             if (hasConvention)
             {
