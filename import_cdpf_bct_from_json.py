@@ -33,6 +33,14 @@ try:
 except ImportError:
     sys.exit("ERROR: pip install neo4j")
 
+# Read NEO4J_* from the repo .env automatically (same file embed_server.py uses), so the work-PC
+# Neo4j password is picked up without setting any environment variable by hand.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 URI  = os.getenv("NEO4J_URI",      "neo4j://127.0.0.1:7687")
 USER = os.getenv("NEO4J_USERNAME", os.getenv("NEO4J_USER", "neo4j"))
 PASS = os.getenv("NEO4J_PASSWORD", "neo4j")
