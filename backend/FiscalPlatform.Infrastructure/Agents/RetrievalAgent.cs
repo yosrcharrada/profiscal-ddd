@@ -35,7 +35,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         "CASE coalesce({0}.corpus, {0}.folder) WHEN 'Conventions' THEN 'Convention' " +
         "WHEN 'Lois_des_Finances' THEN 'LoiFinances' " +
         "WHEN 'Notes_Communes' THEN 'Doctrine' " +
-        "WHEN 'Faiez' THEN 'Commentaire' ELSE 'Code' END";
+        "WHEN 'Faiez' THEN 'Commentaire' WHEN 'Expert' THEN 'Commentaire' ELSE 'Code' END";
 
     private static string Proj(string a) =>
         $"{a}.chunk_id AS id, {a}.content AS text, coalesce({a}.doc_id, {a}.document_id) AS doc_name, " +

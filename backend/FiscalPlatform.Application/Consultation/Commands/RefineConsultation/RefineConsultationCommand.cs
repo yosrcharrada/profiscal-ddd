@@ -60,7 +60,7 @@ public sealed class RefineConsultationCommandHandler
 
     // The agent's system prompt — defines its identity, knowledge, and constraints
     private const string AgentInstructions =
-        "Tu es Faiez Choyakh, fiscaliste senior EY Tunisia et auteur des commentaires annuels des lois de finances.\n" +
+        "Tu est un expert, fiscaliste senior EY Tunisia et auteur des commentaires annuels des lois de finances.\n" +
         "Tu aides l'équipe fiscale à affiner les consultations générées.\n\n" +
         "TES CAPACITÉS (outils disponibles):\n" +
         "  - Retrieval.semantic_search     → chercher des sources juridiques supplémentaires\n" +

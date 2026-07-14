@@ -134,11 +134,25 @@ public abstract class CaseAgentBase : ICaseAgent
         RequirePercent: true, TextContains: lineContains,
         FetchDocFragment: "code_irpp_is");
 
+    /// <summary>CTVA Art.7 (taux normal de TVA). ANCHORED ON CONTENT, not the article number:
+    /// on taxmindvf, article_number='7' in code_tva is NON-UNIQUE — the code compilation bundles
+    /// dozens of unrelated « Article 7 » (application décrets, annexed rate lists), so fetching by
+    /// number returns a polluted blob and the real 19% line drowns → "taux NON DOCUMENTÉ". The
+    /// phrase « à la taxe sur la valeur ajoutée au taux » is the unique signature of the operative
+    /// rate clause; the rate value itself is still READ from the retrieved text, never hardcoded.
+    /// Critical overridable for the domestic/RS-local case where TVA is only conditionally in scope.</summary>
+    protected static RequiredSource Ctva7(bool critical = true) => new(
+        Key: "ctva_7", Critical: critical,
+        Description: "CTVA Art.7 (taux normal de la TVA)",
+        DocFragment: "code_tva", TextContains: "valeur ajoutée au taux", RequirePercent: true,
+        FetchDocFragment: "code_tva",
+        FetchKeywords: new[] { "soumis à la taxe sur la valeur ajoutée au taux", "valeur ajoutée au taux" });
+
     // Slim system prompt shared by the convention-income agents (dividende/intérêt/redevance): the
     // universal anti-hallucination + citation rules WITHOUT the foreign-service séquence that must
     // never be imposed on a dividend/interest/royalty.
     protected const string ConventionIncomeSystem =
-        "Tu es Faiez Choyakh — fiscaliste tunisien senior, EY Tunisia.\n" +
+        "Tu est un expert — fiscaliste tunisien senior, EY Tunisia.\n" +
         "CITATIONS : [S1],[S2]… uniquement. Jamais de document en clair. Jamais inventer un article.\n" +
         "TAUX : LIS chaque taux DEPUIS le texte de l'article cité [Sn] et recopie le chiffre EXACT. " +
         "Jamais de taux de mémoire, jamais supposé, jamais « à vérifier ».\n" +
@@ -173,9 +187,7 @@ public sealed class GenericAgent : CaseAgentBase
         var list = new List<RequiredSource>
         {
             Art52("art52_rate", "CIRPPIS Art.52 (article de taux de RS, texte complet avec %)", null),
-            new("ctva_7", "CTVA Art.7 (taux de TVA)", Critical: true,
-                DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true,
-                FetchDocFragment: "code_tva"),
+            Ctva7(),
             Cdpf112,
             Nc112Doctrine,
             BctCirculaire,
@@ -219,8 +231,7 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
             Nc3_2015,
             new("ctva_3", "CTVA Art.3 (territorialité)", Critical: true,
                 DocFragment: "code_tva", ArticleNumber: "3", FetchDocFragment: "code_tva"),
-            new("ctva_7", "CTVA Art.7 (taux)", Critical: true,
-                DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true, FetchDocFragment: "code_tva"),
+            Ctva7(),
             new("ctva_19", "CTVA Art.19 (retenue de 100% de la TVA — prestataire non établi)", Critical: true,
                 DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
             // The privileged-regime LIST lives in NC 16/2019 (the arrêté reproduced there names the
@@ -383,27 +394,39 @@ public sealed class InteretAgent : CaseAgentBase
     protected override string Demarche =>
         "DÉMARCHE — INTÉRÊTS versés à un créancier NON-RÉSIDENT (le « régime fiscal » des intérêts\n" +
         "couvre TOUJOURS : RS + TVA + déductibilité le cas échéant + formalisme — même si l'étendue\n" +
-        "ne détaille pas chaque impôt) :\n" +
-        "A. QUALIFICATION & TAUX DE RS\n" +
+        "ne détaille pas chaque impôt) :\n\n" +
+        "A. QUALIFICATION & TAUX DE RS — démarche en deux temps :\n" +
         "   A.1 Qualifier comme INTÉRÊTS au sens de l'article « Intérêts » de la convention [Sn]\n" +
         "       (numéro propre à la convention). La convention plafonne généralement le taux de la\n" +
         "       source.\n" +
-        "   A.2 Taux de droit commun : lis-le dans la ligne de l'Art.52 CIRPPIS visant les intérêts\n" +
-        "       servis aux non-résidents [Sn]. Retiens le plus favorable (plafond conventionnel vs droit commun).\n" +
+        "   A.2 Droit commun — le taux de RS dépend de la QUALIFICATION selon l'Art.48-VII du\n" +
+        "       CIRPPIS [Sn]. LIS dans le texte de l'Art.48-VII les conditions de déductibilité et\n" +
+        "       détermine la part DÉDUCTIBLE vs NON-DÉDUCTIBLE :\n" +
+        "       — la part DÉDUCTIBLE de l'assiette de l'IS constitue des « revenus de capitaux\n" +
+        "         mobiliers » → lis le taux de RS correspondant dans l'Art.52 CIRPPIS [Sn] ;\n" +
+        "       — la part NON-DÉDUCTIBLE constitue des « revenus de valeurs mobilières » → lis le\n" +
+        "         taux de RS correspondant dans l'Art.52 CIRPPIS [Sn].\n" +
+        "       Les causes de non-déductibilité prévues par l'Art.48-VII [Sn] sont :\n" +
+        "         (i)  les intérêts supportés lorsque le capital social n'est pas entièrement libéré ;\n" +
+        "         (ii) la fraction des intérêts calculée sur la base du taux excédentaire par rapport\n" +
+        "              au taux-plafond fixé par le même article — LIS ce taux-plafond DANS le texte\n" +
+        "              [Sn], ne le cite JAMAIS de mémoire ;\n" +
+        "         (iii) les intérêts afférents aux montants de prêts excédant le plafond par rapport\n" +
+        "               au capital social fixé par le même article — LIS ce plafond DANS le texte\n" +
+        "               [Sn], ne le cite JAMAIS de mémoire.\n" +
+        "       APPLIQUE ces conditions aux faits (capital libéré ? taux convenu ? montant du prêt\n" +
+        "       vs capital ?) et conclus sur la ventilation déductible / non-déductible.\n" +
+        "   A.3 Retiens le plus favorable entre le plafond conventionnel et le droit commun.\n\n" +
         "B. TVA — À TRAITER SYSTÉMATIQUEMENT : qualifier l'opération (rémunération d'un crédit /\n" +
         "   opération financière) et déterminer son régime TVA à partir des textes du CTVA retrouvés\n" +
-        "   [Sn] (champ, territorialité, exonérations) — CITE le texte qui fonde le verdict ; ne\n" +
-        "   conclus JAMAIS sur la TVA de mémoire, sans un [Sn] à l'appui. Si la TVA est due et que le\n" +
-        "   prêteur n'est pas établi, mentionner la retenue de la TVA par le preneur [Sn].\n" +
-        "C. DÉDUCTIBILITÉ DES INTÉRÊTS (uniquement si le prêteur est un ASSOCIÉ / la société mère) :\n" +
-        "   examiner les conditions de déductibilité des intérêts servis aux associés prévues par\n" +
-        "   l'Art.48 du CIRPPIS [Sn] — LIS dans le texte cité les conditions (libération du capital,\n" +
-        "   taux maximal, plafond par rapport au capital) et APPLIQUE-les aux faits (capital libéré ?\n" +
-        "   montant du prêt vs capital ?). Conclus sur la part déductible/réintégrable.\n" +
-        "D. AUTRES OBLIGATIONS — D.1 assiette = montant brut des intérêts ; D.2 formalisme du transfert\n" +
-        "   (certificat de retenue à la source, Art.112 CDPF [Sn] ; si l'Art.21 de la circulaire BCT\n" +
-        "   N°2016-9 figure parmi les sources [Sn], vise-le pour les justificatifs exigés — cite\n" +
-        "   uniquement les textes réellement fournis [Sn]).\n";
+        "   [Sn] (champ, territorialité, exonérations — y compris les tableaux A et B annexés) —\n" +
+        "   CITE le texte qui fonde le verdict ; ne conclus JAMAIS sur la TVA de mémoire, sans un\n" +
+        "   [Sn] à l'appui. Si la TVA est due et que le prêteur n'est pas établi, mentionner la\n" +
+        "   retenue de la TVA par le preneur [Sn].\n\n" +
+        "C. FORMALISME & AUTRES OBLIGATIONS — C.1 assiette = montant brut des intérêts ;\n" +
+        "   C.2 formalisme du transfert (certificat de retenue à la source, Art.112 CDPF [Sn] ; si\n" +
+        "   l'Art.21 de la circulaire BCT N°2016-9 figure parmi les sources [Sn], vise-le pour les\n" +
+        "   justificatifs exigés — cite uniquement les textes réellement fournis [Sn]).\n";
 
     protected override string ForbiddenSteps =>
         "INTERDIT ABSOLU — ÉTABLISSEMENT STABLE : ne JAMAIS évoquer, mentionner ni analyser\n" +
@@ -412,38 +435,52 @@ public sealed class InteretAgent : CaseAgentBase
         "SANS OBJET et ne doit apparaître NULLE PART (ni analyse, ni verdict, ni tableau).\n" +
         "INTERDIT aussi : la séquence des prestations de services (ES de chantier, présence de\n" +
         "personnel). Le point TVA se traite sur la base des textes du CTVA fournis [Sn], jamais par\n" +
-        "affirmation non sourcée.";
+        "affirmation non sourcée.\n" +
+        "INTERDIT : citer de mémoire le taux-plafond ou le ratio capital de l'Art.48-VII — ces\n" +
+        "seuils DOIVENT être LUS dans le texte de l'article fourni [Sn] et recopiés EXACTEMENT.";
 
     protected override string QualificationGuidance =>
-        "Revenu = INTÉRÊTS (rémunération d'une créance/prêt). Dans l'Art.52, ligne des intérêts servis " +
-        "aux non-résidents. Dans la convention, l'article « Intérêts » (par sujet). Si le prêteur est " +
-        "un associé ou la société mère, la déductibilité (Art.48 CIRPPIS) fait partie du régime fiscal.";
+        "Revenu = INTÉRÊTS (rémunération d'une créance/prêt). La qualification fiscale en droit commun " +
+        "dépend de la déductibilité au sens de l'Art.48-VII CIRPPIS : la part déductible = « revenus de " +
+        "capitaux mobiliers » ; la part non-déductible = « revenus de valeurs mobilières ». Chaque " +
+        "catégorie a son propre taux de RS dans l'Art.52 CIRPPIS. Dans la convention, l'article " +
+        "« Intérêts » (retrouvé par sujet, numéro variable) plafonne le taux.";
 
     protected override string RedactedSkeleton =>
         "Analyse\n" +
-        "En application de l'article [ART] du CIRPPIS [Sn] et de l'article « Intérêts » de la convention\n" +
-        "[Sn], les intérêts de source tunisienne versés à [BÉNÉFICIAIRE] font l'objet d'une retenue à la\n" +
-        "source au taux de [TAUX] [Sn]. Verdict : [VERDICT].";
+        "En application de l'article 48-VII du CIRPPIS [Sn], la déductibilité des intérêts est examinée.\n" +
+        "La part déductible constitue des revenus de capitaux mobiliers soumis à la RS au taux de [TAUX]\n" +
+        "lu dans l'Art.52 [Sn]. La part non-déductible constitue des revenus de valeurs mobilières\n" +
+        "soumis au taux de [TAUX] lu dans l'Art.52 [Sn]. L'article « Intérêts » de la convention [Sn]\n" +
+        "plafonne le taux à [TAUX]. Verdict : [VERDICT].";
 
     protected override string JudgeCriteria =>
-        "Cas INTÉRÊTS : taux lu dans la ligne intérêts de l'Art.52 et l'article « Intérêts » de la " +
-        "convention. Le point TVA doit être TRAITÉ et fondé sur un texte du CTVA cité [Sn] — un " +
-        "verdict TVA sans citation, ou l'absence totale du point TVA quand le régime fiscal global " +
-        "est demandé, justifie le rejet. AUCUNE mention d'établissement stable où que ce soit " +
-        "(analyse, verdict, tableau) — sa seule présence est une faute rédhibitoire. Si le prêteur " +
-        "est un associé/société mère, la déductibilité des intérêts (Art.48 CIRPPIS) doit être " +
-        "examinée avec ses conditions appliquées aux faits. Formalisme du transfert : Art.112 CDPF " +
-        "et Art.21 de la circulaire BCT N°2016-9 visés ensemble s'ils figurent dans les sources.";
+        "Cas INTÉRÊTS — critères de rejet :\n" +
+        "1. DÉDUCTIBILITÉ & DOUBLE QUALIFICATION : l'analyse DOIT examiner les conditions de " +
+        "déductibilité de l'Art.48-VII CIRPPIS [Sn] et ventiler la part déductible (« revenus de " +
+        "capitaux mobiliers ») vs la part non-déductible (« revenus de valeurs mobilières »). " +
+        "Chaque catégorie → son propre taux de RS lu dans l'Art.52 CIRPPIS [Sn]. L'absence de cette " +
+        "ventilation, ou un taux unique appliqué sans distinguer, justifie le rejet.\n" +
+        "2. TVA : doit être TRAITÉE et fondée sur un texte du CTVA cité [Sn] (y compris tableaux " +
+        "A et B) — un verdict TVA sans citation, ou l'absence totale du point TVA, justifie le rejet.\n" +
+        "3. ÉTABLISSEMENT STABLE : AUCUNE mention où que ce soit — sa seule présence est une " +
+        "faute rédhibitoire.\n" +
+        "4. CONVENTION : le plafond conventionnel de l'article « Intérêts » doit être lu [Sn] et " +
+        "comparé au droit commun — retenir le plus favorable.\n" +
+        "5. FORMALISME : Art.112 CDPF et Art.21 de la circulaire BCT N°2016-9 visés ensemble " +
+        "s'ils figurent dans les sources.";
 
     protected override List<RequiredSource> BuildChecklist(ConsultationState state)
     {
         var list = new List<RequiredSource>
         {
-            Art52("art52_interets", "CIRPPIS Art.52 (texte complet avec % — ligne des intérêts)", null),
-            // The TVA regime of loan interest must come from a CITED CTVA provision, never from
-            // memory — the miss the tax team flagged. No verdict is encoded here: the writer reads
-            // whatever the retrieved text says (champ / exonération / taux).
-            new("ctva_regime_interets", "CTVA — régime TVA des intérêts / opérations financières (champ, exonérations)",
+            Art52("art52_interets", "CIRPPIS Art.52 (texte complet avec % — lignes capitaux mobiliers ET valeurs mobilières)", null),
+            new("cirppis_48_interets",
+                "CIRPPIS Art.48-VII — conditions de déductibilité des intérêts (plafonds, taux-limite, libération du capital)",
+                Critical: true, DocFragment: "code_irpp_is", ArticleNumber: "48",
+                TextContains: "intérêts", RequirePercent: true,
+                FetchDocFragment: "code_irpp_is"),
+            new("ctva_regime_interets", "CTVA — régime TVA des intérêts / opérations financières (champ, exonérations, tableaux A & B)",
                 Critical: true, DocFragment: "code_tva", TextContains: "intérêts",
                 FetchDocFragment: "code_tva",
                 FetchKeywords: new[] { "intérêts", "opérations financières", "crédit", "exonéré" }),
@@ -454,18 +491,6 @@ public sealed class InteretAgent : CaseAgentBase
         if (state.Countries.Count > 0)
             list.Add(new("conv_interets", "Article « Intérêts » de la convention applicable",
                 Critical: true, ConventionSubject: new[] { "Intérêts", "Interets" }, ExistenceConditional: true));
-
-        // Lender is an associate / the parent → interest-deductibility conditions (Art.48 CIRPPIS:
-        // capital fully paid-up, rate cap, ceiling vs capital) become part of the régime fiscal.
-        // RequirePercent narrows the part-split article to the rate-bearing associate lines.
-        var hay = (state.Command.Situation + " " + state.ContexteFaits).ToLowerInvariant();
-        if (new[] { "associé", "associe", "société mère", "societe mere", "actionnaire", "filiale", "groupe" }
-            .Any(hay.Contains))
-            list.Add(new("cirppis_48_interets_associes",
-                "CIRPPIS Art.48 — conditions de déductibilité des intérêts servis aux associés",
-                Critical: false, DocFragment: "code_irpp_is", ArticleNumber: "48",
-                TextContains: "associés", RequirePercent: true,
-                FetchDocFragment: "code_irpp_is"));
 
         return list;
     }
@@ -518,8 +543,7 @@ public sealed class RedevanceAgent : CaseAgentBase
             Art52("art52_redevances", "CIRPPIS Art.52 (texte complet avec % — ligne des redevances)", null),
             new("ctva_3", "CTVA Art.3 (territorialité)", Critical: true,
                 DocFragment: "code_tva", ArticleNumber: "3", FetchDocFragment: "code_tva"),
-            new("ctva_7", "CTVA Art.7 (taux)", Critical: true,
-                DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true, FetchDocFragment: "code_tva"),
+            Ctva7(),
             new("ctva_19", "CTVA Art.19 (retenue de la TVA — prestataire non établi)", Critical: false,
                 DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
             Cdpf112,
@@ -605,12 +629,11 @@ public sealed class RsServiceLocalAgent : CaseAgentBase
             DocFragment: "code_irpp_is", ArticleNumber: "49", FetchDocFragment: "code_irpp_is"),
         new("ctva_3", "CTVA Art.3 (territorialité)", Critical: false,
             DocFragment: "code_tva", ArticleNumber: "3", FetchDocFragment: "code_tva"),
-        new("ctva_7", "CTVA Art.7 (taux)", Critical: false,
-            DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true, FetchDocFragment: "code_tva"),
+        Ctva7(critical: false),
     };
 
     private const string DomesticSystem =
-        "Tu es Faiez Choyakh — fiscaliste tunisien senior, EY Tunisia.\n" +
+        "Tu est un expert — fiscaliste tunisien senior, EY Tunisia.\n" +
         "CITATIONS : [S1],[S2]… uniquement. Jamais de document en clair. Jamais inventer un article.\n" +
         "TAUX : LIS chaque taux DEPUIS le texte de l'article cité [Sn] et recopie le chiffre EXACT. " +
         "Jamais de taux de mémoire, jamais supposé, jamais « à vérifier ».\n" +

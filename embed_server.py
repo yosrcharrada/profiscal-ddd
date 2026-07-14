@@ -204,7 +204,7 @@ def vector_search(query_emb: List[float], top_k: int,
                                       WHEN 'Conventions' THEN 'Convention'
                                       WHEN 'Lois_des_Finances' THEN 'LoiFinances'
                                       WHEN 'Notes_Communes' THEN 'Doctrine'
-                                      WHEN 'Faiez' THEN 'Commentaire'
+                                      WHEN 'Faiez' THEN 'Commentaire' WHEN 'Expert' THEN 'Commentaire'
                                       ELSE 'Code' END AS doc_type,
                         coalesce(c.article_display, c.article_number, '') AS article_ref,
                         c.title    AS section_title,

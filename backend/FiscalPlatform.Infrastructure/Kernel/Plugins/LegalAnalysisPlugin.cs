@@ -14,7 +14,7 @@ public sealed class LegalAnalysisPlugin
     private readonly ILlmAgent _llm;
 
     private const string BaseSystem =
-        "Tu es Faiez Choyakh, fiscaliste EY Tunisia. " +
+        "Tu est un expert, fiscaliste EY Tunisia. " +
         "Cite uniquement [S1],[S2]... Pas d'invention d'articles. " +
         "Verdicts clairs: OUI/NON/X%/EXONERE/SOUMIS.";
 
@@ -66,7 +66,7 @@ public sealed class LegalAnalysisPlugin
             "Retourner UNIQUEMENT le texte corrigé de la section, sans explication.";
 
         return await _llm.CompleteAsync(
-            "Tu es Faiez Choyakh, fiscaliste EY Tunisia. Conserve le style professionnel et les citations [Sn].",
+            "Tu est un expert, fiscaliste EY Tunisia. Conserve le style professionnel et les citations [Sn].",
             prompt, $"Refine:{sectionName}", 2000)
                ?? currentContent;
     }

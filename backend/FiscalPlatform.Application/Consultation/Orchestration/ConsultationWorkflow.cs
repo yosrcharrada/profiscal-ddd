@@ -386,7 +386,12 @@ public sealed class ConsultationWorkflow(
         {
             var parts = groups[key];
             if (parts.Count == 1) { merged.Add(parts[0]); continue; }
-            var first = parts[0];
+            // Highest-relevance part first (stable sort preserves reading order for equal scores):
+            // if an ambiguous article_number bundles the real provision with unrelated same-numbered
+            // chunks (e.g. CTVA Art.7 vs annexed décrets), the anchored/high-score part — the one that
+            // actually carries the operative rule — leads the merged text and stays within the cap.
+            var ordered = parts.OrderByDescending(p => p.Score).ToList();
+            var first = ordered[0];
             merged.Add(new LegalSourceDto
             {
                 ChunkId      = first.ChunkId,
@@ -395,8 +400,8 @@ public sealed class ConsultationWorkflow(
                 ArticleRef   = CleanRef(first.ArticleRef),
                 SectionTitle = first.SectionTitle,
                 Year         = first.Year,
-                Text         = string.Join("\n", parts.Select(p => p.Text)),
-                Score        = parts.Max(p => p.Score),
+                Text         = string.Join("\n", ordered.Select(p => p.Text)),
+                Score        = ordered.Max(p => p.Score),
                 IsExpert     = first.IsExpert,
             });
         }

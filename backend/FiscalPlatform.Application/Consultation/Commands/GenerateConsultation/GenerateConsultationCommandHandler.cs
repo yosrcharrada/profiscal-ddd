@@ -64,7 +64,7 @@ public sealed class GenerateConsultationCommandHandler(
         new(StringComparer.OrdinalIgnoreCase) { "allemagne" };
 
     internal const string SystemPrompt =
-        "Tu es Faiez Choyakh — fiscaliste tunisien senior, EY Tunisia.\n" +
+        "Tu est un expert — fiscaliste tunisien senior, EY Tunisia.\n" +
         "CITATIONS: [S1],[S2]... uniquement. Jamais de document en clair. Jamais inventer un article.\n" +
         "TAUX: LIS chaque taux DEPUIS le texte de l'article cité [Sn] et recopie le chiffre EXACT qui y figure. " +
         "Jamais de taux de mémoire, jamais inventé, jamais supposé.\n" +
@@ -500,7 +500,7 @@ public sealed class GenerateConsultationCommandHandler(
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
         foreach (var s in sources.Take(MaxSources))
         {
-            var label   = s.IsExpert ? "COMMENTAIRE — Faiez Choyakh" : s.DocType;
+            var label   = s.IsExpert ? "COMMENTAIRE — Expert" : s.DocType;
             var rateBearing = s.Text.Contains('%') || s.Text.Contains("taux", StringComparison.OrdinalIgnoreCase);
             var cap     = rateBearing ? RateChars : PlainChars;
             var preview = s.Text.Length > cap ? s.Text[..cap] + "…" : s.Text;
