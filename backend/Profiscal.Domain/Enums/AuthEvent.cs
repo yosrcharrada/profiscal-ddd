@@ -14,5 +14,11 @@ public enum AuthEvent
     PasswordChanged,
     RoleChanged,
     AccountLocked,
-    AccountUnlocked
+    AccountUnlocked,
+    UserProvisioned,
+    ManagerAssigned,
+    TaskAssigned,
+    TaskSubmitted,
+    ReclamationOpened,
+    ReclamationResolved
 }

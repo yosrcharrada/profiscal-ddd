@@ -25,15 +25,22 @@ public class AuthService(
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest req, CancellationToken ct = default)
     {
-        if (await userManager.FindByEmailAsync(req.Email) is not null)
-            throw new DomainException($"Email '{req.Email}' is already registered.");
+        // Self-service registration is reserved for the firm's domain; everyone
+        // else is provisioned by an admin.
+        var allowedDomain = config["Registration:AllowedDomain"] ?? "tn.ey.com";
+        var email = req.Email.Trim();
+        if (!email.EndsWith($"@{allowedDomain}", StringComparison.OrdinalIgnoreCase))
+            throw new DomainException($"Registration is restricted to @{allowedDomain} email addresses. Contact your administrator for access.");
+
+        if (await userManager.FindByEmailAsync(email) is not null)
+            throw new DomainException($"Email '{email}' is already registered.");
 
         var user = new AppUser
         {
             FirstName = req.FirstName,
             LastName  = req.LastName,
-            Email     = req.Email,
-            UserName  = req.Email,
+            Email     = email,
+            UserName  = email,
             LastLoginAt = DateTime.UtcNow
         };
 
@@ -41,7 +48,8 @@ public class AuthService(
         if (!result.Succeeded)
             throw new DomainException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
-        await userManager.AddToRoleAsync(user, "User");
+        // Self-registered accounts start as consultants; an admin attaches the manager.
+        await userManager.AddToRoleAsync(user, "Consultant");
         await AuditAsync(user.Id, user.Email!, AuthEvent.Register, ct: ct);
 
         var (response, _) = await IssueTokensAsync(user, ct);
@@ -169,6 +177,12 @@ public class AuthService(
         if (!result.Succeeded)
             throw new DomainException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
+        if (user.MustChangePassword)
+        {
+            user.MustChangePassword = false;
+            await userManager.UpdateAsync(user);
+        }
+
         // Standard practice: a password change invalidates every existing session,
         // then the caller gets a fresh token pair so they stay signed in.
         await RevokeAllActiveAsync(userId, "Password changed", ct);
@@ -180,7 +194,9 @@ public class AuthService(
 
     public async Task<UserResponse> GetMeAsync(Guid userId, CancellationToken ct = default)
     {
-        var user = await userManager.FindByIdAsync(userId.ToString())
+        var user = await userManager.Users.AsNoTracking()
+            .Include(u => u.Manager)
+            .FirstOrDefaultAsync(u => u.Id == userId, ct)
             ?? throw new NotFoundException(nameof(AppUser), userId);
         var roles = await userManager.GetRolesAsync(user);
         return ToUserResponse(user, roles);
@@ -276,7 +292,10 @@ public class AuthService(
     private static UserResponse ToUserResponse(AppUser user, IEnumerable<string> roles) =>
         new(user.Id, user.FirstName, user.LastName, user.Email!, roles,
             user.CreatedAt, user.LastLoginAt,
-            user.LockoutEnd.HasValue && user.LockoutEnd > DateTimeOffset.UtcNow);
+            user.LockoutEnd.HasValue && user.LockoutEnd > DateTimeOffset.UtcNow,
+            user.ManagerId,
+            user.Manager is null ? null : $"{user.Manager.FirstName} {user.Manager.LastName}".Trim(),
+            user.MustChangePassword);
 
     private static string GenerateRefreshToken()
     {

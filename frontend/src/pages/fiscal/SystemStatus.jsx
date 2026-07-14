@@ -1,5 +1,6 @@
 import { useState } from "react";
 import useSystemHealth from "../../hooks/useSystemHealth";
+import { useLanguage } from "../../context/LanguageContext";
 
 function Dot({ ok }) {
   return (
@@ -15,12 +16,13 @@ function Dot({ ok }) {
  */
 export default function SystemStatus() {
   const { data, loading } = useSystemHealth({ poll: 20000 });
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   if (loading || !data) {
     return (
-      <span className="inline-flex items-center gap-2 text-[12px] text-muted border border-border rounded-full px-3 py-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-muted animate-pulse" />{" "}
-        Checking…
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted border border-border rounded-lg h-8 px-2.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-muted animate-pulse shrink-0" />
+        <span className="hidden sm:inline">{t("system.checking")}</span>
       </span>
     );
   }
@@ -28,25 +30,25 @@ export default function SystemStatus() {
   const ready = data.ready;
   const items = [
     {
-      label: "Knowledge base (Neo4j)",
+      label: t("system.knowledgeBase"),
       ok: data.neo4j,
       hint: data.neo4j
-        ? `${data.chunks.toLocaleString()} chunks indexed`
-        : "Set Neo4j:Password in appsettings.Development.json and restart the API.",
+        ? t("system.chunksIndexed", { n: data.chunks.toLocaleString() })
+        : t("system.neo4jHint"),
     },
     {
-      label: "AI model (LLM)",
+      label: t("system.aiModel"),
       ok: data.llmConfigured,
       hint: data.llmConfigured
-        ? "Configured"
-        : "Add a valid OpenAI:ApiKey in appsettings.Development.json.",
+        ? t("system.configured")
+        : t("system.llmHint"),
     },
     {
-      label: "Embedding server",
+      label: t("system.embedServer"),
       ok: data.embedServer,
       hint: data.embedServer
-        ? "Running on :8081"
-        : "Optional — run ./start-embed-server.sh for vector search.",
+        ? t("system.embedRunning")
+        : t("system.embedHint"),
     },
   ];
 
@@ -54,14 +56,14 @@ export default function SystemStatus() {
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className={`inline-flex items-center gap-2 text-[11px] font-semibold rounded-full px-3 py-0.5 border transition-colors ${ready ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}
+        className={`inline-flex items-center gap-1.5 text-[11px] font-semibold rounded-lg h-8 px-2.5 border transition-colors ${ready ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}
       >
         <span
-          className={`w-1.5 h-1.5 rounded-full ${ready ? "bg-green-500" : "bg-amber-500"}`}
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${ready ? "bg-green-500" : "bg-amber-500 animate-pulse"}`}
         />
-        {ready ? "All systems connected" : "Setup needed"}
+        <span className="hidden sm:inline">{ready ? t("system.connected") : t("system.setupNeeded")}</span>
         <svg
-          className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -77,7 +79,7 @@ export default function SystemStatus() {
       {open && (
         <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-border shadow-xl shadow-dark/10 p-4 z-30 animate-scale-in origin-top-right">
           <p className="text-[11px] font-bold text-muted uppercase tracking-widest mb-3">
-            Engine status
+            {t("system.engineStatus")}
           </p>
           <div className="space-y-3">
             {items.map((it) => (

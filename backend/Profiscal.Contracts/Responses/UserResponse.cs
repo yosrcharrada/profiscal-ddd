@@ -8,5 +8,8 @@ public record UserResponse(
     IEnumerable<string> Roles,
     DateTime CreatedAt,
     DateTime? LastLoginAt,
-    bool IsLockedOut
+    bool IsLockedOut,
+    Guid? ManagerId = null,
+    string? ManagerName = null,
+    bool MustChangePassword = false
 );

@@ -55,11 +55,7 @@ export default function ConsultationsRail({
       <div className="p-3 pb-2 shrink-0 flex items-center gap-2">
         <button
           onClick={onNew}
-          className={`flex-1 flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-[13px] font-bold transition-all shadow-sm active:scale-[0.98] ${
-            newActive
-              ? "bg-dark text-white ring-2 ring-brand"
-              : "bg-dark text-white hover:bg-black"
-          }`}
+          className={` w-full flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px] font-semibold text-dark bg-gradient-to-r from-brand/10 to-violet-400/10 border border-brand/30 hover:border-brand/60 hover:from-brand/20 hover:to-violet-400/15 active:scale-[0.98] transition-all`}
         >
           <span className="w-4 h-4 rounded-md bg-brand text-dark flex items-center justify-center">
             <svg
@@ -156,22 +152,22 @@ export default function ConsultationsRail({
                   <button
                     key={c.id}
                     onClick={() => onSelect(c.id)}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-dark shadow-sm" : "hover:bg-light"}`}
+                    className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-white shadow-sm" : "hover:bg-light"}`}
                   >
                     <span className="flex items-center gap-2 min-w-0">
                       <span
-                        className={`text-[13px] font-semibold truncate ${active ? "text-white" : "text-dark"}`}
+                        className={`text-[13px] font-semibold truncate ${active ? "text-dark" : "text-dark"}`}
                       >
                         {c.clientName}
                       </span>
                       <span
-                        className={`shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 ${active ? "bg-brand text-dark" : "bg-brand/30 text-dark"}`}
+                        className={`shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 ${active ? "bg-brand text-dark" : " text-dark"}`}
                       >
                         {c.reference}
                       </span>
                     </span>
                     <span
-                      className={`block text-[11.5px] truncate mt-0.5 ${active ? "text-white/50" : "text-muted"}`}
+                      className={`block text-[11.5px] truncate mt-0.5 ${active ? "text-gray-500" : "text-muted"}`}
                     >
                       {c.fiscalQuestion}
                     </span>

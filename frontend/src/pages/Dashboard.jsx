@@ -1,32 +1,327 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
 import useSystemHealth from "../hooks/useSystemHealth";
 import fiscalService from "../services/fiscalService";
 
-const fmtDate = (d) =>
+const fmtDate = (d, lang) =>
   d
-    ? new Date(d).toLocaleDateString(undefined, {
+    ? new Date(d).toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", {
         day: "numeric",
         month: "short",
-        year: "numeric",
       })
     : "—";
-const greeting = () => {
-  const h = new Date().getHours();
-  return h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir";
-};
 
-function Stat({ label, value, hint, icon, loading }) {
+const CHART_COLORS = ["#FFE600", "#6366F1", "#8B5CF6", "#10B981"];
+const STAT_THEMES = [
+  {
+    gradient: "from-amber-400/20 to-yellow-500/10",
+    border: "border-amber-300/40",
+    iconBg: "bg-amber-400/20",
+    iconColor: "text-amber-600",
+    darkGradient: "dark:from-amber-400/10 dark:to-yellow-900/10",
+    darkBorder: "dark:border-amber-500/20",
+    darkIcon: "dark:text-amber-400",
+  },
+  {
+    gradient: "from-blue-400/20 to-indigo-500/10",
+    border: "border-blue-300/40",
+    iconBg: "bg-blue-400/20",
+    iconColor: "text-blue-600",
+    darkGradient: "dark:from-blue-400/10 dark:to-indigo-900/10",
+    darkBorder: "dark:border-blue-500/20",
+    darkIcon: "dark:text-blue-400",
+  },
+  {
+    gradient: "from-violet-400/20 to-purple-500/10",
+    border: "border-violet-300/40",
+    iconBg: "bg-violet-400/20",
+    iconColor: "text-violet-600",
+    darkGradient: "dark:from-violet-400/10 dark:to-purple-900/10",
+    darkBorder: "dark:border-violet-500/20",
+    darkIcon: "dark:text-violet-400",
+  },
+  {
+    gradient: "from-emerald-400/20 to-teal-500/10",
+    border: "border-emerald-300/40",
+    iconBg: "bg-emerald-400/20",
+    iconColor: "text-emerald-600",
+    darkGradient: "dark:from-emerald-400/10 dark:to-teal-900/10",
+    darkBorder: "dark:border-emerald-500/20",
+    darkIcon: "dark:text-emerald-400",
+  },
+];
+
+const BAR_GRADIENTS = [
+  ["#FFE600", "#F59E0B"],
+  ["#8B5CF6", "#6366F1"],
+  ["#3B82F6", "#0EA5E9"],
+  ["#10B981", "#14B8A6"],
+  ["#F97316", "#EF4444"],
+  ["#EC4899", "#D946EF"],
+  ["#FFE600", "#F59E0B"],
+];
+
+function ActivityChart({ consultations, lang }) {
+  const days = 7;
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  const labels = [];
+  const dayLabels = [];
+  const counts = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    labels.push(
+      d.toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", {
+        weekday: "short",
+      }),
+    );
+    dayLabels.push(
+      d.toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", {
+        day: "numeric",
+        month: "short",
+      }),
+    );
+    counts.push(0);
+  }
+  (consultations || []).forEach((c) => {
+    const created = new Date(c.createdAt);
+    const diffDays = Math.floor((today - created) / 86400000);
+    if (diffDays >= 0 && diffDays < days) counts[days - 1 - diffDays]++;
+  });
+  const total = counts.reduce((s, c) => s + c, 0);
+  const maxC = Math.max(...counts, 3);
+  const ySteps = [0, Math.ceil(maxC / 2), maxC];
+
+  const [animated, setAnimated] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setAnimated(true), 100);
+    return () => clearTimeout(t);
+  }, []);
+
+  const w = 600,
+    h = 200,
+    pad = 40,
+    barGap = 14;
+  const chartW = w - pad - 10;
+  const chartH = h - 40;
+  const barW = (chartW - barGap * (days - 1)) / days;
+
   return (
-    <div className="bg-white border border-border rounded-2xl p-5 hover:border-dark/15 hover:shadow-sm transition-all">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold text-muted uppercase tracking-[0.14em]">
-          {label}
-        </p>
-        <span className="w-8 h-8 rounded-lg bg-brand/25 flex items-center justify-center">
+    <div className="relative">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-extrabold text-dark">{total}</span>
+          <span className="text-[12px] text-muted font-medium">
+            {lang === "en"
+              ? "consultations this week"
+              : "consultations cette semaine"}
+          </span>
+        </div>
+        {total > 0 && (
+          <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-full px-2 py-0.5">
+            {counts[6] > 0
+              ? `+${counts[6]} ${lang === "en" ? "today" : "aujourd'hui"}`
+              : ""}
+          </span>
+        )}
+      </div>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        className="w-full"
+        style={{ height: "auto", maxHeight: 220 }}
+      >
+        <defs>
+          {BAR_GRADIENTS.map((g, i) => (
+            <linearGradient
+              key={i}
+              id={`bar-grad-${i}`}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <stop offset="0%" stopColor={g[0]} />
+              <stop offset="100%" stopColor={g[1]} />
+            </linearGradient>
+          ))}
+          <linearGradient id="bar-shadow" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FFE600" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#FFE600" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {ySteps.map((v) => {
+          const y = 10 + chartH - (v / maxC) * chartH;
+          return (
+            <g key={v}>
+              <line
+                x1={pad}
+                y1={y}
+                x2={w - 10}
+                y2={y}
+                stroke="rgb(var(--c-border))"
+                strokeWidth="0.8"
+                strokeDasharray="4,4"
+                opacity="0.5"
+              />
+              <text
+                x={pad - 8}
+                y={y + 3}
+                textAnchor="end"
+                className="fill-muted"
+                style={{ fontSize: "9px", fontWeight: 600 }}
+              >
+                {v}
+              </text>
+            </g>
+          );
+        })}
+        {counts.map((c, i) => {
+          const x = pad + i * (barW + barGap);
+          const barH = animated ? Math.max(4, (c / maxC) * chartH) : 4;
+          const y = 10 + chartH - barH;
+          return (
+            <g key={i}>
+              <rect
+                x={x}
+                y={y}
+                width={barW}
+                height={barH}
+                rx={barW > 20 ? 8 : 5}
+                fill={c > 0 ? `url(#bar-grad-${i})` : "rgb(var(--c-border))"}
+                opacity={c > 0 ? 1 : 0.25}
+                className="transition-all duration-700 ease-out"
+                style={{ transitionDelay: `${i * 80}ms` }}
+              />
+              {c > 0 && (
+                <text
+                  x={x + barW / 2}
+                  y={y - 6}
+                  textAnchor="middle"
+                  className="fill-dark"
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    opacity: animated ? 1 : 0,
+                    transition: "opacity 0.5s",
+                    transitionDelay: `${i * 80 + 400}ms`,
+                  }}
+                >
+                  {c}
+                </text>
+              )}
+              <text
+                x={x + barW / 2}
+                y={h - 6}
+                textAnchor="middle"
+                className="fill-muted"
+                style={{ fontSize: "9px", fontWeight: 600 }}
+              >
+                {labels[i]}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function DonutChart({ data }) {
+  if (!data?.length) return null;
+  const total = data.reduce((s, d) => s + Number(d.count), 0);
+  const r = 28,
+    cx = 38,
+    cy = 38,
+    sw = 6;
+  const C = 2 * Math.PI * r;
+  let acc = 0;
+  return (
+    <div className="flex items-center gap-3">
+      <svg viewBox="0 0 76 76" className="w-[76px] h-[76px] shrink-0">
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          fill="none"
+          stroke="rgb(var(--c-border))"
+          strokeWidth={sw}
+          opacity={0.3}
+        />
+        {data.map((d, i) => {
+          const pct = Number(d.count) / total;
+          const dash = C * pct;
+          const off = -C * acc;
+          acc += pct;
+          return (
+            <circle
+              key={i}
+              cx={cx}
+              cy={cy}
+              r={r}
+              fill="none"
+              stroke={CHART_COLORS[i % CHART_COLORS.length]}
+              strokeWidth={sw}
+              strokeDasharray={`${dash} ${C - dash}`}
+              strokeDashoffset={off}
+              transform={`rotate(-90 ${cx} ${cy})`}
+              strokeLinecap="round"
+              className="transition-all duration-700"
+            />
+          );
+        })}
+        <text
+          x={cx}
+          y={cx - 1}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          className="fill-dark"
+          style={{ fontSize: "9px", fontWeight: 700 }}
+        >
+          {total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total}
+        </text>
+        <text
+          x={cx}
+          y={cx + 7}
+          textAnchor="middle"
+          className="fill-muted"
+          style={{ fontSize: "4px" }}
+        >
+          docs
+        </text>
+      </svg>
+      <div className="space-y-1.5 min-w-0 flex-1">
+        {data.map((d, i) => (
+          <div key={i} className="flex items-center gap-1.5 text-[11px]">
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+            />
+            <span className="text-body truncate">{d.label}</span>
+            <span className="text-muted ml-auto tabular-nums font-semibold">
+              {Number(d.count).toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, hint, icon, loading, themeIdx, trend }) {
+  const th = STAT_THEMES[themeIdx % STAT_THEMES.length];
+  return (
+    <div
+      className={`relative overflow-hidden rounded-xl p-4 bg-gradient-to-br ${th.gradient} ${th.darkGradient} border ${th.border} ${th.darkBorder} hover:scale-[1.02] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200 cursor-default group`}
+    >
+      <div className="flex items-center gap-2.5 mb-2">
+        <span
+          className={`w-8 h-8 rounded-lg ${th.iconBg} flex items-center justify-center shrink-0`}
+        >
           <svg
-            className="w-4 h-4 text-dark"
+            className={`w-4 h-4 ${th.iconColor} ${th.darkIcon}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -35,21 +330,188 @@ function Stat({ label, value, hint, icon, loading }) {
             {icon}
           </svg>
         </span>
+        <p className="text-[11px] font-bold text-muted uppercase tracking-[0.1em]">
+          {label}
+        </p>
       </div>
       {loading ? (
-        <div className="h-8 w-20 bg-light rounded-lg mt-2 animate-pulse" />
+        <div className="h-8 w-20 bg-light/60 rounded-lg animate-pulse" />
       ) : (
-        <p className="text-[28px] font-extrabold text-dark mt-1 leading-none tracking-tight">
-          {value}
-        </p>
+        <div className="flex items-baseline gap-2">
+          <p className="text-2xl font-extrabold text-dark tracking-tight">
+            {value}
+          </p>
+          {trend && (
+            <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-full px-2 py-0.5">
+              {trend}
+            </span>
+          )}
+        </div>
       )}
-      <p className="text-xs text-muted mt-2">{hint}</p>
+      <p className="text-[11px] text-muted mt-1 leading-snug">{hint}</p>
+    </div>
+  );
+}
+
+function QuickAction({ to, icon, label, desc, color }) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-2.5 rounded-xl border border-border/70 p-3 hover:border-brand/50 hover:shadow-md hover:scale-[1.01] transition-all duration-200 group bg-white dark:bg-cream"
+    >
+      <span
+        className={`w-8 h-8 rounded-lg ${color || "bg-light/80"} group-hover:scale-110 flex items-center justify-center transition-all shrink-0`}
+      >
+        <svg
+          className="w-4 h-4 text-dark transition-colors"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.8}
+        >
+          {icon}
+        </svg>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12px] font-bold text-dark">{label}</span>
+        <span className="block text-[10px] text-muted truncate">{desc}</span>
+      </span>
+      <svg
+        className="w-3 h-3 text-border group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M8.25 4.5l7.5 7.5-7.5 7.5"
+        />
+      </svg>
+    </Link>
+  );
+}
+
+const JORT_ITEMS = [
+  {
+    title: "Loi n° 2025-56 portant loi de finances pour 2026",
+    type: "Loi",
+    date: "2025-12-28",
+    isNew: true,
+  },
+  {
+    title: "Décret n° 2026-312 relatif aux avantages fiscaux",
+    type: "Décret",
+    date: "2026-06-15",
+    isNew: true,
+  },
+  {
+    title: "Arrêté du MF fixant les taux de retenue à la source",
+    type: "Arrêté",
+    date: "2026-05-20",
+    isNew: false,
+  },
+  {
+    title: "Note commune n° 12/2026 sur la TVA à l'exportation",
+    type: "Note",
+    date: "2026-04-10",
+    isNew: false,
+  },
+];
+
+function JortFeed({ t, lang }) {
+  return (
+    <div className="rounded-xl border border-border/70 overflow-hidden bg-white dark:bg-cream">
+      <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between bg-gradient-to-r from-red-50/50 to-transparent dark:from-red-500/5">
+        <div className="flex items-center gap-2">
+          <span className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-500/15 flex items-center justify-center">
+            <svg
+              className="w-3.5 h-3.5 text-red-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z"
+              />
+            </svg>
+          </span>
+          <h3 className="text-[13px] font-bold text-dark">{t("jort.title")}</h3>
+        </div>
+        <a
+          href="http://www.iort.gov.tn"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] font-semibold text-muted hover:text-dark flex items-center gap-0.5 transition-colors"
+        >
+          {t("jort.seeAll")}
+          <svg
+            className="w-2.5 h-2.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
+            />
+          </svg>
+        </a>
+      </div>
+      <div className="divide-y divide-border/30">
+        {JORT_ITEMS.map((item, i) => (
+          <a
+            key={i}
+            href="http://www.iort.gov.tn"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-start gap-2.5 px-4 py-3 hover:bg-light/40 transition-colors group"
+          >
+            <span
+              className="mt-1.5 w-2 h-2 rounded-full shrink-0"
+              style={{
+                backgroundColor: item.isNew
+                  ? "#10B981"
+                  : "rgb(var(--c-border))",
+              }}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-medium text-dark group-hover:text-dark/80 line-clamp-1">
+                {item.title}
+              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-bold text-muted bg-light rounded-md px-1.5 py-0.5">
+                  {item.type}
+                </span>
+                <span className="text-[10px] text-muted">
+                  {new Date(item.date).toLocaleDateString(
+                    lang === "en" ? "en-US" : "fr-FR",
+                    { day: "numeric", month: "short", year: "numeric" },
+                  )}
+                </span>
+                {item.isNew && (
+                  <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-md px-1.5 py-0.5">
+                    {t("jort.new")}
+                  </span>
+                )}
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
 
 export default function Dashboard() {
   const { user, isAdmin } = useAuth();
+  const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const { data: health } = useSystemHealth({ poll: 30000 });
   const [consultations, setConsultations] = useState(null);
@@ -66,7 +528,10 @@ export default function Dashboard() {
       .catch(() => setStats(null));
   }, []);
 
-  const recent = (consultations || []).slice(0, 5);
+  // Admins land on the full-bleed governance console instead of the consultant dashboard.
+  if (isAdmin) return <Navigate to="/admin" replace />;
+
+  const recent = (consultations || []).slice(0, 4);
   const kb =
     stats &&
     [
@@ -75,65 +540,81 @@ export default function Dashboard() {
       { label: "Lois de finances", count: stats.loisCount },
       { label: "Doctrine & notes", count: stats.notesCount },
     ].filter((x) => x.count > 0);
-  const kbMax = kb?.length ? Math.max(...kb.map((x) => Number(x.count))) : 0;
+
+  const greeting = () => {
+    const h = new Date().getHours();
+    return h < 12
+      ? t("dashboard.greeting.morning")
+      : h < 18
+        ? t("dashboard.greeting.afternoon")
+        : t("dashboard.greeting.evening");
+  };
+
+  const thisWeekCount = (consultations || []).filter((c) => {
+    const diffDays = Math.floor(
+      (Date.now() - new Date(c.createdAt)) / 86400000,
+    );
+    return diffDays >= 0 && diffDays < 7;
+  }).length;
+
+  const activeClients = consultations
+    ? new Set(consultations.map((c) => c.clientName).filter(Boolean)).size
+    : null;
 
   return (
-    <div className="animate-fade-up space-y-6">
-      {/* hero */}
-      <div className="bg-dark rounded-3xl px-8 py-9 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-[3px] bg-brand" />
-        <div className="absolute -top-16 -right-16 w-64 h-64 bg-brand/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-20 right-40 w-48 h-48 bg-brand/5 rounded-full blur-2xl" />
-        <div className="relative flex items-end justify-between gap-6 flex-wrap">
-          <div>
-            <p className="text-brand text-[11px] font-bold uppercase tracking-[0.22em] mb-2">
-              EY | Taxmind
-            </p>
-            <h1 className="text-[28px] sm:text-3xl font-extrabold text-white tracking-tight">
-              {greeting()}, {user?.firstName} 👋
-            </h1>
-            <p className="text-white/50 mt-1.5 text-[15px]">
-              Votre copilote fiscal — recherche, conseil et consultations
-              sourcées.
-            </p>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <Link
-              to="/app/chat"
-              className="text-sm font-semibold text-white/90 border border-white/20 hover:border-white/50 rounded-xl px-4 py-2.5 transition-colors"
+    <div className="animate-fade-up space-y-4">
+      {/* greeting */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-extrabold text-dark tracking-tight pb-1">
+            {greeting()}, {user?.firstName}
+          </h1>
+          <p className="text-[14px] text-muted mt-0.5 pb-2">
+            {t("dashboard.subtitle")}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/app/chat"
+            className="text-[12px] font-semibold text-body border border-border hover:border-brand/50 hover:bg-brand/5 rounded-lg px-3 py-2 transition-all"
+          >
+            {t("dashboard.askQuestion")}
+          </Link>
+          <Link
+            to="/app/consultations?new=1"
+            className="bg-brand text-black text-[12px] font-bold rounded-lg px-3.5 py-2 hover:shadow-lg hover:bg-black/60 hover:text-white transition-all flex items-center gap-1.5"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.4}
             >
-              Poser une question
-            </Link>
-            <Link
-              to="/app/consultations?new=1"
-              className="bg-brand text-dark text-sm font-bold rounded-xl px-4 py-2.5 hover:shadow-lg hover:shadow-brand/30 transition-all flex items-center gap-2"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.4}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 4.5v15m7.5-7.5h-15"
-                />
-              </svg>
-              Nouvelle consultation
-            </Link>
-          </div>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 4.5v15m7.5-7.5h-15"
+              />
+            </svg>
+            {t("dashboard.newConsultation")}
+          </Link>
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <Stat
-          label="Consultations"
+          label={t("dashboard.kpi.consultations")}
           value={consultations ? consultations.length : "—"}
           loading={!consultations}
-          hint="Mémos générés dans votre espace"
+          hint={t("dashboard.kpi.consultationsHint")}
+          trend={
+            consultations && thisWeekCount > 0
+              ? `+${thisWeekCount} ${t("dashboard.kpi.consultationsThisWeek")}`
+              : null
+          }
+          themeIdx={0}
           icon={
             <path
               strokeLinecap="round"
@@ -143,10 +624,11 @@ export default function Dashboard() {
           }
         />
         <Stat
-          label="Passages indexés"
+          label={t("dashboard.kpi.chunks")}
           value={health?.chunks ? health.chunks.toLocaleString() : "—"}
           loading={!health}
-          hint="Corpus juridique tunisien complet"
+          hint={t("dashboard.kpi.chunksHint")}
+          themeIdx={1}
           icon={
             <path
               strokeLinecap="round"
@@ -156,14 +638,15 @@ export default function Dashboard() {
           }
         />
         <Stat
-          label="Entités du graphe"
+          label={t("dashboard.kpi.entities")}
           value={
             stats?.totalEntities
               ? Number(stats.totalEntities).toLocaleString()
               : "—"
           }
           loading={!stats && !health}
-          hint="Concepts liés dans le knowledge graph"
+          hint={t("dashboard.kpi.entitiesHint")}
+          themeIdx={2}
           icon={
             <path
               strokeLinecap="round"
@@ -173,139 +656,80 @@ export default function Dashboard() {
           }
         />
         <Stat
-          label="Moteur"
-          value={health ? (health.ready ? "En ligne" : "Setup") : "—"}
-          loading={!health}
-          hint={
-            health?.ready
-              ? "Neo4j + LLM connectés"
-              : "Vérifiez le statut en haut à droite"
-          }
+          label={t("dashboard.kpi.clients")}
+          value={activeClients !== null ? activeClients : "—"}
+          loading={activeClients === null}
+          hint={t("dashboard.kpi.clientsHint")}
+          themeIdx={3}
           icon={
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
-              d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"
+              d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
             />
           }
         />
       </div>
 
-      <div className="grid lg:grid-cols-[1fr,340px] gap-5 items-start">
-        {/* recent consultations */}
-        <div className="bg-white border border-border rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-            <h2 className="font-bold text-dark">Consultations récentes</h2>
-            <Link
-              to="/app/consultations"
-              className="text-[13px] font-semibold text-body hover:text-dark flex items-center gap-1 transition-colors"
-            >
-              Tout voir
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                />
-              </svg>
-            </Link>
+      {/* Charts + KB */}
+      <div className="grid lg:grid-cols-[1fr,240px] gap-3 items-start">
+        <div className="rounded-xl border border-border/70 p-5 bg-white dark:bg-cream">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[13px] font-bold text-dark">
+              {t("dashboard.activity")}
+            </h3>
+            <span className="text-[10px] font-semibold text-muted bg-light rounded-md px-2 py-0.5">
+              {t("dashboard.last7days")}
+            </span>
           </div>
-          {!consultations && (
-            <div className="p-6 space-y-3">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="h-12 bg-light rounded-xl animate-pulse"
-                />
-              ))}
-            </div>
+          {consultations ? (
+            <ActivityChart consultations={consultations} lang={lang} />
+          ) : (
+            <div className="h-40 bg-light/40 rounded-lg animate-pulse" />
           )}
-          {consultations?.length === 0 && (
-            <div className="px-6 py-12 text-center">
-              <div className="inline-flex w-12 h-12 rounded-2xl bg-brand/25 items-center justify-center mb-3">
-                <svg
-                  className="w-6 h-6 text-dark"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 4.5v15m7.5-7.5h-15"
+        </div>
+        <div className="rounded-xl border border-border/70 p-4 bg-white dark:bg-cream">
+          <h3 className="text-[13px] font-bold text-dark mb-3">
+            {t("dashboard.kb")}
+          </h3>
+          {kb?.length ? (
+            <DonutChart data={kb} />
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="w-[76px] h-[76px] rounded-full bg-light/40 animate-pulse shrink-0" />
+              <div className="space-y-1.5 flex-1">
+                {[0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-2.5 bg-light/40 rounded animate-pulse"
                   />
-                </svg>
+                ))}
               </div>
-              <p className="text-dark font-semibold">
-                Aucune consultation pour l’instant
-              </p>
-              <p className="text-muted text-sm mt-1 mb-4">
-                Générez votre premier mémo fiscal sourcé en moins d’une minute.
-              </p>
-              <Link
-                to="/app/consultations?new=1"
-                className="inline-block bg-dark text-white font-semibold text-sm rounded-xl px-5 py-2.5 hover:bg-black transition-colors"
-              >
-                Créer une consultation
-              </Link>
             </div>
           )}
-          <div className="divide-y divide-border/70">
-            {recent.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => navigate(`/app/consultations/${c.id}`)}
-                className="w-full text-left px-6 py-4 flex items-center gap-4 hover:bg-light/60 transition-colors group"
+        </div>
+      </div>
+
+      {/* Bottom grid */}
+      <div className="grid lg:grid-cols-[1fr,240px] gap-3 items-start">
+        <div className="space-y-3">
+          {/* Recent consultations */}
+          <div className="rounded-xl border border-border/70 overflow-hidden bg-white dark:bg-cream">
+            <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between">
+              <h2 className="text-[13px] font-bold text-dark">
+                {t("dashboard.recent")}
+              </h2>
+              <Link
+                to="/app/consultations"
+                className="text-[11px] font-semibold text-muted hover:text-dark flex items-center gap-0.5 transition-colors"
               >
-                <span className="shrink-0 w-9 h-9 rounded-xl bg-brand/25 group-hover:bg-brand flex items-center justify-center transition-colors">
-                  <svg
-                    className="w-4 h-4 text-dark"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.8}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12H9m5.25 3H9"
-                    />
-                  </svg>
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="font-bold text-dark text-sm truncate">
-                      {c.clientName}
-                    </span>
-                    <span className="text-[10px] font-bold text-dark bg-brand/30 rounded-full px-2 py-0.5 shrink-0">
-                      {c.reference}
-                    </span>
-                    {c.isInternational && (
-                      <span className="text-[10px] font-semibold text-body bg-light border border-border rounded-full px-2 py-0.5 shrink-0">
-                        International
-                      </span>
-                    )}
-                  </span>
-                  <span className="block text-[12.5px] text-muted truncate mt-0.5">
-                    {c.fiscalQuestion}
-                  </span>
-                </span>
-                <span className="text-xs text-muted shrink-0 hidden sm:block">
-                  {fmtDate(c.createdAt)}
-                </span>
+                {t("dashboard.seeAll")}
                 <svg
-                  className="w-4 h-4 text-border group-hover:text-dark group-hover:translate-x-0.5 transition-all shrink-0"
+                  className="w-2.5 h-2.5"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
-                  strokeWidth={2}
+                  strokeWidth={2.2}
                 >
                   <path
                     strokeLinecap="round"
@@ -313,139 +737,144 @@ export default function Dashboard() {
                     d="M8.25 4.5l7.5 7.5-7.5 7.5"
                   />
                 </svg>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-5">
-          {/* quick actions */}
-          <div className="bg-white border border-border rounded-2xl p-5">
-            <h2 className="font-bold text-dark mb-3">Actions rapides</h2>
-            <div className="space-y-2">
-              {[
-                {
-                  l: "Rechercher dans la loi",
-                  d: "Codes, conventions & doctrine",
-                  to: "/app/search",
-                  icon: (
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-                    />
-                  ),
-                },
-                {
-                  l: "Interroger l’assistant",
-                  d: "Réponses sourcées instantanées",
-                  to: "/app/chat",
-                  icon: (
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
-                    />
-                  ),
-                },
-                {
-                  l: "Nouvelle consultation",
-                  d: "Mémo structuré en ~1 minute",
-                  to: "/app/consultations?new=1",
-                  icon: (
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 4.5v15m7.5-7.5h-15"
-                    />
-                  ),
-                },
-                ...(isAdmin
-                  ? [
-                      {
-                        l: "Gérer les utilisateurs",
-                        d: "Rôles, accès & activité",
-                        to: "/admin/users",
-                        icon: (
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0z"
-                          />
-                        ),
-                      },
-                    ]
-                  : []),
-              ].map((a) => (
-                <Link
-                  key={a.l}
-                  to={a.to}
-                  className="flex items-center gap-3.5 rounded-xl border border-transparent hover:border-border hover:bg-light/60 p-2.5 transition-all group"
-                >
-                  <span className="w-9 h-9 rounded-xl bg-light group-hover:bg-brand flex items-center justify-center transition-colors shrink-0">
-                    <svg
-                      className="w-4 h-4 text-dark"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.9}
-                    >
-                      {a.icon}
-                    </svg>
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-bold text-dark">
-                      {a.l}
-                    </span>
-                    <span className="block text-xs text-muted truncate">
-                      {a.d}
-                    </span>
-                  </span>
-                </Link>
-              ))}
+              </Link>
             </div>
-          </div>
-
-          {/* knowledge base breakdown */}
-          <div className="bg-white border border-border rounded-2xl p-5">
-            <h2 className="font-bold text-dark mb-1">Base de connaissances</h2>
-            <p className="text-xs text-muted mb-4">
-              {health?.chunks
-                ? `${health.chunks.toLocaleString()} passages répartis par type de texte`
-                : "Connexion au moteur requise"}
-            </p>
-            {kb?.length ? (
-              <div className="space-y-3">
-                {kb.map((x) => (
-                  <div key={x.label}>
-                    <div className="flex items-center justify-between text-[12.5px] mb-1">
-                      <span className="font-semibold text-dark">{x.label}</span>
-                      <span className="text-muted font-medium">
-                        {Number(x.count).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-light rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-brand rounded-full transition-all duration-700"
-                        style={{
-                          width: `${Math.max(6, (Number(x.count) / kbMax) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {[0, 1, 2, 3].map((i) => (
+            {!consultations && (
+              <div className="p-3 space-y-1.5">
+                {[0, 1, 2].map((i) => (
                   <div
                     key={i}
-                    className="h-6 bg-light rounded-lg animate-pulse"
+                    className="h-10 bg-light/40 rounded-lg animate-pulse"
                   />
                 ))}
               </div>
             )}
+            {consultations?.length === 0 && (
+              <div className="px-4 py-6 text-center">
+                <p className="text-[13px] font-bold text-dark">
+                  {t("dashboard.noConsultations")}
+                </p>
+                <p className="text-[11px] text-muted mt-0.5 mb-3">
+                  {t("dashboard.noConsultationsHint")}
+                </p>
+                <Link
+                  to="/app/consultations?new=1"
+                  className="inline-block bg-brand text-black font-bold text-[11px] rounded-lg px-3.5 py-2 hover:bg-black/60 hover:text-white transition-all"
+                >
+                  {t("dashboard.createConsultation")}
+                </Link>
+              </div>
+            )}
+            <div className="divide-y divide-border/30">
+              {recent.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => navigate(`/app/consultations/${c.id}`)}
+                  className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-light/30 transition-colors group"
+                >
+                  <span className="shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-brand/20 to-amber-200/20 dark:from-brand/10 dark:to-amber-500/10 group-hover:from-brand/30 group-hover:to-amber-200/30 flex items-center justify-center transition-colors">
+                    <svg
+                      className="w-4 h-4 text-dark/70"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12H9m5.25 3H9"
+                      />
+                    </svg>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-bold text-dark text-[12px] truncate">
+                        {c.clientName}
+                      </span>
+                      <span className="text-[9px] font-bold text-dark/70 bg-brand/20 dark:bg-brand/15 rounded-md px-1.5 py-0.5 shrink-0">
+                        {c.reference}
+                      </span>
+                      {c.isInternational && (
+                        <span className="text-[9px] font-medium text-body bg-light border border-border/40 rounded-md px-1.5 py-0.5 shrink-0">
+                          Intl
+                        </span>
+                      )}
+                    </span>
+                    <span className="block text-[11px] text-muted truncate mt-0.5">
+                      {c.fiscalQuestion}
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-muted shrink-0 hidden sm:block">
+                    {fmtDate(c.createdAt, lang)}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
+
+          <JortFeed t={t} lang={lang} />
+        </div>
+
+        {/* Quick actions */}
+        <div className="space-y-2">
+          <h2 className="text-[10px] font-bold text-muted uppercase tracking-[0.12em] px-1">
+            {t("dashboard.quickActions")}
+          </h2>
+          <QuickAction
+            to="/app/search"
+            label={t("dashboard.qa.search")}
+            desc={t("dashboard.qa.searchDesc")}
+            color="bg-blue-100/80 dark:bg-blue-500/15"
+            icon={
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+              />
+            }
+          />
+          <QuickAction
+            to="/app/chat"
+            label={t("dashboard.qa.chat")}
+            desc={t("dashboard.qa.chatDesc")}
+            color="bg-purple-100/80 dark:bg-purple-500/15"
+            icon={
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+              />
+            }
+          />
+          <QuickAction
+            to="/app/consultations?new=1"
+            label={t("dashboard.qa.newConsultation")}
+            desc={t("dashboard.qa.newConsultationDesc")}
+            color="bg-emerald-100/80 dark:bg-emerald-500/15"
+            icon={
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 4.5v15m7.5-7.5h-15"
+              />
+            }
+          />
+          {isAdmin && (
+            <QuickAction
+              to="/admin/users"
+              label={t("dashboard.qa.users")}
+              desc={t("dashboard.qa.usersDesc")}
+              color="bg-amber-100/80 dark:bg-amber-500/15"
+              icon={
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0z"
+                />
+              }
+            />
+          )}
         </div>
       </div>
     </div>
