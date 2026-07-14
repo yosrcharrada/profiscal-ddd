@@ -242,7 +242,9 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
             new("regime_privilegie", "Note commune N°16/2019 — liste des États/territoires à régime fiscal privilégié",
                 Critical: false, DocFragment: "NC_2019_16",
                 FetchDocFragment: "NC_2019_16",
-                FetchKeywords: new[] { "privilégié", "régime fiscal", "liste des Etats" }),
+                FetchKeywords: new[] { "Gibraltar", "Guernesey", "Hong Kong", "Île de Man", "régime fiscal privilégié" }
+                    .Concat(state.Countries.Take(3))
+                    .ToArray()),
             Cdpf112,
             Nc112Doctrine,
             BctCirculaire,
@@ -418,10 +420,13 @@ public sealed class InteretAgent : CaseAgentBase
         "       vs capital ?) et conclus sur la ventilation déductible / non-déductible.\n" +
         "   A.3 Retiens le plus favorable entre le plafond conventionnel et le droit commun.\n\n" +
         "B. TVA — À TRAITER SYSTÉMATIQUEMENT :\n" +
-        "   B.1 LIS dans l'Art.7 du CTVA [Sn] le taux applicable aux opérations reprises au\n" +
-        "       tableau « B » — recopie le taux EXACT tel qu'il figure dans le texte.\n" +
-        "   B.2 VÉRIFIE dans le tableau « B » annexé au CTVA [Sn] si les opérations financières\n" +
-        "       (intérêts, commissions, courtages bancaires) y figurent — CITE la disposition.\n" +
+        "   B.1 COMMENCE par le tableau « B » annexé au CTVA [Sn] : repère si « les intérêts\n" +
+        "       débiteurs » (item 14 du paragraphe II) y figurent. SI OUI, le taux applicable est\n" +
+        "       celui indiqué dans le TITRE du tableau B (« …soumis à la TVA au taux de __% »)\n" +
+        "       — recopie ce taux EXACT, c'est le taux réduit, PAS le taux normal de l'Art.7.\n" +
+        "   B.2 L'Art.7 du CTVA [Sn] confirme : les opérations reprises au tableau « B » sont\n" +
+        "       soumises au taux indiqué par ce tableau — PAS au taux normal. Ne retiens le taux\n" +
+        "       normal de l'Art.7 que pour les opérations qui NE figurent PAS au tableau B.\n" +
         "   B.3 Territorialité : détermine si l'opération entre dans le champ de la TVA à partir\n" +
         "       du texte du CTVA [Sn] (services consommés / utilisés en Tunisie).\n" +
         "   B.4 Si la TVA est due et que le prêteur n'est pas établi en Tunisie, le bénéficiaire\n" +
@@ -466,10 +471,11 @@ public sealed class InteretAgent : CaseAgentBase
         "capitaux mobiliers ») vs la part non-déductible (« revenus de valeurs mobilières »). " +
         "Chaque catégorie → son propre taux de RS lu dans l'Art.52 CIRPPIS [Sn]. L'absence de cette " +
         "ventilation, ou un taux unique appliqué sans distinguer, justifie le rejet.\n" +
-        "2. TVA : doit citer l'Art.7 CTVA [Sn] ET le tableau « B » [Sn] pour fonder le taux applicable " +
-        "aux opérations financières — le taux doit être LU dans le texte, jamais de mémoire. La retenue " +
-        "de la TVA par le bénéficiaire tunisien doit être mentionnée si le prêteur est non-établi. " +
-        "Un verdict TVA sans ces citations justifie le rejet.\n" +
+        "2. TVA : les « intérêts débiteurs » figurent au tableau « B » du CTVA [Sn] — le taux applicable " +
+        "est donc le taux RÉDUIT du tableau B (lu dans son titre), PAS le taux normal de l'Art.7. " +
+        "Appliquer le taux normal (ex. 19%) aux intérêts alors qu'ils figurent au tableau B est une " +
+        "ERREUR rédhibitoire — rejeter le projet. La retenue de la TVA par le bénéficiaire tunisien " +
+        "doit être mentionnée si le prêteur est non-établi. Un verdict TVA sans citations justifie le rejet.\n" +
         "3. ÉTABLISSEMENT STABLE : AUCUNE mention où que ce soit — sa seule présence est une " +
         "faute rédhibitoire.\n" +
         "4. CONVENTION : le plafond conventionnel de l'article « Intérêts » doit être lu [Sn] et " +
@@ -489,10 +495,10 @@ public sealed class InteretAgent : CaseAgentBase
                 FetchDocFragment: "code_irpp_is"),
             Ctva7(),
             new("ctva_tableau_b_interets",
-                "CTVA Tableau « B » — opérations financières (commissions, intérêts bancaires, courtages)",
-                Critical: true, DocFragment: "code_tva", TextContains: "intérêts bancaires",
+                "CTVA Tableau « B » — item 14 : les intérêts débiteurs (taux réduit du tableau B)",
+                Critical: true, DocFragment: "code_tva", TextContains: "intérêts débiteurs",
                 FetchDocFragment: "code_tva",
-                FetchKeywords: new[] { "tableau B", "commissions", "intérêts bancaires", "opérations financières", "courtage" }),
+                FetchKeywords: new[] { "intérêts débiteurs", "radio-télédiffusion", "location navires", "projection films" }),
             new("ctva_champ_interets", "CTVA — champ d'application et territorialité (services consommés en Tunisie)",
                 Critical: false, DocFragment: "code_tva", TextContains: "territoire",
                 FetchDocFragment: "code_tva",

@@ -595,10 +595,14 @@ public sealed class GenerateConsultationCommandHandler(
         // don't leave that to the model reading the list; we detect it here and hard-forbid ES below.
         var country = (plan.DetectedCountry ?? "").Trim().ToLowerInvariant();
         var countryKey = country.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-        bool privilegedRegime = country.Length > 0 && sources.Any(s =>
+        bool privilegedRegime = country.Length > 0 && countryKey.Length >= 3 && sources.Any(s =>
         {
             var t = (s.Text ?? "").ToLowerInvariant();
-            return t.Contains("privilég") && countryKey.Length >= 3 && t.Contains(countryKey);
+            var doc = (s.DocName ?? "").ToLowerInvariant();
+            return t.Contains(countryKey) &&
+                   (t.Contains("privilég") ||
+                    doc.Contains("nc_2019_16") ||
+                    doc.Contains("doctrine_colloque"));
         });
 
         var bg = new StringBuilder();
