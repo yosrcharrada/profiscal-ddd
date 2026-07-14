@@ -537,10 +537,28 @@ export default function Search() {
     run({ q: r.q, m: r.mode });
   };
 
-  const openHit = (hits, i) => {
+  const openHit = async (hits, i) => {
     const list = hits.map((x, j) => normalizeSource(x, j + 1));
     setViewList(list);
     setViewing(list[i]);
+    // Google model: clicking a result opens the WHOLE document (all passages, in order).
+    const h = hits[i];
+    if (!h?.documentId) return;
+    try {
+      const { data } = await fiscalService.getDocument(h.documentId);
+      const full = data?.data;
+      if (!full?.text) return;
+      const merge = (s) => ({
+        ...s,
+        text: full.text,
+        docName: (full.filename || s.docName).replace(/[-_]/g, " "),
+        whole: true,
+      });
+      setViewing((v) => (v && v.index === i + 1 ? merge(v) : v));
+      setViewList((l) => l.map((s, j) => (j === i ? merge(s) : s)));
+    } catch {
+      /* keep the passage view if the full-document fetch fails */
+    }
   };
 
   const hits = lawRes?.hits || [];
@@ -914,6 +932,11 @@ export default function Search() {
                                       className={`text-[9px] font-bold rounded-full px-2 py-0.5 border ${badge.bg} ${badge.text} ${badge.border}`}
                                     >
                                       {h.documentType}
+                                    </span>
+                                  )}
+                                  {h.matchCount > 1 && (
+                                    <span className="text-[9px] font-bold rounded-full px-2 py-0.5 bg-brand/15 text-dark border border-brand/30">
+                                      {h.matchCount} passages
                                     </span>
                                   )}
                                   {h.pageNumber != null && (

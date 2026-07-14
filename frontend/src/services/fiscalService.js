@@ -8,7 +8,7 @@ const fiscalService = {
   statsHealth:  () => api.get('/fiscal/stats/health'),
   searchHealth: () => api.get('/fiscal/search/health'),
 
-  // Semantic search engine
+  // Semantic search engine (results collapsed to one card per document)
   search: (body) => api.post('/fiscal/search', {
     query: body.query,
     docType: body.docType || 'all',
@@ -17,6 +17,10 @@ const fiscalService = {
     yearMax: body.yearMax || 2030,
     size: body.size || 30,
   }),
+
+  // Whole-document view — assemble every passage of a document in reading order
+  getDocument: (documentId) =>
+    api.get(`/fiscal/search/document/${encodeURIComponent(documentId)}`),
 
   // Legal chatbot
   chat: (question, history = []) => api.post('/fiscal/chat', { question, history }),

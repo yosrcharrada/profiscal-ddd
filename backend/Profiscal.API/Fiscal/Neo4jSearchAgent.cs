@@ -200,6 +200,38 @@ public sealed class Neo4jSearchAgent : ISearchAgent, IDisposable
         catch { return 0; }
     }
 
+    public async Task<LegalDocumentDto?> GetDocumentAsync(string documentId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId)) return null;
+        try
+        {
+            await using var s = _driver.AsyncSession(o => o.WithDatabase(_db));
+            var r = await s.RunAsync(
+                @"MATCH (c:Chunk)
+                  WHERE coalesce(c.doc_id, c.document_id) = $id AND c.content <> ''
+                  RETURN c.content AS content,
+                         coalesce(c.filename, c.doc_id, c.document_id) AS filename
+                  ORDER BY coalesce(c.seq, c.part_number, 0)",
+                new { id = documentId });
+            var recs = await r.ToListAsync();
+            if (recs.Count == 0) return null;
+            var sb = new System.Text.StringBuilder();
+            foreach (var rec in recs)
+            {
+                var c = rec["content"].As<string>() ?? "";
+                if (!string.IsNullOrWhiteSpace(c)) { sb.Append(c.Trim()); sb.Append("\n\n"); }
+            }
+            return new LegalDocumentDto
+            {
+                DocumentId = documentId,
+                Filename   = recs[0]["filename"].As<string>() ?? documentId,
+                Text       = sb.ToString().TrimEnd(),
+                ChunkCount = recs.Count
+            };
+        }
+        catch { return null; }
+    }
+
     private static string Highlight(string text, List<string> terms)
     {
         var lower = text.ToLower();

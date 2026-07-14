@@ -74,6 +74,14 @@ public sealed class ElasticsearchSearchAgent(
         {
             size  = req.Size,
             query,
+            // Google model: collapse the passage-level matches to ONE hit per document —
+            // the top-scoring passage represents the document, inner_hits carries the count
+            // of matching passages in that document ("N passages" on the card).
+            collapse = new
+            {
+                field = "document_id",
+                inner_hits = new { name = "passages", size = 1 }
+            },
             highlight = new
             {
                 highlight_query = highlightQuery,
@@ -87,10 +95,13 @@ public sealed class ElasticsearchSearchAgent(
             },
             aggs = new
             {
-                doc_types   = new { terms = new { field="document_type", size=10 } },
-                chunk_types = new { terms = new { field="chunk_type",    size=20 } }
+                // With collapse, hits.total counts passages, not documents — this gives the
+                // true distinct-document total for the "N résultats" header.
+                distinct_docs = new { cardinality = new { field = "document_id" } },
+                doc_types     = new { terms = new { field="document_type", size=10 } },
+                chunk_types   = new { terms = new { field="chunk_type",    size=20 } }
             },
-            _source = new[]{"content","filename","article_number","section_title","chunk_type","document_type","page_number","chunk_id"}
+            _source = new[]{"content","filename","article_number","section_title","chunk_type","document_type","page_number","chunk_id","document_id","seq"}
         });
 
         var resp     = await _http.PostAsync($"{_host}/{_index}/_search",
@@ -118,6 +129,47 @@ public sealed class ElasticsearchSearchAgent(
         catch { return 0; }
     }
 
+    public async Task<LegalDocumentDto?> GetDocumentAsync(string documentId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId)) return null;
+        // Pull every chunk of the document, ordered by reading sequence, and stitch them
+        // back into the full text. `seq` is stamped at chunk time in document order.
+        var body = JsonSerializer.Serialize(new
+        {
+            size  = 2000,
+            query = new { term = new { document_id = documentId } },
+            sort  = new object[] { new { seq = new { order = "asc" } } },
+            _source = new[] { "content", "filename", "document_type", "chunk_type", "seq" }
+        });
+        try
+        {
+            var resp = await _http.PostAsync($"{_host}/{_index}/_search",
+                new StringContent(body, Encoding.UTF8, "application/json"), ct);
+            var text = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(text);
+            var hits = doc.RootElement.GetProperty("hits").GetProperty("hits");
+            if (hits.GetArrayLength() == 0) return null;
+
+            var sb = new StringBuilder();
+            string filename = "", docType = "";
+            int n = 0;
+            foreach (var h in hits.EnumerateArray())
+            {
+                var src = h.GetProperty("_source");
+                if (n == 0) { filename = Str(src, "filename"); docType = Str(src, "document_type"); }
+                var c = Str(src, "content");
+                if (!string.IsNullOrWhiteSpace(c)) { sb.Append(c.Trim()); sb.Append("\n\n"); }
+                n++;
+            }
+            return new LegalDocumentDto
+            {
+                DocumentId = documentId, Filename = filename,
+                DocumentType = docType, Text = sb.ToString().TrimEnd(), ChunkCount = n
+            };
+        }
+        catch { return null; }
+    }
+
     private static object MultiMatch(string q) => new object[]
     {
         new
@@ -142,8 +194,13 @@ public sealed class ElasticsearchSearchAgent(
         {
             using var doc  = JsonDocument.Parse(body);
             var hits = doc.RootElement.GetProperty("hits");
-            r.Total    = hits.GetProperty("total").GetProperty("value").GetInt32();
             r.MaxScore = hits.TryGetProperty("max_score", out var ms) && ms.ValueKind == JsonValueKind.Number ? ms.GetDouble() : 1.0;
+            var aggsPresent = doc.RootElement.TryGetProperty("aggregations", out var aggs);
+            // Collapse means hits.total = passages; the distinct-document count is the cardinality agg.
+            r.Total = aggsPresent && aggs.TryGetProperty("distinct_docs", out var dd) &&
+                      dd.TryGetProperty("value", out var ddv) && ddv.ValueKind == JsonValueKind.Number
+                ? ddv.GetInt32()
+                : hits.GetProperty("total").GetProperty("value").GetInt32();
             foreach (var h in hits.GetProperty("hits").EnumerateArray())
             {
                 var src = h.GetProperty("_source");
@@ -154,8 +211,17 @@ public sealed class ElasticsearchSearchAgent(
                     Content      = Str(src,"content"),     Filename = Str(src,"filename"),
                     ArticleNumber= Str(src,"article_number"), SectionTitle = Str(src,"section_title"),
                     ChunkType    = Str(src,"chunk_type"),  DocumentType = Str(src,"document_type"),
+                    DocumentId   = Str(src,"document_id"),
                     PageNumber   = src.TryGetProperty("page_number", out var pn) && pn.ValueKind == JsonValueKind.Number ? pn.GetInt32() : null,
                 };
+                // Number of matching passages in this document (from the collapse inner_hits total).
+                hit.MatchCount = 1;
+                if (h.TryGetProperty("inner_hits", out var ih) &&
+                    ih.TryGetProperty("passages", out var pg) &&
+                    pg.TryGetProperty("hits", out var ph) &&
+                    ph.TryGetProperty("total", out var pt) &&
+                    pt.TryGetProperty("value", out var ptv) && ptv.ValueKind == JsonValueKind.Number)
+                    hit.MatchCount = Math.Max(1, ptv.GetInt32());
                 if (h.TryGetProperty("highlight", out var hl))
                 {
                     var parts = new List<string>();
@@ -165,7 +231,7 @@ public sealed class ElasticsearchSearchAgent(
                 if (string.IsNullOrEmpty(hit.Highlight)) hit.Highlight = hit.Content.Length > 300 ? hit.Content[..300] + "…" : hit.Content;
                 r.Hits.Add(hit);
             }
-            if (doc.RootElement.TryGetProperty("aggregations", out var aggs))
+            if (aggsPresent)
             {
                 if (aggs.TryGetProperty("doc_types",   out var dt)) r.DocTypeBuckets   = Buckets(dt);
                 if (aggs.TryGetProperty("chunk_types", out var ct)) r.ChunkTypeBuckets = Buckets(ct);

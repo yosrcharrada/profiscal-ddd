@@ -101,6 +101,10 @@ public interface ISearchAgent
     Task<SearchResultDto> SearchAsync(SearchRequestDto request, CancellationToken ct = default);
     Task<bool> IsAliveAsync();
     Task<long> CountAsync();
+    /// <summary>Assemble a whole document (all its chunks, in reading order) for the
+    /// document-level "open" view — the Google model: results collapse to one card per
+    /// document, clicking one shows the entire text.</summary>
+    Task<LegalDocumentDto?> GetDocumentAsync(string documentId, CancellationToken ct = default);
 }
 
 // ─── SHARED DTOs for agents ──────────────────────────────────────────────────
@@ -166,6 +170,21 @@ public sealed class SearchHitDto
     public string  DocumentType { get; set; } = "";
     public int?    PageNumber   { get; set; }
     public string  Highlight    { get; set; } = "";
+    // Document-level (field-collapse) fields: which document this hit belongs to, and
+    // how many passages in that document matched (shown as "N passages" on the card).
+    public string  DocumentId   { get; set; } = "";
+    public int     MatchCount   { get; set; } = 1;
+}
+
+/// <summary>A whole legal document, its chunks concatenated in reading order — the payload
+/// behind clicking a collapsed result to read the full text.</summary>
+public sealed class LegalDocumentDto
+{
+    public string DocumentId   { get; set; } = "";
+    public string Filename     { get; set; } = "";
+    public string DocumentType { get; set; } = "";
+    public string Text         { get; set; } = "";
+    public int    ChunkCount   { get; set; }
 }
 
 public sealed record AggBucketDto(string Key, long Count);

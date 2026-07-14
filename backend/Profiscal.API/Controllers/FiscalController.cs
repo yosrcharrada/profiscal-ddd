@@ -50,6 +50,17 @@ public sealed class FiscalController(
         return Ok(ApiResponse<SearchResultDto>.Ok(result));
     }
 
+    /// <summary>Whole-document view: assemble every passage of a document in reading order.
+    /// Powers clicking a collapsed search result to read the full text (the Google model).</summary>
+    [HttpGet("search/document/{documentId}")]
+    public async Task<IActionResult> GetDocument(string documentId, CancellationToken ct)
+    {
+        var doc = await searchAgent.GetDocumentAsync(documentId, ct);
+        return doc is null
+            ? NotFound(ApiResponse<object>.Fail("Document introuvable."))
+            : Ok(ApiResponse<LegalDocumentDto>.Ok(doc));
+    }
+
     [HttpGet("search/health")]
     public async Task<IActionResult> SearchHealth()
     {
