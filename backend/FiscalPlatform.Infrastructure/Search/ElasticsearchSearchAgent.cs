@@ -15,19 +15,6 @@ public sealed class ElasticsearchSearchAgent(
     private readonly string _index = config["Elasticsearch:Index"] ?? "tunisian_legal";
     private readonly HttpClient _http = factory.CreateClient();
 
-    // The corpus's real `document_type` values are only "loi" / "note_commune" (see
-    // document_processor.py's detect_type()) — the older, coarser taxonomy this
-    // Elasticsearch corpus was actually indexed with. It does NOT know the finer
-    // taxmind categories (Code/Convention/LoiFinances/Doctrine/Commentaire) that the
-    // Neo4j-backed generation flow uses. Filtering ES on those taxmind values against
-    // this index silently returns zero hits — map the UI's legacy-facing filter back
-    // to the values that actually exist in `document_type`.
-    private static readonly Dictionary<string, string> DocTypeMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["loi"] = "loi",
-        ["note_commune"] = "note_commune",
-    };
-
     // French stop-words excluded from highlight matching only (never from the main
     // query) — mirrors the old Streamlit app's _meaningful_terms(), so filler words
     // like "de"/"la"/"est" don't get spuriously wrapped in <em> marks.
@@ -55,8 +42,10 @@ public sealed class ElasticsearchSearchAgent(
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var filters = new List<object>();
-        if (req.DocType   != "all" && DocTypeMap.TryGetValue(req.DocType, out var dt))
-            filters.Add(new { term = new { document_type = dt } });
+        // The index is built by the folder-based classifier (document_processor.py),
+        // whose `document_type` values are exactly the taxonomy the UI sends:
+        // Code / Convention / LoiFinances / Doctrine / Commentaire — so pass through directly.
+        if (req.DocType   != "all") filters.Add(new { term = new { document_type = req.DocType } });
         if (req.ChunkType != "all") filters.Add(new { term = new { chunk_type = req.ChunkType } });
 
         object query = filters.Any()
