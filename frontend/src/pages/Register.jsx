@@ -15,7 +15,9 @@ export default function Register() {
   const validate = () => {
     const e = {};
     if (!form.firstName.trim()) e.firstName='Required'; if (!form.lastName.trim()) e.lastName='Required';
-    if (!form.email) e.email='Required'; else if (!/\S+@\S+\.\S+/.test(form.email)) e.email='Invalid';
+    if (!form.email) e.email='Required';
+    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email='Invalid';
+    else if (!/@tn\.ey\.com$/i.test(form.email.trim())) e.email='Only @tn.ey.com addresses can register';
     if (!form.password) e.password='Required'; else if (form.password.length<8) e.password='Min 8 chars'; else if (!/[A-Z]/.test(form.password)) e.password='Needs uppercase'; else if (!/[0-9]/.test(form.password)) e.password='Needs number';
     if (form.password!==form.confirm) e.confirm="Doesn't match"; return e;
   };
@@ -52,12 +54,16 @@ export default function Register() {
           <div className="lg:hidden mb-8"><Link to="/" className="inline-flex"><EYLockup dark compact /></Link></div>
           <h1 className="text-2xl font-extrabold text-dark">Create account</h1>
           <p className="mt-2 text-body">Already registered? <Link to="/login" className="text-dark font-semibold hover:underline">Sign in</Link></p>
+          <div className="mt-4 flex items-start gap-2.5 p-3.5 bg-brand/10 border border-brand/40 rounded-xl">
+            <svg className="w-4 h-4 mt-0.5 shrink-0 text-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
+            <p className="text-[12px] text-dark/80 leading-relaxed">Registration is reserved for EY Tunisia staff — use your <span className="font-bold">@tn.ey.com</span> address. Accounts can also be provisioned directly by an administrator.</p>
+          </div>
           {apiError && <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">{apiError}</div>}
           <form onSubmit={handleSubmit} className="mt-8 space-y-4" noValidate>
             <div className="grid grid-cols-2 gap-4">
               {[['firstName','First name','Nadia'],['lastName','Last name','Trabelsi']].map(([k,l,p])=>(<div key={k}><label className="block text-sm font-semibold text-dark mb-2">{l}</label><input type="text" placeholder={p} value={form[k]} onChange={set(k)} className={cls(k)}/>{errors[k]&&<p className="mt-1 text-xs text-red-500">{errors[k]}</p>}</div>))}
             </div>
-            <div><label className="block text-sm font-semibold text-dark mb-2">Email</label><input type="email" placeholder="you@company.com" value={form.email} onChange={set('email')} autoComplete="email" className={cls('email')}/>{errors.email&&<p className="mt-1 text-xs text-red-500">{errors.email}</p>}</div>
+            <div><label className="block text-sm font-semibold text-dark mb-2">Email</label><input type="email" placeholder="prenom.nom@tn.ey.com" value={form.email} onChange={set('email')} autoComplete="email" className={cls('email')}/>{errors.email&&<p className="mt-1 text-xs text-red-500">{errors.email}</p>}</div>
             <div><label className="block text-sm font-semibold text-dark mb-2">Password</label>
               <div className="relative"><input type={showPw?'text':'password'} placeholder="Min 8 chars, 1 uppercase, 1 number" value={form.password} onChange={set('password')} autoComplete="new-password" className={`${cls('password')} pr-12`}/>
                 <button type="button" onClick={()=>setShowPw(!showPw)} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-dark"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>{showPw?<path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"/>:<><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></>}</svg></button>

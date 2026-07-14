@@ -152,22 +152,22 @@ export default function ConsultationsRail({
                   <button
                     key={c.id}
                     onClick={() => onSelect(c.id)}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-dark shadow-sm" : "hover:bg-light"}`}
+                    className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-white shadow-sm" : "hover:bg-light"}`}
                   >
                     <span className="flex items-center gap-2 min-w-0">
                       <span
-                        className={`text-[13px] font-semibold truncate ${active ? "text-white" : "text-dark"}`}
+                        className={`text-[13px] font-semibold truncate ${active ? "text-dark" : "text-dark"}`}
                       >
                         {c.clientName}
                       </span>
                       <span
-                        className={`shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 ${active ? "bg-brand text-dark" : "bg-brand/30 text-dark"}`}
+                        className={`shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 ${active ? "bg-brand text-dark" : " text-dark"}`}
                       >
                         {c.reference}
                       </span>
                     </span>
                     <span
-                      className={`block text-[11.5px] truncate mt-0.5 ${active ? "text-white/50" : "text-muted"}`}
+                      className={`block text-[11.5px] truncate mt-0.5 ${active ? "text-gray-500" : "text-muted"}`}
                     >
                       {c.fiscalQuestion}
                     </span>

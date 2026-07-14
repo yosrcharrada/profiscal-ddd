@@ -64,6 +64,19 @@
 .dark .bg-green-50 { background-color: rgba(16,185,129,0.08); }
 .dark .text-green-700 { color: #34d399; }
 .dark .text-green-600 { color: #34d399; }
+.dark .border-green-200 { border-color: rgba(16,185,129,0.25); }
+.dark .bg-green-600 { background-color: #059669; }
+.dark .bg-blue-50 { background-color: rgba(59,130,246,0.10); }
+.dark .text-blue-700, .dark .text-blue-600 { color: #60a5fa; }
+.dark .border-blue-200 { border-color: rgba(59,130,246,0.25); }
+.dark .bg-orange-50 { background-color: rgba(249,115,22,0.10); }
+.dark .text-orange-700, .dark .text-orange-600 { color: #fb923c; }
+.dark .border-orange-200 { border-color: rgba(249,115,22,0.25); }
+.dark .bg-purple-50 { background-color: rgba(168,85,247,0.10); }
+.dark .text-purple-700 { color: #c084fc; }
+.dark .border-purple-200 { border-color: rgba(168,85,247,0.25); }
+.dark .bg-red-400 { background-color: #b91c1c; }
+.dark .bg-orange-400 { background-color: #c2610c; }
 .dark ::-webkit-scrollbar { width: 10px; height: 10px; }
 .dark ::-webkit-scrollbar-track { background: rgb(var(--c-sand)); }
 .dark ::-webkit-scrollbar-thumb { background: #3a3a44; border-radius: 6px; }

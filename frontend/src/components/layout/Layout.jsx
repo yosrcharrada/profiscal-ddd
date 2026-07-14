@@ -157,7 +157,8 @@ export default function Layout() {
   const isChat = pathname === "/app/chat";
   const isSearch = pathname === "/app/search";
   const isConsultations = pathname.startsWith("/app/consultations");
-  const fullBleed = isChat || isSearch || isConsultations;
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
+  const fullBleed = isChat || isSearch || isConsultations || isAdmin;
   const hideBubble = fullBleed;
 
   return (

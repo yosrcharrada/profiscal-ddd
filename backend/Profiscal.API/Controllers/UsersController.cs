@@ -15,15 +15,65 @@ namespace Profiscal.API.Controllers;
 [Produces("application/json")]
 public class UsersController(IUserAdminService userAdminService) : ControllerBase
 {
-    /// <summary>Paged list of users, optionally filtered by name/email.</summary>
+    /// <summary>Paged list of users, optionally filtered by name/email and role.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<UserResponse>>), 200)]
     public async Task<IActionResult> GetUsers(
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null, [FromQuery] string? role = null,
         CancellationToken ct = default)
     {
-        var result = await userAdminService.GetUsersAsync(new PaginationRequest(page, pageSize), search, ct);
+        var result = await userAdminService.GetUsersAsync(new PaginationRequest(page, pageSize), search, role, ct);
         return Ok(ApiResponse<PagedResponse<UserResponse>>.Ok(result));
+    }
+
+    /// <summary>
+    /// Provision a new account (EY email only). Generates a strong password,
+    /// emails the credentials, and forces a password change on first login.
+    /// </summary>
+    [HttpPost]
+    [ProducesResponseType(typeof(ApiResponse<CreateUserResponse>), 200)]
+    [ProducesResponseType(typeof(ApiResponse<object>), 400)]
+    public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request, CancellationToken ct)
+    {
+        var result = await userAdminService.CreateUserAsync(CurrentUserId, request, ct);
+        return Ok(ApiResponse<CreateUserResponse>.Ok(result));
+    }
+
+    /// <summary>Attach (or detach with null) a user to a manager.</summary>
+    [HttpPut("{id:guid}/manager")]
+    [ProducesResponseType(typeof(ApiResponse<UserResponse>), 200)]
+    public async Task<IActionResult> AssignManager(Guid id, [FromBody] AssignManagerRequest request, CancellationToken ct)
+    {
+        var result = await userAdminService.AssignManagerAsync(CurrentUserId, id, request.ManagerId, ct);
+        return Ok(ApiResponse<UserResponse>.Ok(result));
+    }
+
+    /// <summary>All managers with their consultant headcount (for assignment dropdowns).</summary>
+    [HttpGet("managers")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<ManagerResponse>>), 200)]
+    public async Task<IActionResult> GetManagers(CancellationToken ct)
+    {
+        var result = await userAdminService.GetManagersAsync(ct);
+        return Ok(ApiResponse<IReadOnlyList<ManagerResponse>>.Ok(result));
+    }
+
+    /// <summary>Headline platform stats for the admin dashboard.</summary>
+    [HttpGet("overview")]
+    [ProducesResponseType(typeof(ApiResponse<AdminOverviewResponse>), 200)]
+    public async Task<IActionResult> Overview(CancellationToken ct)
+    {
+        var result = await userAdminService.GetOverviewAsync(ct);
+        return Ok(ApiResponse<AdminOverviewResponse>.Ok(result));
+    }
+
+    /// <summary>Platform-wide activity feed across every user.</summary>
+    [HttpGet("activity")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<GlobalAuditResponse>>), 200)]
+    public async Task<IActionResult> GlobalActivity([FromQuery] int take = 50, CancellationToken ct = default)
+    {
+        var result = await userAdminService.GetGlobalActivityAsync(take, ct);
+        return Ok(ApiResponse<IReadOnlyList<GlobalAuditResponse>>.Ok(result));
     }
 
     /// <summary>Replace a user's role (revokes their sessions so the new role takes effect).</summary>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import useSystemHealth from "../hooks/useSystemHealth";
@@ -74,10 +74,15 @@ function ActivityChart({ consultations, lang }) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     labels.push(
-      d.toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", { weekday: "short" }),
+      d.toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", {
+        weekday: "short",
+      }),
     );
     dayLabels.push(
-      d.toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", { day: "numeric", month: "short" }),
+      d.toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", {
+        day: "numeric",
+        month: "short",
+      }),
     );
     counts.push(0);
   }
@@ -96,7 +101,10 @@ function ActivityChart({ consultations, lang }) {
     return () => clearTimeout(t);
   }, []);
 
-  const w = 600, h = 200, pad = 40, barGap = 14;
+  const w = 600,
+    h = 200,
+    pad = 40,
+    barGap = 14;
   const chartW = w - pad - 10;
   const chartH = h - 40;
   const barW = (chartW - barGap * (days - 1)) / days;
@@ -107,19 +115,34 @@ function ActivityChart({ consultations, lang }) {
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-extrabold text-dark">{total}</span>
           <span className="text-[12px] text-muted font-medium">
-            {lang === "en" ? "consultations this week" : "consultations cette semaine"}
+            {lang === "en"
+              ? "consultations this week"
+              : "consultations cette semaine"}
           </span>
         </div>
         {total > 0 && (
           <span className="text-[11px] font-bold text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-full px-2 py-0.5">
-            {counts[6] > 0 ? `+${counts[6]} ${lang === "en" ? "today" : "aujourd'hui"}` : ""}
+            {counts[6] > 0
+              ? `+${counts[6]} ${lang === "en" ? "today" : "aujourd'hui"}`
+              : ""}
           </span>
         )}
       </div>
-      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: "auto", maxHeight: 220 }}>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        className="w-full"
+        style={{ height: "auto", maxHeight: 220 }}
+      >
         <defs>
           {BAR_GRADIENTS.map((g, i) => (
-            <linearGradient key={i} id={`bar-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient
+              key={i}
+              id={`bar-grad-${i}`}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
               <stop offset="0%" stopColor={g[0]} />
               <stop offset="100%" stopColor={g[1]} />
             </linearGradient>
@@ -133,8 +156,25 @@ function ActivityChart({ consultations, lang }) {
           const y = 10 + chartH - (v / maxC) * chartH;
           return (
             <g key={v}>
-              <line x1={pad} y1={y} x2={w - 10} y2={y} stroke="rgb(var(--c-border))" strokeWidth="0.8" strokeDasharray="4,4" opacity="0.5" />
-              <text x={pad - 8} y={y + 3} textAnchor="end" className="fill-muted" style={{ fontSize: "9px", fontWeight: 600 }}>{v}</text>
+              <line
+                x1={pad}
+                y1={y}
+                x2={w - 10}
+                y2={y}
+                stroke="rgb(var(--c-border))"
+                strokeWidth="0.8"
+                strokeDasharray="4,4"
+                opacity="0.5"
+              />
+              <text
+                x={pad - 8}
+                y={y + 3}
+                textAnchor="end"
+                className="fill-muted"
+                style={{ fontSize: "9px", fontWeight: 600 }}
+              >
+                {v}
+              </text>
             </g>
           );
         })}
@@ -145,18 +185,40 @@ function ActivityChart({ consultations, lang }) {
           return (
             <g key={i}>
               <rect
-                x={x} y={y} width={barW} height={barH} rx={barW > 20 ? 8 : 5}
+                x={x}
+                y={y}
+                width={barW}
+                height={barH}
+                rx={barW > 20 ? 8 : 5}
                 fill={c > 0 ? `url(#bar-grad-${i})` : "rgb(var(--c-border))"}
                 opacity={c > 0 ? 1 : 0.25}
                 className="transition-all duration-700 ease-out"
                 style={{ transitionDelay: `${i * 80}ms` }}
               />
               {c > 0 && (
-                <text x={x + barW / 2} y={y - 6} textAnchor="middle" className="fill-dark" style={{ fontSize: "10px", fontWeight: 700, opacity: animated ? 1 : 0, transition: "opacity 0.5s", transitionDelay: `${i * 80 + 400}ms` }}>
+                <text
+                  x={x + barW / 2}
+                  y={y - 6}
+                  textAnchor="middle"
+                  className="fill-dark"
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    opacity: animated ? 1 : 0,
+                    transition: "opacity 0.5s",
+                    transitionDelay: `${i * 80 + 400}ms`,
+                  }}
+                >
                   {c}
                 </text>
               )}
-              <text x={x + barW / 2} y={h - 6} textAnchor="middle" className="fill-muted" style={{ fontSize: "9px", fontWeight: 600 }}>
+              <text
+                x={x + barW / 2}
+                y={h - 6}
+                textAnchor="middle"
+                className="fill-muted"
+                style={{ fontSize: "9px", fontWeight: 600 }}
+              >
                 {labels[i]}
               </text>
             </g>
@@ -465,6 +527,9 @@ export default function Dashboard() {
       .then(({ data }) => setStats(data.data))
       .catch(() => setStats(null));
   }, []);
+
+  // Admins land on the full-bleed governance console instead of the consultant dashboard.
+  if (isAdmin) return <Navigate to="/admin" replace />;
 
   const recent = (consultations || []).slice(0, 4);
   const kb =

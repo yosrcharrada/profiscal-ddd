@@ -18,6 +18,14 @@ public interface IRetrievalAgent
     Task<List<SourceChunkDto>> VectorSearchAsync(float[] embedding, int topK = 8);
     Task<List<SourceChunkDto>> GraphExpandAsync(List<string> entities, int topK = 6);
     Task<List<SourceChunkDto>> KeywordFallbackAsync(string query, int topK = 8);
+
+    /// <summary>
+    /// Expert GraphRAG expansion from vector-seed chunks, using the real graph relationships:
+    /// NEXT_CHUNK (continuation), co-mentioned specific entities (Entity)-[:MENTIONED_IN]->(Chunk),
+    /// and the Article graph (chunk's article → interpreting Doctrine). Returns enriched context.
+    /// </summary>
+    Task<List<SourceChunkDto>> GraphRagExpandAsync(
+        List<string> seedChunkIds, int maxResults = 12, CancellationToken ct = default);
     // ─── ADD TO IRetrievalAgent interface ────────────────────────────────────────
     // Targeted fetch methods used by RetrievalPlannerAgent via RetrievalPlannerPlugin
 

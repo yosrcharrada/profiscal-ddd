@@ -21,7 +21,11 @@ export default function Login() {
     if (!form.password) v.password = 'Required';
     if (Object.keys(v).length) { setErrors(v); return; }
     setErrors({}); setApiError(''); setLoading(true);
-    try { await login(form.email, form.password); navigate(from, { replace: true }); }
+    try {
+      const auth = await login(form.email, form.password);
+      // Provisioned accounts sign in with a generated password: force them to pick their own.
+      navigate(auth?.user?.mustChangePassword ? '/settings/password' : from, { replace: true });
+    }
     catch (err) { setApiError(err.response?.data?.message || 'Invalid email or password.'); }
     finally { setLoading(false); }
   };

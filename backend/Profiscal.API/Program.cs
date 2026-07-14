@@ -109,7 +109,8 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
-        policy.WithOrigins(builder.Configuration["AllowedOrigins"] ?? "http://localhost:3000")
+        policy.WithOrigins((builder.Configuration["AllowedOrigins"] ?? "http://localhost:3000")
+                  .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
               .AllowAnyHeader()
               .AllowAnyMethod()));
 
@@ -123,7 +124,8 @@ using (var scope = app.Services.CreateScope())
         .Database.MigrateAsync();
 
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-    foreach (var role in new[] { "Admin", "User" })
+    // "User" is kept for pre-existing accounts; new accounts get one of the three real roles.
+    foreach (var role in new[] { "Admin", "Manager", "Consultant", "User" })
     {
         if (!await roleManager.RoleExistsAsync(role))
             await roleManager.CreateAsync(new IdentityRole<Guid>(role));

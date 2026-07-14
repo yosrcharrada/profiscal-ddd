@@ -60,11 +60,18 @@ export function AuthProvider({ children }) {
 
   const hasRole = useCallback((role) => !!user?.roles?.includes(role), [user]);
 
+  const isAdmin      = !!user?.roles?.includes('Admin');
+  const isManager    = !!user?.roles?.includes('Manager');
+  // Legacy 'User' accounts behave like consultants until an admin reassigns them.
+  const isConsultant = !isAdmin && !isManager;
+  const primaryRole  = isAdmin ? 'Admin' : isManager ? 'Manager' : 'Consultant';
+
   return (
     <AuthContext.Provider value={{
       user, loading, login, register, logout, applyAuth, hasRole,
       isAuthenticated: !!user,
-      isAdmin: !!user?.roles?.includes('Admin'),
+      isAdmin, isManager, isConsultant, primaryRole,
+      mustChangePassword: !!user?.mustChangePassword,
     }}>
       {children}
     </AuthContext.Provider>

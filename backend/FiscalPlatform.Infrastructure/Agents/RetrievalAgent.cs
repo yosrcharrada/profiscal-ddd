@@ -372,27 +372,40 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         }
         catch (Exception ex) { _logger.LogDebug(ex, "NEXT_CHUNK"); }
 
-        // b. Entity hop
+        // b. Entity hop — chunks sharing ≥2 SPECIFIC legal entities (real rel: MENTIONED_IN).
         try
         {
             var r = await session.RunAsync($@"
                 UNWIND $ids AS sid
-                MATCH (seed:Chunk {{chunk_id: sid}})<-[:APPEARS_IN]-(e:Entity)-[:APPEARS_IN]->(c:Chunk)
+                MATCH (seed:Chunk {{chunk_id: sid}})<-[:MENTIONED_IN]-(e:Entity)
+                WHERE e.label IN ['TAUX','ARTICLE_REF','IMPOT','CONCEPT_FISCAL',
+                                  'CODE_FISCAL','LOI_REF','DECRET_REF','PAYS']
+                WITH DISTINCT e, sid
+                MATCH (e)-[:MENTIONED_IN]->(c:Chunk)
                 WHERE c.chunk_type = 'text' AND c.chunk_id <> sid
-                RETURN DISTINCT {F}, 0.65 AS score LIMIT 8",
+                WITH c, count(DISTINCT e) AS shared WHERE shared >= 2
+                RETURN {F}, (0.55 + 0.05 * shared) AS score
+                ORDER BY shared DESC LIMIT 8",
                 new { ids = seedIds });
             await foreach (var rec in r) TryAdd(results, seen, rec, 0.65);
         }
         catch (Exception ex) { _logger.LogDebug(ex, "EntityHop"); }
 
-        // c. INTERPRETS
+        // c. Article → interpreting Doctrine (real graph: Doctrine-[:INTERPRETS]->Article).
         try
         {
             var r = await session.RunAsync($@"
                 UNWIND $ids AS sid
-                MATCH (c:Chunk {{chunk_id: sid}})<-[:INTERPRETS]-(nc:Chunk)
-                WHERE nc.chunk_type = 'text'
-                RETURN DISTINCT {CH}, 0.7 AS score LIMIT 5",
+                MATCH (seed:Chunk {{chunk_id: sid}})
+                WHERE seed.article_ref <> ''
+                MATCH (art:Article)
+                WHERE seed.doc_name STARTS WITH art.source_code AND art.numero = seed.article_ref
+                MATCH (:Doctrine)-[:INTERPRETS]->(art)<-[:INTERPRETS]-(:Doctrine)
+                WITH art LIMIT 20
+                MATCH (doc:Doctrine)-[:INTERPRETS]->(art)
+                MATCH (c:Chunk)-[:PART_OF]->(doc)
+                WHERE c.chunk_type = 'text'
+                RETURN DISTINCT {F}, 0.7 AS score LIMIT 5",
                 new { ids = seedIds });
             await foreach (var rec in r) TryAdd(results, seen, rec, 0.7);
         }
@@ -469,20 +482,133 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         try
         {
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
+            // Real relationship is (Entity)-[:MENTIONED_IN]->(Chunk). Rank chunks by how many
+            // distinct query entities they mention so the most on-topic passages win.
             var r = await session.RunAsync(@"
                 UNWIND $ents AS ent
-                MATCH (e:Entity)-[:APPEARS_IN]->(c:Chunk)
+                MATCH (e:Entity)-[:MENTIONED_IN]->(c:Chunk)
                 WHERE (toLower(e.normalized) CONTAINS toLower(ent)
                     OR toLower(e.text) CONTAINS toLower(ent))
-                  AND c.chunk_type = 'text'
-                RETURN DISTINCT c.doc_name AS doc_name, c.page_num AS page_num,
+                  AND c.chunk_type = 'text' AND c.text <> ''
+                WITH c, count(DISTINCT e) AS m
+                RETURN c.doc_name AS doc_name, c.page_num AS page_num,
                        c.text AS text, c.chunk_type AS chunk_type,
-                       c.article_ref AS article_ref, 0.6 AS score
+                       c.article_ref AS article_ref, (0.5 + 0.05 * m) AS score
+                ORDER BY m DESC
                 LIMIT $topK",
                 new { ents = entities, topK });
             return await MapChunks(r);
         }
         catch (Exception ex) { _logger.LogWarning(ex, "GraphExpand failed"); return new(); }
+    }
+
+    /// <summary>
+    /// Expert GraphRAG expansion from vector-seed chunks. Three real-relationship hops:
+    ///   1. NEXT_CHUNK       → the passage that continues each seed (keeps clauses whole).
+    ///   2. co-entity        → chunks sharing ≥2 SPECIFIC legal entities (rate/article/tax/law/
+    ///                          country) with a seed, via (Entity)-[:MENTIONED_IN]->(Chunk).
+    ///   3. Article→Doctrine → the doctrine that INTERPRETS the article a seed cites.
+    /// </summary>
+    public async Task<List<SourceChunkDto>> GraphRagExpandAsync(
+        List<string> seedChunkIds, int maxResults = 12, CancellationToken ct = default)
+    {
+        var results = new List<SourceChunkDto>();
+        var seen    = new HashSet<string>();
+        var ids     = (seedChunkIds ?? new()).Where(x => !string.IsNullOrEmpty(x)).Distinct().Take(10).ToList();
+        if (ids.Count == 0) return results;
+
+        try
+        {
+            await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
+
+            // 1) NEXT_CHUNK — continuation of each seed passage.
+            await GraphRagCollect(session, @"
+                UNWIND $ids AS sid
+                MATCH (:Chunk {chunk_id: sid})-[:NEXT_CHUNK]->(c:Chunk)
+                WHERE c.chunk_type = 'text' AND c.text <> ''
+                RETURN DISTINCT c.doc_name AS doc_name, c.page_num AS page_num,
+                       c.text AS text, c.chunk_type AS chunk_type,
+                       c.article_ref AS article_ref, 0.72 AS score",
+                new { ids }, results, seen);
+
+            // 2) Co-entity — chunks sharing ≥2 specific legal entities with a seed.
+            await GraphRagCollect(session, @"
+                UNWIND $ids AS sid
+                MATCH (seed:Chunk {chunk_id: sid})<-[:MENTIONED_IN]-(e:Entity)
+                WHERE e.label IN ['TAUX','ARTICLE_REF','IMPOT','CONCEPT_FISCAL',
+                                  'CODE_FISCAL','LOI_REF','DECRET_REF','PAYS']
+                WITH DISTINCT e, sid
+                MATCH (e)-[:MENTIONED_IN]->(c:Chunk)
+                WHERE c.chunk_id <> sid AND c.chunk_type = 'text' AND c.text <> ''
+                WITH c, count(DISTINCT e) AS shared
+                WHERE shared >= 2
+                RETURN c.doc_name AS doc_name, c.page_num AS page_num,
+                       c.text AS text, c.chunk_type AS chunk_type,
+                       c.article_ref AS article_ref, (0.55 + 0.05 * shared) AS score
+                ORDER BY shared DESC
+                LIMIT 10",
+                new { ids }, results, seen);
+
+            // 3) Article → interpreting Doctrine (authoritative commentary on a cited article).
+            await GraphRagCollect(session, @"
+                UNWIND $ids AS sid
+                MATCH (seed:Chunk {chunk_id: sid})
+                WHERE seed.article_ref <> ''
+                MATCH (art:Article)
+                WHERE seed.doc_name STARTS WITH art.source_code AND art.numero = seed.article_ref
+                MATCH (doc:Doctrine)-[:INTERPRETS]->(art)
+                MATCH (ch:Chunk)-[:PART_OF]->(doc)
+                WHERE ch.chunk_type = 'text' AND ch.text <> ''
+                RETURN DISTINCT ch.doc_name AS doc_name, ch.page_num AS page_num,
+                       ch.text AS text, ch.chunk_type AS chunk_type,
+                       ch.article_ref AS article_ref, 0.68 AS score
+                LIMIT 5",
+                new { ids }, results, seen);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "GraphRagExpand failed"); }
+
+        return results
+            .OrderByDescending(r => r.Score)
+            .Take(maxResults)
+            .ToList();
+    }
+
+    // Runs one expansion query and appends de-duplicated chunks (keyed by doc+article+text head).
+    private static async Task GraphRagCollect(
+        IAsyncSession session, string cypher, object parameters,
+        List<SourceChunkDto> into, HashSet<string> seen)
+    {
+        var cursor = await session.RunAsync(cypher, parameters);
+        await foreach (var r in cursor)
+        {
+            var text = r["text"].As<string>() ?? "";
+            if (text.Length == 0 || ContainsArabic(text)) continue;
+            var docName = r["doc_name"].As<string>() ?? "";
+            var aref    = r.Keys.Contains("article_ref") ? r["article_ref"].As<string>() ?? "" : "";
+            var key     = (docName + "|" + aref + "|" + text[..Math.Min(text.Length, 60)]).Trim();
+            if (!seen.Add(key)) continue;
+            into.Add(new SourceChunkDto
+            {
+                DocName    = docName,
+                PageNum    = r.Keys.Contains("page_num") ? r["page_num"].As<int?>() ?? 0 : 0,
+                Text       = text,
+                ChunkType  = r.Keys.Contains("chunk_type") ? r["chunk_type"].As<string>() ?? "text" : "text",
+                ArticleRef = aref,
+                Score      = r.Keys.Contains("score") ? r["score"].As<double>() : 0.6,
+                Category   = InferDocType(docName),
+            });
+        }
+    }
+
+    private static string InferDocType(string n)
+    {
+        n = n.ToLowerInvariant();
+        if (n.Contains("convention")) return "Convention";
+        if (n.Contains("cdpf") || n.Contains("code") || n.Contains("irpp") || n.Contains("ctva")) return "Code";
+        if (n.Contains("loi") || n.Contains("finances") || n.Contains("decret")) return "LoiFinances";
+        if (n.Contains("note") || n.Contains("commune") || n.Contains("bareme")) return "Doctrine";
+        if (n.Contains("choyakh") || n.Contains("colloque") || n.Contains("commentaire")) return "Commentaire";
+        return "Doctrine";
     }
 
     public async Task<List<SourceChunkDto>> KeywordFallbackAsync(
