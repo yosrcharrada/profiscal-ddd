@@ -76,8 +76,7 @@ public sealed class CountryDetector : ICountryDetector
     public (List<string> Countries, bool IsInternational) Detect(string text)
     {
         var lower = text.ToLower();
-        var found = Known.Where(c =>
-            lower.Contains(c, StringComparison.OrdinalIgnoreCase))
+        var found = Known.Where(c => ContainsWholeWord(lower, c))
             .Distinct().ToList();
 
         bool intlSignals = found.Any() ||
@@ -85,6 +84,20 @@ public sealed class CountryDetector : ICountryDetector
                 lower.Contains(sig, StringComparison.OrdinalIgnoreCase));
 
         return (found, intlSignals);
+    }
+
+    private static bool ContainsWholeWord(string text, string word)
+    {
+        int idx = 0;
+        while ((idx = text.IndexOf(word, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            bool leftOk  = idx == 0 || !char.IsLetter(text[idx - 1]);
+            int  end     = idx + word.Length;
+            bool rightOk = end >= text.Length || !char.IsLetter(text[end]);
+            if (leftOk && rightOk) return true;
+            idx += 1;
+        }
+        return false;
     }
 }
 

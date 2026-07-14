@@ -417,12 +417,18 @@ public sealed class InteretAgent : CaseAgentBase
         "       APPLIQUE ces conditions aux faits (capital libéré ? taux convenu ? montant du prêt\n" +
         "       vs capital ?) et conclus sur la ventilation déductible / non-déductible.\n" +
         "   A.3 Retiens le plus favorable entre le plafond conventionnel et le droit commun.\n\n" +
-        "B. TVA — À TRAITER SYSTÉMATIQUEMENT : qualifier l'opération (rémunération d'un crédit /\n" +
-        "   opération financière) et déterminer son régime TVA à partir des textes du CTVA retrouvés\n" +
-        "   [Sn] (champ, territorialité, exonérations — y compris les tableaux A et B annexés) —\n" +
-        "   CITE le texte qui fonde le verdict ; ne conclus JAMAIS sur la TVA de mémoire, sans un\n" +
-        "   [Sn] à l'appui. Si la TVA est due et que le prêteur n'est pas établi, mentionner la\n" +
-        "   retenue de la TVA par le preneur [Sn].\n\n" +
+        "B. TVA — À TRAITER SYSTÉMATIQUEMENT :\n" +
+        "   B.1 LIS dans l'Art.7 du CTVA [Sn] que les opérations du tableau « B » sont soumises\n" +
+        "       au taux réduit — note le taux LU dans le texte.\n" +
+        "   B.2 VÉRIFIE dans le tableau « B » annexé au CTVA [Sn] que les opérations financières\n" +
+        "       (intérêts, commissions, courtages bancaires) y figurent — CITE la disposition.\n" +
+        "   B.3 Territorialité : les intérêts versés en rémunération d'un prêt dont les fonds sont\n" +
+        "       utilisés en Tunisie constituent des services consommés en Tunisie → dans le champ\n" +
+        "       de la TVA. CITE le texte [Sn].\n" +
+        "   B.4 Si la TVA est due et que le prêteur n'est pas établi en Tunisie, le bénéficiaire\n" +
+        "       tunisien retient 100% de la TVA due [Sn]. Si le bénéficiaire est totalement\n" +
+        "       exportateur, vérifier le régime de suspension de TVA applicable [Sn].\n" +
+        "   Ne conclus JAMAIS sur la TVA sans un [Sn] à l'appui.\n\n" +
         "C. FORMALISME & AUTRES OBLIGATIONS — C.1 assiette = montant brut des intérêts ;\n" +
         "   C.2 formalisme du transfert (certificat de retenue à la source, Art.112 CDPF [Sn] ; si\n" +
         "   l'Art.21 de la circulaire BCT N°2016-9 figure parmi les sources [Sn], vise-le pour les\n" +
@@ -461,8 +467,9 @@ public sealed class InteretAgent : CaseAgentBase
         "capitaux mobiliers ») vs la part non-déductible (« revenus de valeurs mobilières »). " +
         "Chaque catégorie → son propre taux de RS lu dans l'Art.52 CIRPPIS [Sn]. L'absence de cette " +
         "ventilation, ou un taux unique appliqué sans distinguer, justifie le rejet.\n" +
-        "2. TVA : doit être TRAITÉE et fondée sur un texte du CTVA cité [Sn] (y compris tableaux " +
-        "A et B) — un verdict TVA sans citation, ou l'absence totale du point TVA, justifie le rejet.\n" +
+        "2. TVA : doit citer l'Art.7 CTVA [Sn] + le tableau « B » [Sn] pour fonder le taux applicable " +
+        "aux opérations financières. La retenue de 100% de la TVA par le bénéficiaire tunisien doit " +
+        "être mentionnée si le prêteur est non-établi. Un verdict TVA sans ces citations justifie le rejet.\n" +
         "3. ÉTABLISSEMENT STABLE : AUCUNE mention où que ce soit — sa seule présence est une " +
         "faute rédhibitoire.\n" +
         "4. CONVENTION : le plafond conventionnel de l'article « Intérêts » doit être lu [Sn] et " +
@@ -480,10 +487,16 @@ public sealed class InteretAgent : CaseAgentBase
                 Critical: true, DocFragment: "code_irpp_is", ArticleNumber: "48",
                 TextContains: "intérêts", RequirePercent: true,
                 FetchDocFragment: "code_irpp_is"),
-            new("ctva_regime_interets", "CTVA — régime TVA des intérêts / opérations financières (champ, exonérations, tableaux A & B)",
-                Critical: true, DocFragment: "code_tva", TextContains: "intérêts",
+            Ctva7(),
+            new("ctva_tableau_b_interets",
+                "CTVA Tableau B — opérations financières soumises à la TVA au taux de 7% (commissions, intérêts bancaires)",
+                Critical: true, DocFragment: "code_tva", TextContains: "intérêts bancaires",
                 FetchDocFragment: "code_tva",
-                FetchKeywords: new[] { "intérêts", "opérations financières", "crédit", "exonéré" }),
+                FetchKeywords: new[] { "tableau B", "commissions", "intérêts bancaires", "opérations financières", "courtage" }),
+            new("ctva_champ_interets", "CTVA — champ d'application et territorialité (services consommés en Tunisie)",
+                Critical: false, DocFragment: "code_tva", TextContains: "territoire",
+                FetchDocFragment: "code_tva",
+                FetchKeywords: new[] { "territoire", "consommé", "utilisé en Tunisie", "retenue", "prestataire non résident" }),
             Cdpf112,
             Nc112Doctrine,
             BctCirculaire,
