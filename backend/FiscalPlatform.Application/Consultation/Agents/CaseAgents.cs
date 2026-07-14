@@ -223,9 +223,15 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
                 DocFragment: "code_tva", ArticleNumber: "7", RequirePercent: true, FetchDocFragment: "code_tva"),
             new("ctva_19", "CTVA Art.19 (retenue de 100% de la TVA — prestataire non établi)", Critical: true,
                 DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
-            new("regime_privilegie", "Liste des États/territoires à régime fiscal privilégié", Critical: false,
-                TextContains: "privilégié",
-                FetchKeywords: new[] { "régime fiscal privilégié", "liste des Etats", "taux de l'impôt inférieur" }),
+            // The privileged-regime LIST lives in NC 16/2019 (the arrêté reproduced there names the
+            // countries, e.g. Hong Kong). Target that document directly — the old generic keyword
+            // fetch (doc='') pulled random chunks and never the list, so the writer said "aucune
+            // mention de Hong Kong" and the deterministic ES-ban (which needs this list present) never
+            // fired. Satisfied by any NC_2019_16 chunk naming a privileged regime.
+            new("regime_privilegie", "Note commune N°16/2019 — liste des États/territoires à régime fiscal privilégié",
+                Critical: false, DocFragment: "NC_2019_16",
+                FetchDocFragment: "NC_2019_16",
+                FetchKeywords: new[] { "privilégié", "régime fiscal", "liste des Etats" }),
             Cdpf112,
             Nc112Doctrine,
             BctCirculaire,

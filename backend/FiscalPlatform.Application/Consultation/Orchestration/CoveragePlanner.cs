@@ -90,10 +90,10 @@ public static class CoveragePlanner
             "RÉGIME PRIVILÉGIÉ : vérifie le pays du bénéficiaire DANS la liste citée [Sn] ; si listé, " +
             "n'analyse PAS l'établissement stable — passe directement à la RS.",
             s => new RequiredSource("cov_privilegie",
-                "Liste des États/territoires à régime fiscal privilégié",
-                Critical: false, TextContains: "privilégié",
-                FetchKeywords: new[] { "régime fiscal privilégié", "liste des Etats" }),
-            new[] { "privilegie" }),
+                "Note commune N°16/2019 — liste des États/territoires à régime fiscal privilégié",
+                Critical: false, DocFragment: "NC_2019_16", FetchDocFragment: "NC_2019_16",
+                FetchKeywords: new[] { "privilégié", "régime fiscal", "liste des Etats" }),
+            new[] { "privilegie", "nc_2019_16" }),
 
         new("penalites",
             "PÉNALITÉS : le point implique de quantifier des pénalités/intérêts de retard ou un risque de régularisation",
