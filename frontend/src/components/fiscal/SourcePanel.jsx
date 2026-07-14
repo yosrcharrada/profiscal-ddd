@@ -14,6 +14,23 @@ const TYPE_STYLES = {
   LoiFinances: "bg-[#EDE9FE] text-[#5B21B6]",
   Doctrine: "bg-[#DBEAFE] text-[#1D4ED8]",
   Commentaire: "bg-[#FFEDD5] text-[#C2410C]",
+  // Elasticsearch legal-search corpus taxonomy (document_processor.py's detect_type()).
+  loi: "bg-dark text-white",
+  note_commune: "bg-[#DBEAFE] text-[#1D4ED8]",
+};
+
+const DOC_TYPE_LABEL = { loi: "Loi", note_commune: "Note Commune" };
+
+const CHUNK_TYPE_LABEL = {
+  article: "Article",
+  article_part: "Article (extrait)",
+  preamble: "Préambule",
+  section: "Section",
+  subsection: "Sous-section",
+  resume: "Résumé",
+  text_table: "Tableau (texte)",
+  image_table: "Tableau (image)",
+  full_document: "Document complet",
 };
 
 export function normalizeSource(s = {}, index) {
@@ -21,6 +38,7 @@ export function normalizeSource(s = {}, index) {
     index: index ?? s.index,
     docName: (s.docName || s.filename || "Document").replace(/[-_]/g, " "),
     docType: s.docType || s.documentType || s.category || "",
+    chunkType: s.chunkType || "",
     articleRef: s.articleRef || s.articleNumber || "",
     sectionTitle: s.sectionTitle || "",
     year: s.year || "",
@@ -73,7 +91,12 @@ export default function SourcePanel({
               <span
                 className={`text-[10px] font-bold rounded-full px-2.5 py-1 uppercase tracking-wider ${typeCls}`}
               >
-                {s.docType}
+                {DOC_TYPE_LABEL[s.docType] || s.docType}
+              </span>
+            )}
+            {s.chunkType && (
+              <span className="text-[10px] font-bold rounded-full px-2.5 py-1 uppercase tracking-wider bg-light text-body border border-border">
+                {CHUNK_TYPE_LABEL[s.chunkType] || s.chunkType}
               </span>
             )}
             {s.isExpert && (

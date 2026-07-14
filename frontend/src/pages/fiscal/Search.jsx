@@ -8,32 +8,51 @@ import SourcePanel, {
 const EASE = "ease-[cubic-bezier(.16,1,.3,1)]";
 
 /* Soft pastel accents per document type — yellow stays the primary brand
-   accent, the rest sit quietly next to white. */
+   accent, the rest sit quietly next to white.
+   The ES corpus (elasticsearch_indexer.py) only ever tags `document_type` as
+   "loi" or "note_commune" (see document_processor.py's detect_type()) — a
+   coarser taxonomy than the taxmind/Neo4j categories used elsewhere in the
+   app. Filtering on any other value here silently returns zero hits. */
 const DOC_TYPES = [
   { key: "all", label: "Tous les textes", dot: "bg-gradient-to-r from-brand to-[#FFB800]" },
-  { key: "Code", label: "Codes", dot: "bg-dark" },
-  { key: "Convention", label: "Conventions", dot: "bg-brand" },
-  { key: "LoiFinances", label: "Lois de finances", dot: "bg-[#8B5CF6]" },
-  { key: "Doctrine", label: "Doctrine", dot: "bg-[#3B82F6]" },
-  { key: "Commentaire", label: "Commentaires", dot: "bg-[#F97316]" },
+  { key: "loi", label: "Lois", dot: "bg-dark" },
+  { key: "note_commune", label: "Notes communes", dot: "bg-[#3B82F6]" },
 ];
 
-/* JORT-style "Codes et recueils" / corpus filter (taxmind corpora). */
-const CORPORA = [
-  { key: "all", label: "Tous les corpus" },
-  { key: "Conventions", label: "Conventions fiscales" },
-  { key: "Lois_des_Finances", label: "Lois des finances" },
-  { key: "Notes_Communes", label: "Notes communes" },
-  { key: "Recueils_textes_fiscaux", label: "Codes et recueils" },
+/* Chunk granularity filter — the corpus is chunked well below the whole-document
+   level (article / section / subsection / table / …); exposing this lets you
+   jump straight to the kind of passage you want, same as the original engine. */
+const CHUNK_TYPES = [
+  { key: "all", label: "Tous les passages" },
+  { key: "article", label: "Article" },
+  { key: "article_part", label: "Article (extrait)" },
+  { key: "preamble", label: "Préambule" },
+  { key: "section", label: "Section" },
+  { key: "subsection", label: "Sous-section" },
+  { key: "resume", label: "Résumé" },
+  { key: "text_table", label: "Tableau (texte)" },
+  { key: "image_table", label: "Tableau (image)" },
+  { key: "full_document", label: "Document complet" },
 ];
 
 const TYPE_BADGE = {
-  Code: "bg-dark text-white",
-  Convention: "bg-brand text-dark",
-  LoiFinances: "bg-[#EDE9FE] text-[#5B21B6]",
-  Doctrine: "bg-[#DBEAFE] text-[#1D4ED8]",
-  Commentaire: "bg-[#FFEDD5] text-[#C2410C]",
+  loi: "bg-dark text-white",
+  note_commune: "bg-[#DBEAFE] text-[#1D4ED8]",
 };
+
+const CHUNK_BADGE = {
+  article: "bg-[#FEF3C7] text-[#92400E]",
+  article_part: "bg-[#FEF3C7] text-[#92400E]",
+  preamble: "bg-light text-body",
+  section: "bg-[#F3E8FF] text-[#6B21A8]",
+  subsection: "bg-[#E0F2FE] text-[#075985]",
+  resume: "bg-[#FCE7F3] text-[#9D174D]",
+  text_table: "bg-[#F0FDF4] text-[#15803D]",
+  image_table: "bg-[#F0FDF4] text-[#15803D]",
+  full_document: "bg-light text-body",
+};
+
+const CHUNK_LABEL = Object.fromEntries(CHUNK_TYPES.map((c) => [c.key, c.label]));
 
 const EXAMPLES = {
   law: [
@@ -130,8 +149,8 @@ function FiltersPanel({
   yearMin,
   yearMax,
   onYears,
-  corpus,
-  onCorpus,
+  chunkType,
+  onChunkType,
   number,
   onNumber,
   dateText,
@@ -221,16 +240,16 @@ function FiltersPanel({
               </div>
             </div>
 
-            {/* corpus — "Codes et recueils" */}
+            {/* chunk type — the corpus's real granularity (article / section / tableau / …) */}
             <div>
-              <p className="px-2 mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em]">Corpus</p>
+              <p className="px-2 mb-2 text-[10px] font-bold text-muted uppercase tracking-[0.18em]">Type de passage</p>
               <div className="px-2">
                 <select
-                  value={corpus}
-                  onChange={(e) => onCorpus(e.target.value)}
+                  value={chunkType}
+                  onChange={(e) => onChunkType(e.target.value)}
                   className="w-full bg-white border border-border rounded-xl px-3 py-2 text-[13px] font-semibold text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
                 >
-                  {CORPORA.map((c) => (
+                  {CHUNK_TYPES.map((c) => (
                     <option key={c.key} value={c.key}>{c.label}</option>
                   ))}
                 </select>
@@ -333,7 +352,7 @@ export default function Search() {
   const [docType, setDocType] = useState("all");
   const [yearMin, setYearMin] = useState(YEARS.min);
   const [yearMax, setYearMax] = useState(YEARS.max);
-  const [corpus, setCorpus] = useState("all");
+  const [chunkType, setChunkType] = useState("all");
   const [number, setNumber] = useState("");
   const [dateText, setDateText] = useState("");
   const [consFrom, setConsFrom] = useState(""); // consultation search: date range
@@ -360,7 +379,7 @@ export default function Search() {
 
   const filtersActive =
     docType !== "all" || yearMin !== YEARS.min || yearMax !== YEARS.max ||
-    corpus !== "all" || number.trim() !== "" || dateText.trim() !== "";
+    chunkType !== "all" || number.trim() !== "" || dateText.trim() !== "";
 
   const remember = (q, m) => {
     setRecent((prev) => {
@@ -373,7 +392,7 @@ export default function Search() {
   /* explicit params so facet/recent clicks never race state updates */
   const run = async ({
     q = query, m = mode, dt = docType, ymin = yearMin, ymax = yearMax,
-    cp = corpus, nb = number, dtx = dateText,
+    ct = chunkType, nb = number, dtx = dateText,
   } = {}) => {
     const text = q.trim();
     if (!text || loading) return;
@@ -385,7 +404,7 @@ export default function Search() {
     try {
       if (m === "law") {
         const { data } = await fiscalService.search({
-          query: text, docType: dt, corpus: cp, number: nb, dateText: dtx,
+          query: text, docType: dt, chunkType: ct, number: nb, dateText: dtx,
           yearMin: ymin, yearMax: ymax, size: 30,
         });
         setLawRes(data.data);
@@ -425,10 +444,10 @@ export default function Search() {
     if (searched && query.trim()) run({ ymin, ymax });
   };
 
-  const pickCorpus = (cp) => {
-    setCorpus(cp);
+  const pickChunkType = (ct) => {
+    setChunkType(ct);
     setMobileFilters(false);
-    if (searched && query.trim()) run({ cp });
+    if (searched && query.trim()) run({ ct });
   };
 
   /* number/date are free-text — apply on Enter/blur using current state */
@@ -445,11 +464,11 @@ export default function Search() {
     setDocType("all");
     setYearMin(YEARS.min);
     setYearMax(YEARS.max);
-    setCorpus("all");
+    setChunkType("all");
     setNumber("");
     setDateText("");
     if (searched && query.trim())
-      run({ dt: "all", ymin: YEARS.min, ymax: YEARS.max, cp: "all", nb: "", dtx: "" });
+      run({ dt: "all", ymin: YEARS.min, ymax: YEARS.max, ct: "all", nb: "", dtx: "" });
   };
 
   const pickRecent = (r) => {
@@ -474,8 +493,8 @@ export default function Search() {
       yearMin={yearMin}
       yearMax={yearMax}
       onYears={pickYears}
-      corpus={corpus}
-      onCorpus={pickCorpus}
+      chunkType={chunkType}
+      onChunkType={pickChunkType}
       number={number}
       onNumber={setNumber}
       dateText={dateText}
@@ -658,9 +677,14 @@ export default function Search() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
+                                {h.chunkType && (
+                                  <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 uppercase tracking-wide ${CHUNK_BADGE[h.chunkType] || "bg-light text-body"}`}>
+                                    {CHUNK_LABEL[h.chunkType] || h.chunkType}
+                                  </span>
+                                )}
                                 {h.documentType && (
                                   <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 uppercase tracking-wide ${TYPE_BADGE[h.documentType] || "bg-light text-body"}`}>
-                                    {h.documentType}
+                                    {DOC_TYPES.find((d) => d.key === h.documentType)?.label || h.documentType}
                                   </span>
                                 )}
                                 {h.pageNumber != null && <span className="text-[10px] text-muted">p.{h.pageNumber}</span>}

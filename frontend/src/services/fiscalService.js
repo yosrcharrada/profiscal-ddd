@@ -8,12 +8,11 @@ const fiscalService = {
   statsHealth:  () => api.get('/fiscal/stats/health'),
   searchHealth: () => api.get('/fiscal/search/health'),
 
-  // Semantic search engine (+ JORT-style corpus filters)
+  // Semantic search engine — Elasticsearch BM25 + fuzzy, filtered by document/chunk type
   search: (body) => api.post('/fiscal/search', {
     query: body.query,
     docType: body.docType || 'all',
     chunkType: body.chunkType || 'all',
-    corpus: body.corpus || 'all',
     number: body.number || '',
     dateText: body.dateText || '',
     year: body.year || 0,
