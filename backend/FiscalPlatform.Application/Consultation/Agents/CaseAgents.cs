@@ -418,16 +418,15 @@ public sealed class InteretAgent : CaseAgentBase
         "       vs capital ?) et conclus sur la ventilation déductible / non-déductible.\n" +
         "   A.3 Retiens le plus favorable entre le plafond conventionnel et le droit commun.\n\n" +
         "B. TVA — À TRAITER SYSTÉMATIQUEMENT :\n" +
-        "   B.1 LIS dans l'Art.7 du CTVA [Sn] que les opérations du tableau « B » sont soumises\n" +
-        "       au taux réduit — note le taux LU dans le texte.\n" +
-        "   B.2 VÉRIFIE dans le tableau « B » annexé au CTVA [Sn] que les opérations financières\n" +
+        "   B.1 LIS dans l'Art.7 du CTVA [Sn] le taux applicable aux opérations reprises au\n" +
+        "       tableau « B » — recopie le taux EXACT tel qu'il figure dans le texte.\n" +
+        "   B.2 VÉRIFIE dans le tableau « B » annexé au CTVA [Sn] si les opérations financières\n" +
         "       (intérêts, commissions, courtages bancaires) y figurent — CITE la disposition.\n" +
-        "   B.3 Territorialité : les intérêts versés en rémunération d'un prêt dont les fonds sont\n" +
-        "       utilisés en Tunisie constituent des services consommés en Tunisie → dans le champ\n" +
-        "       de la TVA. CITE le texte [Sn].\n" +
+        "   B.3 Territorialité : détermine si l'opération entre dans le champ de la TVA à partir\n" +
+        "       du texte du CTVA [Sn] (services consommés / utilisés en Tunisie).\n" +
         "   B.4 Si la TVA est due et que le prêteur n'est pas établi en Tunisie, le bénéficiaire\n" +
-        "       tunisien retient 100% de la TVA due [Sn]. Si le bénéficiaire est totalement\n" +
-        "       exportateur, vérifier le régime de suspension de TVA applicable [Sn].\n" +
+        "       tunisien retient la TVA due [Sn]. Si le bénéficiaire est totalement exportateur,\n" +
+        "       vérifier le régime de suspension de TVA applicable [Sn].\n" +
         "   Ne conclus JAMAIS sur la TVA sans un [Sn] à l'appui.\n\n" +
         "C. FORMALISME & AUTRES OBLIGATIONS — C.1 assiette = montant brut des intérêts ;\n" +
         "   C.2 formalisme du transfert (certificat de retenue à la source, Art.112 CDPF [Sn] ; si\n" +
@@ -467,9 +466,10 @@ public sealed class InteretAgent : CaseAgentBase
         "capitaux mobiliers ») vs la part non-déductible (« revenus de valeurs mobilières »). " +
         "Chaque catégorie → son propre taux de RS lu dans l'Art.52 CIRPPIS [Sn]. L'absence de cette " +
         "ventilation, ou un taux unique appliqué sans distinguer, justifie le rejet.\n" +
-        "2. TVA : doit citer l'Art.7 CTVA [Sn] + le tableau « B » [Sn] pour fonder le taux applicable " +
-        "aux opérations financières. La retenue de 100% de la TVA par le bénéficiaire tunisien doit " +
-        "être mentionnée si le prêteur est non-établi. Un verdict TVA sans ces citations justifie le rejet.\n" +
+        "2. TVA : doit citer l'Art.7 CTVA [Sn] ET le tableau « B » [Sn] pour fonder le taux applicable " +
+        "aux opérations financières — le taux doit être LU dans le texte, jamais de mémoire. La retenue " +
+        "de la TVA par le bénéficiaire tunisien doit être mentionnée si le prêteur est non-établi. " +
+        "Un verdict TVA sans ces citations justifie le rejet.\n" +
         "3. ÉTABLISSEMENT STABLE : AUCUNE mention où que ce soit — sa seule présence est une " +
         "faute rédhibitoire.\n" +
         "4. CONVENTION : le plafond conventionnel de l'article « Intérêts » doit être lu [Sn] et " +
@@ -489,7 +489,7 @@ public sealed class InteretAgent : CaseAgentBase
                 FetchDocFragment: "code_irpp_is"),
             Ctva7(),
             new("ctva_tableau_b_interets",
-                "CTVA Tableau B — opérations financières soumises à la TVA au taux de 7% (commissions, intérêts bancaires)",
+                "CTVA Tableau « B » — opérations financières (commissions, intérêts bancaires, courtages)",
                 Critical: true, DocFragment: "code_tva", TextContains: "intérêts bancaires",
                 FetchDocFragment: "code_tva",
                 FetchKeywords: new[] { "tableau B", "commissions", "intérêts bancaires", "opérations financières", "courtage" }),
