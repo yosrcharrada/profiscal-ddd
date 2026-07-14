@@ -684,12 +684,61 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         var seen    = new HashSet<string>();
         var frag    = (docFragment ?? "").ToLowerInvariant();
         var num     = new string((articleNumber ?? "").Where(char.IsDigit).ToArray());
+        var contains = (mustContain ?? "").ToLowerInvariant();
         if (num.Length == 0) return results;
         try
         {
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
 
-            // (1) newest edition of this article within the doc family
+            // (0) PROVISION RESOLUTION — the fix for the article-number COLLISION. On taxmindvf a
+            //     single article_number (e.g. CTVA « 7 ») is shared by the real code article PLUS
+            //     unrelated décrets and their annexed rate tables. The in-place enrichment stamped a
+            //     stable `provision_uid` on every chunk (the id of its provision head), so the real
+            //     provision is separable from the decree ones. When we have a disambiguating signal
+            //     (a content anchor or a required %), resolve the ONE provision whose members carry it,
+            //     newest edition first — then read ONLY that provision's parts. On the old whole-article
+            //     graph provision_uid is null, so this resolves to nothing and we fall through cleanly.
+            string? uid = null;
+            if (contains.Length > 0 || requirePercent)
+            {
+                var pRes = await session.RunAsync($@"
+                    MATCH (c:Chunk)
+                    WHERE ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS $frag)
+                      AND toString(c.article_number) = $num AND c.content <> ''{NoAr}
+                      AND c.provision_uid IS NOT NULL
+                      AND ($contains = '' OR toLower(c.content) CONTAINS $contains)
+                      AND (NOT $needPct OR c.content CONTAINS '%')
+                    RETURN c.provision_uid AS uid, coalesce(c.doc_id, c.document_id) AS doc
+                    ORDER BY doc DESC LIMIT 1",
+                    new { frag, num, contains, needPct = requirePercent });
+                await foreach (var r in pRes) { uid = r["uid"].As<string>(); break; }
+            }
+
+            if (uid is not null)
+            {
+                // Read the resolved provision: its header (part 1) + the predicate-matching parts,
+                // scoped to this ONE provision_uid — collision-free line precision.
+                var res0 = await session.RunAsync($@"
+                    MATCH (c:Chunk)
+                    WHERE c.provision_uid = $uid AND c.content <> ''{NoAr}
+                      AND ( coalesce(c.part_number, 1) = 1
+                            OR ( ($contains = '' OR toLower(c.content) CONTAINS $contains)
+                                 AND (NOT $needPct OR c.content CONTAINS '%') ) )
+                    RETURN {F}, 0.98 AS score
+                    ORDER BY coalesce(c.part_number, 1) ASC LIMIT 12",
+                    new { uid, contains, needPct = requirePercent });
+                await foreach (var r in res0)
+                { var t = r["text"]?.As<string>() ?? ""; if (!ContainsArabic(t)) TryAdd(results, seen, r, 0.98); }
+                if (results.Count > 0)
+                {
+                    _logger.LogInformation("FetchArticleLines doc='{D}' art={A}: resolved provision_uid='{U}' → {N} parts (collision-safe)",
+                        docFragment, articleNumber, uid, results.Count);
+                    return results;
+                }
+            }
+
+            // (1) FALLBACK — newest edition of this article within the doc family (old graph, or no
+            //     disambiguating predicate). Kept intact for whole-article graphs and unambiguous articles.
             string? newest = null;
             var docRes = await session.RunAsync($@"
                 MATCH (c:Chunk)
@@ -718,9 +767,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 WITH n AS c
                 RETURN {F}, 0.97 AS score
                 ORDER BY coalesce(c.part_number, 0) ASC LIMIT 12",
-                new { doc = newest, num,
-                      contains = (mustContain ?? "").ToLowerInvariant(),
-                      needPct  = requirePercent });
+                new { doc = newest, num, contains, needPct = requirePercent });
             await foreach (var r in res)
             { var t = r["text"]?.As<string>() ?? ""; if (!ContainsArabic(t)) TryAdd(results, seen, r, 0.97); }
         }
