@@ -646,11 +646,18 @@ public sealed class GenerateConsultationCommandHandler(
 
             if (hasConvention)
             {
-                bg.AppendLine($"  2. EN L'ABSENCE D'ES — qualifier le revenu au regard de la convention (type indicatif: {plan.IncomeType}) et appliquer le traitement conventionnel de la catégorie:");
-                bg.AppendLine("     • BÉNÉFICE D'ENTREPRISE (Art.7) → imposable UNIQUEMENT dans l'État de résidence → AUCUNE " +
-                              "imposition tunisienne (ni RS) en l'absence d'ES.");
-                bg.AppendLine("     • REDEVANCE / DIVIDENDE / INTÉRÊT (Art.12/10/11) → imposable dans l'État de la source au " +
-                              "TAUX RÉDUIT de la convention [Sn], sous réserve des conditions de la convention.");
+                bg.AppendLine($"  2. EN L'ABSENCE D'ES — qualifier le revenu au regard de la convention (type indicatif: {plan.IncomeType}), DANS CET ORDRE, en LISANT les définitions dans le texte conventionnel fourni [Sn]:");
+                bg.AppendLine("     a) REDEVANCE — étape OBLIGATOIRE avant de conclure au bénéfice d'entreprise : examine l'article " +
+                              "« Redevances » de la convention [Sn] et confronte la prestation à sa DÉFINITION conventionnelle (usage/concession " +
+                              "d'un droit d'auteur, brevet, marque, dessin, plan, formule ou procédé secret, équipement industriel/commercial/" +
+                              "scientifique, ou « informations ayant trait à une expérience acquise » — savoir-faire). Une prestation de " +
+                              "SERVICES (supervision, installation, montage, assistance technique) ne constitue une redevance QUE si elle " +
+                              "répond à cette définition. Si OUI → imposable à la source au TAUX RÉDUIT « Redevances » [Sn]. Si NON → écarte " +
+                              "EXPRESSÉMENT la qualification redevance (en une phrase motivée) puis passe au b).");
+                bg.AppendLine("     b) BÉNÉFICE D'ENTREPRISE (Art.7) → à défaut de redevance ET en l'absence d'ES, imposable UNIQUEMENT " +
+                              "dans l'État de résidence → AUCUNE imposition tunisienne (ni RS).");
+                bg.AppendLine("     c) DIVIDENDE / INTÉRÊT (Art.10/11) → si le revenu en relève, imposable à la source au taux réduit " +
+                              "conventionnel [Sn], sous réserve des conditions de la convention.");
                 bg.AppendLine("     • La convention PRIME TOUT RÉGIME INTERNE DE RS — l'Art.52 CIRPPIS comme tout régime interne " +
                               "SECTORIEL (travaux/montage/installation/surveillance/construction) ou note commune fixant un taux " +
                               "interne : ces régimes ne valent qu'à DÉFAUT de convention.");
@@ -668,7 +675,10 @@ public sealed class GenerateConsultationCommandHandler(
             }
             bg.AppendLine("  3. TAUX LE PLUS FAVORABLE : entre fondements concurrents, retenir le taux le plus bas (ou l'exonération) dont toutes les conditions sont remplies.");
             bg.AppendLine("  4. TVA : champ Art.1, TERRITORIALITÉ Art.3, Art.5 → taux Art.7 [Sn] (ou taux réduit des tableaux " +
-                          "annexes A/B si l'opération y figure). Prestataire non établi = RETENUE À LA SOURCE DE 100% DE LA TVA par le preneur (TVA déductible).");
+                          "annexes A/B si l'opération y figure). Prestataire non établi = RETENUE À LA SOURCE DE 100% DE LA TVA par le " +
+                          "preneur (Art.19 CTVA [Sn]), TVA ensuite déductible. TERMINOLOGIE IMPOSÉE : emploie « retenue à la source de " +
+                          "100% de la TVA » (le libellé de l'Art.19 : « les clients sont tenus de retenir la TVA due ») — n'emploie JAMAIS " +
+                          "« autoliquidation », « auto-liquidation » ni « auto-facturation », qui ne sont pas les termes du CTVA tunisien.");
             bg.AppendLine("  5. SECTIONS OBLIGATOIRES — ne jamais omettre : (a) ASSIETTE DE LA RS = montant brut TVA comprise " +
                           "[Sn] ; (b) FORMALISME DU TRANSFERT DES FONDS = certificat de retenue à la source (attestation de " +
                           "régularisation, Art.112 CDPF [Sn], non exigée si la RS a été opérée) ; si l'Art.21 de la circulaire " +

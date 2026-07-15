@@ -138,6 +138,13 @@ public sealed class ConsultationWorkflow(
                 "emprunt", "coupon") => CaseType.Generic,
             CaseType.Redevance when !Cue("redevance", "royalt", "licence", "marque", "brevet",
                 "logiciel", "savoir-faire", "savoir faire", "droit d'usage") => CaseType.Generic,
+            // The Redevance agent is the CROSS-BORDER royalty flow (treaty « Redevances » article +
+            // Art.52 non-résident line). A « redevance/licence » invoiced between two Tunisian parties
+            // (no foreign country, not international) is NOT that case — e.g. the ANF frequency-licence
+            // fee, which is a domestic acquisition of services taxed under the Art.52 seuil line. Route
+            // it to the DOMESTIC agent so it doesn't try (and fail) to apply the non-resident line.
+            CaseType.Redevance when state.Countries.Count == 0 && !state.IsInternational
+                => CaseType.RsServiceLocal,
             // Domestic only when NO foreign country was detected anywhere — a detected country means
             // a foreign party is involved and the international flow (with its treaty logic) must run.
             CaseType.RsServiceLocal when state.Countries.Count > 0 || state.IsInternational
@@ -192,6 +199,23 @@ public sealed class ConsultationWorkflow(
         var hasDraft    = !string.IsNullOrEmpty(state.Analyses);
         var judgeDriven = state.JudgeMissingTopics.Count > 0;
         if (judgeDriven) state.JudgeRetrievalsUsed++;   // this pass consumes the one judge-retrieval budget
+
+        // PASS 1 — GUARANTEE the operative RATE/ARTICLE provisions are present. The pre-graph planner
+        // floods the pool with ~130 loose sources; one of them can FALSELY satisfy a text-predicate
+        // item (e.g. a décret « Article 7 » chunk that mentions « …valeur ajoutée au taux … % » but
+        // NOT the operative 19% rule satisfies ctva_7's predicate). VerifyCompleteness then marks the
+        // item done, the precise fetcher never runs, and the writer — seeing no real rate — writes
+        // « NON DOCUMENTÉ ». So on the first pass we ALWAYS run the deterministic, provision_uid-
+        // resolved fetch for every rate/article checklist item, regardless of the loose match.
+        // AddDeduped + the coalesce/pin below keep each a single clean, in-window citation.
+        if (state.RetrievalLoops == 1 && !hasDraft)
+        {
+            foreach (var item in brief.RequiredSources.Where(r => r.RequirePercent || r.ArticleNumber is not null))
+            {
+                try   { AddDeduped(state.Sources, await FetchForAsync(item, brief, state, ct)); }
+                catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Fulfil] pin-fetch rate item {K}", item.Key); }
+            }
+        }
 
         if (report.Missing.Count > 0 || judgeDriven)
         {

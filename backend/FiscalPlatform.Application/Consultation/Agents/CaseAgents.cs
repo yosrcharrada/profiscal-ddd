@@ -261,6 +261,13 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
         {
             list.Add(new("conv_es", "Article « Établissement stable » de la convention applicable",
                 Critical: true, ConventionSubject: new[] { "tablissement stable" }, ExistenceConditional: true));
+            // Treaty « Redevances » article — needed so the writer can TEST (and usually exclude) the
+            // redevance qualification of a technical-service payment BEFORE defaulting to « bénéfices
+            // d'entreprise » (Art.7). Non-critical + existence-conditional: many services aren't
+            // redevances and some treaties/countries have no such article (or no treaty at all, e.g. HK).
+            list.Add(new("conv_redevances_test",
+                "Article « Redevances » de la convention (pour écarter/retenir la qualification redevance du service)",
+                Critical: false, ConventionSubject: new[] { "Redevances", "Redevance" }, ExistenceConditional: true));
             if (!state.Countries.Any(c => c.Contains("allemagne", StringComparison.OrdinalIgnoreCase)))
                 list.Add(new("nc2_2015", "Note commune N°2/2015 (lecture des conventions par pays)",
                     Critical: false, DocFragment: "NC_2015_02",

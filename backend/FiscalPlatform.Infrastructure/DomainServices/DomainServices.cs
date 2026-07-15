@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using FiscalPlatform.Application.Common.Interfaces.Services;
 
 namespace FiscalPlatform.Infrastructure.DomainServices;
@@ -62,16 +63,29 @@ public sealed class CountryDetector : ICountryDetector
         "iles vierges", "bermudes", "jersey", "guernesey", "bahamas",
     };
 
+    // ONLY unambiguously-international phrases. Deliberately excluded because they occur verbatim
+    // in purely DOMESTIC files and used to flip the case onto the treaty / foreign-service flow:
+    //   • bare "convention"   → matches "convention de prestation de services" (an ordinary contract)
+    //   • "redevance"         → a domestic licence/royalty fee (e.g. ANF frequency fee)
+    //   • "devises"           → a domestic company can hold foreign-currency accounts
+    //   • "associé unique" / "société mère" / "holding" → intra-group links exist domestically too
+    // The tax-treaty sense is captured by the precise phrases below instead.
     private static readonly string[] InternationalSignals =
     {
-        "non-résident", "non résident", "non établi",
-        "convention", "convention fiscale", "double imposition",
-        "étranger", "étrangère", "devises",
-        "associé unique", "société mère", "holding",
-        "management fee", "frais de siège", "redevance",
+        "non-résident", "non résident", "non établi", "non-établi",
+        "convention fiscale", "convention de non double", "non double imposition",
+        "double imposition", "cndi",
+        "étranger", "étrangère",
+        "management fee", "frais de siège",
         "prestataire étranger", "fournisseur étranger",
         "filiale tunisienne", "résidence fiscale",
     };
+
+    // "non-résident DE CHANGE" / "résident de change" is a Tunisian FOREIGN-EXCHANGE (BCT) status,
+    // NOT a tax residency — a company can be resident for tax yet « non-résidente de change ». The
+    // signal scan must not read it as an international (tax) marker.
+    private static readonly Regex ResidentDeChange =
+        new(@"non[\s-]?résidente?\s+(?:de\s+)?change", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public (List<string> Countries, bool IsInternational) Detect(string text)
     {
@@ -79,9 +93,10 @@ public sealed class CountryDetector : ICountryDetector
         var found = Known.Where(c => ContainsWholeWord(lower, c))
             .Distinct().ToList();
 
+        var scan = ResidentDeChange.Replace(lower, " ");
         bool intlSignals = found.Any() ||
             InternationalSignals.Any(sig =>
-                lower.Contains(sig, StringComparison.OrdinalIgnoreCase));
+                scan.Contains(sig, StringComparison.OrdinalIgnoreCase));
 
         return (found, intlSignals);
     }
