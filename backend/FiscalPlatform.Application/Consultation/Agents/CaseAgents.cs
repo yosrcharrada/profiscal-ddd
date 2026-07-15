@@ -610,24 +610,42 @@ public sealed class RsServiceLocalAgent : CaseAgentBase
 
     protected override string Demarche =>
         "DÉMARCHE — SERVICES entre deux entités RÉSIDENTES (droit commun) :\n" +
-        "A. QUALIFICATION DU SERVICE — l'étape décisive :\n" +
-        "   A.1 Qualifier chaque prestation au regard de la définition des HONORAIRES donnée par la\n" +
-        "       note commune N°3/2015 (annexe) [Sn] : rémunérations où l'activité INTELLECTUELLE joue\n" +
-        "       un rôle prépondérant (professions techniques : études, ingénierie, conseil, audit,\n" +
-        "       juridique, comptable…). Applique cette définition aux prestations DES FAITS.\n" +
-        "   A.2 Distinguer, le cas échéant, les prestations où l'activité intellectuelle est\n" +
-        "       inexistante et qui sont facturées SÉPARÉMENT — elles relèvent de la ligne des\n" +
-        "       paiements au-delà du seuil prévu par l'Art.52 pour les montants payés au titre des\n" +
-        "       acquisitions de biens et services [Sn].\n" +
-        "B. TAUX DE LA RS — ATTENTION, l'Art.52 comporte PLUSIEURS lignes « honoraires » à des taux\n" +
-        "   DIFFÉRENTS : une ligne GÉNÉRALE (taux le plus élevé, honoraires payés par l'État, les\n" +
-        "   collectivités et les personnes morales en général) ET une ligne RÉDUITE (taux plus bas)\n" +
-        "   assortie de la CONDITION expresse « honoraires servis aux personnes morales soumises à\n" +
-        "   l'impôt sur les sociétés ». NE T'ARRÊTE PAS à la première ligne « honoraires » venue :\n" +
-        "   parcours tout l'article et RETIENS la ligne dont la CONDITION correspond aux faits. Le\n" +
-        "   bénéficiaire étant ici une personne morale soumise à l'IS, applique la LIGNE RÉDUITE\n" +
-        "   (le taux le plus BAS des honoraires, celui qui vise expressément les PM soumises à l'IS) —\n" +
-        "   JAMAIS la ligne générale plus élevée. Recopie le taux EXACT lu dans cette ligne [Sn].\n" +
+        "A. QUALIFICATION DU SERVICE — l'étape décisive (deux catégories, taux différents) :\n" +
+        "   A.1 HONORAIRES (ligne réduite si servis à une PM soumise à l'IS) = rémunération d'une\n" +
+        "       PROFESSION INTELLECTUELLE / LIBÉRALE exercée par le prestataire, où l'activité\n" +
+        "       intellectuelle est PRÉPONDÉRANTE au sens de l'annexe de la note commune N°3/2015 [Sn]\n" +
+        "       (conseil, études, ingénierie, expertise, audit, assistance juridique ou comptable…).\n" +
+        "       Applique cette définition aux prestations DES FAITS.\n" +
+        "   A.2 ACQUISITION DE BIENS ET SERVICES (ligne du seuil ≥ 1000 DT) = TOUT paiement qui n'est\n" +
+        "       PAS la rémunération d'une telle profession intellectuelle : une LICENCE, une\n" +
+        "       AUTORISATION, un DROIT D'USAGE, une redevance RÉGLEMENTAIRE (p.ex. licence de\n" +
+        "       télécommunications, redevance de fréquences), ou un service purement matériel/logistique.\n" +
+        "       Ces paiements ne sont PAS des honoraires : ils relèvent de la ligne « acquisitions de\n" +
+        "       marchandises, matériel, équipements et services » de l'Art.52. Cette ligne a DEUX taux :\n" +
+        "       un taux GÉNÉRAL (≥ 1000 DT) et un taux RÉDUIT lorsque les bénéfices en provenant sont\n" +
+        "       soumis à l'IS au taux de 20% (c.-à-d. quand le BÉNÉFICIAIRE encaisse un revenu soumis à\n" +
+        "       l'IS de droit commun). Un établissement public / une PM soumis(e) à l'IS au taux de 20%\n" +
+        "       ⇒ applique le taux RÉDUIT (le plus bas), PAS le taux général — recopie SON chiffre EXACT\n" +
+        "       [Sn]. Une redevance de licence/fréquences versée à un établissement public soumis à l'IS\n" +
+        "       relève de CETTE ligne au taux réduit, PAS des honoraires.\n" +
+        "       (Un service intellectuel dont une composante matérielle est facturée SÉPARÉMENT peut\n" +
+        "        donner un DOUBLE verdict : honoraires pour la part intellectuelle, ligne du seuil pour\n" +
+        "        la part matérielle.)\n" +
+        "B. TAUX DE LA RS — DISTINCTION CAPITALE « payés PAR » vs « servis AUX ». L'Art.52 comporte\n" +
+        "   deux lignes « honoraires » à des taux différents, distinguées par le RÔLE de la personne\n" +
+        "   morale :\n" +
+        "     • ligne GÉNÉRALE (taux le plus élevé) : honoraires « payés PAR l'État, les collectivités,\n" +
+        "       les personnes morales… » — ici « personnes morales » désigne le DÉBITEUR (le PAYEUR).\n" +
+        "     • ligne RÉDUITE (taux le plus BAS) : honoraires « SERVIS AUX personnes morales soumises\n" +
+        "       à l'impôt sur les sociétés… » — ici « personnes morales soumises à l'IS » désigne le\n" +
+        "       BÉNÉFICIAIRE (celui QUI REÇOIT les honoraires).\n" +
+        "   Le taux dépend de la qualité du BÉNÉFICIAIRE, PAS du payeur. Le prestataire qui perçoit les\n" +
+        "   honoraires (AES / le fournisseur) étant une personne morale soumise à l'IS, c'est la ligne\n" +
+        "   RÉDUITE « servis aux personnes morales soumises à l'IS » qui s'applique — recopie SON taux\n" +
+        "   EXACT [Sn]. Le fait que le DÉBITEUR soit aussi une personne morale ne fait PAS basculer vers\n" +
+        "   la ligne générale « payés par les personnes morales » : ce serait l'erreur type. Ne t'arrête\n" +
+        "   donc pas à la première ligne « honoraires » : retiens celle dont la condition « SERVIS AUX\n" +
+        "   personnes morales soumises à l'IS » vise le bénéficiaire.\n" +
         "   Le verdict peut être DOUBLE si les faits le justifient (honoraires → taux réduit ;\n" +
         "   services non intellectuels facturés SÉPARÉMENT → ligne du seuil des acquisitions).\n" +
         "C. TVA — uniquement si demandée dans l'étendue : territorialité (Art.3) et taux (Art.7) [Sn].\n";

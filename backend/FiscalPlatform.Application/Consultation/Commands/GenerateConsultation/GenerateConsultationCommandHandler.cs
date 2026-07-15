@@ -221,11 +221,17 @@ public sealed class GenerateConsultationCommandHandler(
             cmd.Situation, cmd.FiscalQuestion, branches, countries, isIntl, ct);
         sw2.Stop();
 
-        // Update country/intl from planner's detection
-        if (!string.IsNullOrEmpty(plan.DetectedCountry) &&
-            !countries.Contains(plan.DetectedCountry))
+        // Update country/intl from planner's detection — but NEVER treat TUNISIA (the home country)
+        // as a foreign party. The planner routinely returns « tunisie » for a purely DOMESTIC case
+        // (e.g. ANF, two Tunisian residents); adding it here made Countries.Count > 0 and isIntl = true,
+        // which silently forced the case into the international/foreign-service branch and defeated the
+        // domestic-case routing (ANF stayed « Redevance » instead of the domestic RS flow).
+        var plannerCountry = (plan.DetectedCountry ?? "").Trim();
+        if (plannerCountry.Length > 0 &&
+            !plannerCountry.Contains("tunis", StringComparison.OrdinalIgnoreCase) &&
+            !countries.Contains(plannerCountry))
         {
-            countries.Add(plan.DetectedCountry);
+            countries.Add(plannerCountry);
             isIntl = true;
         }
 
@@ -499,7 +505,12 @@ public sealed class GenerateConsultationCommandHandler(
         // 112, 21) past slot 18 — the writer then couldn't see their text and hedged « article non
         // reproduit dans les sources » for articles that WERE fetched. 26 comfortably fits treaty +
         // the full foreign-service checklist; gpt-4o's window absorbs the extra text easily.
-        const int MaxSources = 26, RateChars = 8600, PlainChars = 2600;
+        // RateChars must cover the WHOLE CIRPPIS Art.52 multi-rate menu: on the 2026 edition the
+        // coalesced article is ~13 200 chars and the REDUCED lines sit near the end — « 3% … honoraires
+        // servis aux personnes morales soumises à l'IS » (~char 12 000) and « 1% … bénéfices soumis à
+        // l'IS au taux de 20% ». An 8 600 cap clipped both, so the writer only saw the GENERAL 10% /
+        // 1,5% lines and produced the wrong (higher) rate. 15 000 keeps the entire menu visible.
+        const int MaxSources = 26, RateChars = 15000, PlainChars = 2600;
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
         foreach (var s in sources.Take(MaxSources))
         {
