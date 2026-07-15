@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import useSystemHealth from "../hooks/useSystemHealth";
 import fiscalService from "../services/fiscalService";
+import { jortService } from "../services/authService";
 
 const fmtDate = (d, lang) =>
   d
@@ -393,34 +394,34 @@ function QuickAction({ to, icon, label, desc, color }) {
   );
 }
 
-const JORT_ITEMS = [
-  {
-    title: "Loi n° 2025-56 portant loi de finances pour 2026",
-    type: "Loi",
-    date: "2025-12-28",
-    isNew: true,
-  },
-  {
-    title: "Décret n° 2026-312 relatif aux avantages fiscaux",
-    type: "Décret",
-    date: "2026-06-15",
-    isNew: true,
-  },
-  {
-    title: "Arrêté du MF fixant les taux de retenue à la source",
-    type: "Arrêté",
-    date: "2026-05-20",
-    isNew: false,
-  },
-  {
-    title: "Note commune n° 12/2026 sur la TVA à l'exportation",
-    type: "Note",
-    date: "2026-04-10",
-    isNew: false,
-  },
-];
+function JortFeed({ t, lang, isAdmin }) {
+  const [items, setItems] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-function JortFeed({ t, lang }) {
+  const load = async () => {
+    try {
+      const { data: res } = await jortService.activities(8);
+      setItems(res.data || []);
+    } catch {
+      setItems([]);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await jortService.refresh();
+      await load();
+    } catch {
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-border/70 overflow-hidden bg-white dark:bg-cream">
       <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between bg-gradient-to-r from-red-50/50 to-transparent dark:from-red-500/5">
@@ -442,32 +443,72 @@ function JortFeed({ t, lang }) {
           </span>
           <h3 className="text-[13px] font-bold text-dark">{t("jort.title")}</h3>
         </div>
-        <a
-          href="http://www.iort.gov.tn"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[11px] font-semibold text-muted hover:text-dark flex items-center gap-0.5 transition-colors"
-        >
-          {t("jort.seeAll")}
-          <svg
-            className="w-2.5 h-2.5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2.5}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={refresh}
+              disabled={refreshing}
+              title={t("jort.refresh")}
+              className="text-[11px] font-semibold text-muted hover:text-dark flex items-center gap-1 transition-colors disabled:opacity-50"
+            >
+              <svg
+                className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992V4.356M2.985 19.644v-4.992h4.992m9.348-4.992a7.5 7.5 0 00-12.548-3.364L2.985 9.348m0 0h4.992m-4.992 0V4.356M20.015 14.652a7.5 7.5 0 01-12.548 3.364l-1.792-1.848m0 0H2.985"
+                />
+              </svg>
+              {refreshing ? t("jort.refreshing") : t("jort.refresh")}
+            </button>
+          )}
+          <a
+            href="http://www.iort.gov.tn"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] font-semibold text-muted hover:text-dark flex items-center gap-0.5 transition-colors"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
-            />
-          </svg>
-        </a>
+            {t("jort.seeAll")}
+            <svg
+              className="w-2.5 h-2.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
+              />
+            </svg>
+          </a>
+        </div>
       </div>
       <div className="divide-y divide-border/30">
-        {JORT_ITEMS.map((item, i) => (
+        {items === null &&
+          [...Array(4)].map((_, i) => (
+            <div key={i} className="flex items-start gap-2.5 px-4 py-3 animate-pulse">
+              <span className="mt-1.5 w-2 h-2 rounded-full shrink-0 bg-light" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="h-2.5 bg-light rounded w-3/4" />
+                <div className="h-2 bg-light rounded w-1/3" />
+              </div>
+            </div>
+          ))}
+        {items?.length === 0 && (
+          <p className="px-4 py-8 text-center text-[12px] text-muted">
+            {t("jort.empty")}
+          </p>
+        )}
+        {items?.map((item) => (
           <a
-            key={i}
+            key={item.id}
             href="http://www.iort.gov.tn"
             target="_blank"
             rel="noopener noreferrer"
@@ -481,19 +522,21 @@ function JortFeed({ t, lang }) {
                   : "rgb(var(--c-border))",
               }}
             />
-            <div className="min-w-0 flex-1">
-              <p className="text-[12px] font-medium text-dark group-hover:text-dark/80 line-clamp-1">
+            <div className="min-w-0 flex-1" dir="auto">
+              <p className="text-[12px] font-medium text-dark group-hover:text-dark/80 line-clamp-2">
                 {item.title}
               </p>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[10px] font-bold text-muted bg-light rounded-md px-1.5 py-0.5">
-                  {item.type}
+                  {t(`jort.cat.${item.category}`) || item.category}
                 </span>
                 <span className="text-[10px] text-muted">
-                  {new Date(item.date).toLocaleDateString(
-                    lang === "en" ? "en-US" : "fr-FR",
-                    { day: "numeric", month: "short", year: "numeric" },
-                  )}
+                  {item.date
+                    ? new Date(item.date).toLocaleDateString(
+                        lang === "en" ? "en-US" : "fr-FR",
+                        { day: "numeric", month: "short", year: "numeric" },
+                      )
+                    : item.dateText}
                 </span>
                 {item.isNew && (
                   <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-md px-1.5 py-0.5">
@@ -813,7 +856,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <JortFeed t={t} lang={lang} />
+          <JortFeed t={t} lang={lang} isAdmin={isAdmin} />
         </div>
 
         {/* Quick actions */}

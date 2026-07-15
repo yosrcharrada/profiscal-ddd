@@ -94,6 +94,12 @@ builder.Services.AddScoped<ConsultationStore>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IRequestContext, HttpRequestContext>();
 
+// ── JORT feed: live scraper + background sync + admin-triggered refresh ────────
+builder.Services.AddSingleton<IJortScraper, JortScraper>();
+builder.Services.AddSingleton<JortSyncService>();
+builder.Services.AddSingleton<IJortSync>(sp => sp.GetRequiredService<JortSyncService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<JortSyncService>());
+
 builder.Services.AddAuthentication(options =>
     {
         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;

@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import EYLockup from "../common/EYLockup";
 import ThemeToggle from "../common/ThemeToggle";
+import NotificationBell from "../common/NotificationBell";
 import LanguageSwitch from "../common/LanguageSwitch";
 import ChatBubble from "../fiscal/ChatBubble";
 import SystemStatus from "../../pages/fiscal/SystemStatus";
@@ -215,6 +216,7 @@ export default function Layout() {
           <div className="flex items-center gap-2">
             <LanguageSwitch />
             <ThemeToggle />
+            <NotificationBell />
             <SystemStatus />
             <UserMenu />
           </div>

@@ -53,4 +53,17 @@ export const reclamationService = {
   reopen: (id) => api.post(`/reclamations/${id}/reopen`),
 };
 
+/** In-app notifications (navbar bell). */
+export const notificationService = {
+  mine: (take = 30) => api.get('/notifications', { params: { take } }),
+  read: (id) => api.post(`/notifications/${id}/read`),
+  readAll: () => api.post('/notifications/read-all'),
+};
+
+/** Live JORT feed scraped from iort.gov.tn. */
+export const jortService = {
+  activities: (take = 20) => api.get('/jort/activities', { params: { take } }),
+  refresh: () => api.post('/jort/refresh'),
+};
+
 export default authService;
