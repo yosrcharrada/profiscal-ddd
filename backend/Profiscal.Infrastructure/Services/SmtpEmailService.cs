@@ -11,6 +11,11 @@ namespace Profiscal.Infrastructure.Services;
 ///   Smtp:Host, Smtp:Port (587), Smtp:User, Smtp:Password, Smtp:From, Smtp:FromName, Smtp:EnableSsl.
 /// When Smtp:Host is empty the service reports IsConfigured=false and the API
 /// returns the generated password to the admin instead of silently losing it.
+///
+/// Smtp:CopyCredentialsTo (optional) — one or more admin addresses (comma/semicolon
+/// separated) that receive a BCC copy of EVERY credentials email, so an administrator
+/// always gets the new account's email + temporary password regardless of who the new
+/// user is. BCC (not To/CC) so the new user never sees the admin copy. Empty = no copy.
 /// </summary>
 public class SmtpEmailService(IConfiguration config, ILogger<SmtpEmailService> logger) : IEmailService
 {
@@ -54,8 +59,19 @@ public class SmtpEmailService(IConfiguration config, ILogger<SmtpEmailService> l
             };
             message.To.Add(toEmail);
 
+            // Optional admin copy: BCC every credentials email to the configured address(es), so an
+            // administrator always receives the new account's email + password. BCC keeps it invisible
+            // to the new user. Accepts a comma/semicolon-separated list.
+            var copyTo = config["Smtp:CopyCredentialsTo"];
+            if (!string.IsNullOrWhiteSpace(copyTo))
+                foreach (var addr in copyTo.Split(new[] { ',', ';' },
+                             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    try { message.Bcc.Add(addr); }
+                    catch (FormatException) { logger.LogWarning("Smtp:CopyCredentialsTo has an invalid address '{Addr}' — skipped.", addr); }
+
             await client.SendMailAsync(message, ct);
-            logger.LogInformation("Credentials email sent to {Email}.", toEmail);
+            logger.LogInformation("Credentials email sent to {Email}{Copy}.", toEmail,
+                string.IsNullOrWhiteSpace(copyTo) ? "" : $" (admin copy → {copyTo})");
             return true;
         }
         catch (Exception ex)
