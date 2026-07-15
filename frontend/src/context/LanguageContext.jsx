@@ -51,6 +51,13 @@ const STRINGS = {
     "jort.title": "Journal Officiel (JORT)",
     "jort.seeAll": "Voir tout",
     "jort.new": "Nouveau",
+    "jort.refresh": "Actualiser",
+    "jort.refreshing": "…",
+    "jort.empty": "Aucune actualité pour le moment.",
+    "jort.cat.Tender": "Appel d'offres",
+    "jort.cat.Plan": "Plan",
+    "jort.cat.Publication": "Publication",
+    "jort.cat.Notice": "Avis",
 
     // Chat bubble
     "chat.title": "Assistant fiscal",
@@ -594,6 +601,13 @@ const STRINGS = {
     "jort.title": "Official Gazette (JORT)",
     "jort.seeAll": "See all",
     "jort.new": "New",
+    "jort.refresh": "Refresh",
+    "jort.refreshing": "…",
+    "jort.empty": "No updates yet.",
+    "jort.cat.Tender": "Tender",
+    "jort.cat.Plan": "Plan",
+    "jort.cat.Publication": "Publication",
+    "jort.cat.Notice": "Notice",
 
     // Chat bubble
     "chat.title": "Tax assistant",

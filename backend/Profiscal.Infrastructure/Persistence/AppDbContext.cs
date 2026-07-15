@@ -15,6 +15,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
     public DbSet<WorkTaskCollaborator> WorkTaskCollaborators => Set<WorkTaskCollaborator>();
     public DbSet<Reclamation> Reclamations => Set<Reclamation>();
+    public DbSet<JortActivity> JortActivities => Set<JortActivity>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -112,6 +114,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             e.Property(l => l.IpAddress).HasMaxLength(45);
             e.Property(l => l.UserAgent).HasMaxLength(512);
             e.HasIndex(l => new { l.AppUserId, l.CreatedAt });
+        });
+
+        builder.Entity<JortActivity>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.Title).IsRequired().HasMaxLength(512);
+            e.Property(a => a.Description).HasMaxLength(4000);
+            e.Property(a => a.Category).HasMaxLength(32);
+            e.Property(a => a.PublishedText).HasMaxLength(64);
+            e.Property(a => a.Hash).IsRequired().HasMaxLength(64);
+            e.HasIndex(a => a.Hash).IsUnique();
+            e.HasIndex(a => a.PublishedOn);
+        });
+
+        builder.Entity<Notification>(e =>
+        {
+            e.HasKey(n => n.Id);
+            e.Property(n => n.Type).HasMaxLength(32);
+            e.Property(n => n.Title).IsRequired().HasMaxLength(256);
+            e.Property(n => n.Body).HasMaxLength(1024);
+            e.Property(n => n.LinkUrl).HasMaxLength(512);
+            e.HasIndex(n => new { n.RecipientId, n.IsRead, n.CreatedAt });
+
+            e.HasOne(n => n.Recipient)
+             .WithMany()
+             .HasForeignKey(n => n.RecipientId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<FiscalConsultation>(e =>
