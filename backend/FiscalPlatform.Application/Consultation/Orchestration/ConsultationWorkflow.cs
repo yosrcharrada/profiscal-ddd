@@ -284,19 +284,16 @@ public sealed class ConsultationWorkflow(
         }
 
         // LINE-PRECISE: the item's own predicates drive the part selection — on the part-split graph
-        // the writer receives the article header plus ONLY the alinéas this case needs (with NEXT_PART
-        // neighbours for straddles), never the whole menu.
-        // mustContain narrows a MULTI-RATE article (Art.52) to the applicable rate LINE, so it only
-        // applies when we are selecting a rate line (RequirePercent). For a single-regime article like
-        // CDPF Art.112, TextContains is a DISAMBIGUATION guard for IsSatisfiedBy (112 vs « 112 bis »,
-        // which share the same leading digits), NOT a line selector — passing it to the fetch would
-        // clip the article to the one part carrying the phrase; leave it null so all parts come back.
+        // the writer receives the article header plus ONLY the alinéas this case needs, never the menu.
+        // TextContains is passed as the PROVISION-RESOLUTION anchor (which of the same-numbered
+        // provisions is the real one — CTVA « 7 » code article vs décrets). RequirePercent then decides
+        // whether to also CLIP a resolved multi-rate provision (Art.52) to the matching rate line, or to
+        // return the whole (already bounded) provision (CDPF Art.112, CTVA Art.19 → all their parts).
         if (item.ArticleNumber is not null)
         {
-            var mustContain = item.RequirePercent ? item.TextContains : null;
             var lines = await retrieval.FetchArticleLinesAsync(
                 item.FetchDocFragment ?? item.DocFragment ?? "",
-                item.ArticleNumber, mustContain, item.RequirePercent, ct) ?? new();
+                item.ArticleNumber, item.TextContains, item.RequirePercent, ct) ?? new();
             if (lines.Count > 0) return lines;
             // fallback: the broader by-number fetch (older editions, display-based matches)
             return await retrieval.FetchTargetedAsync(
@@ -373,10 +370,15 @@ public sealed class ConsultationWorkflow(
         foreach (var s in sources)
         {
             var num = ArtNum(s.ArticleRef);
-            // Only real article parts merge; everything else is its own singleton (unique key).
-            var key = num.Length > 0
-                ? "A|" + (s.DocName ?? "").ToLowerInvariant() + "|" + num
-                : "S|" + (s.ChunkId ?? Guid.NewGuid().ToString("N"));
+            // Prefer the graph's provision_uid — it groups exactly the parts of ONE real provision,
+            // so distinct same-numbered provisions (the CTVA Art.7 collision: real article vs décrets)
+            // can NEVER be merged into one citation. Fall back to (doc|article number) only on the old
+            // whole-article graph where provision_uid is absent.
+            var key = !string.IsNullOrEmpty(s.ProvisionUid)
+                ? "P|" + s.ProvisionUid
+                : num.Length > 0
+                    ? "A|" + (s.DocName ?? "").ToLowerInvariant() + "|" + num
+                    : "S|" + (s.ChunkId ?? Guid.NewGuid().ToString("N"));
             if (!groups.TryGetValue(key, out var list)) { groups[key] = list = new(); order.Add(key); }
             list.Add(s);
         }

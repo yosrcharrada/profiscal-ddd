@@ -41,7 +41,8 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         $"{a}.chunk_id AS id, {a}.content AS text, coalesce({a}.doc_id, {a}.document_id) AS doc_name, " +
         string.Format(DocTypeCase, a) + " AS doc_type, " +
         $"coalesce({a}.article_display, {a}.article_number, '') AS article_ref, " +
-        $"{a}.title AS section_title, coalesce(toString({a}.year), '') AS annee";
+        $"{a}.title AS section_title, coalesce(toString({a}.year), '') AS annee, " +
+        $"coalesce({a}.provision_uid, '') AS provision_uid";
 
     private static readonly string F     = Proj("c");
     private static readonly string CH    = Proj("ch");
@@ -716,16 +717,18 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
 
             if (uid is not null)
             {
-                // Read the resolved provision: its header (part 1) + the predicate-matching parts,
-                // scoped to this ONE provision_uid — collision-free line precision.
+                // Read the resolved provision. requirePercent = MULTI-RATE article (Art.52): clip to the
+                // header + the parts carrying the applicable rate LINE. Otherwise the provision is already
+                // a bounded, self-contained unit (CDPF 112 = 8 parts, CTVA 19 = 3 parts) → return it whole.
                 var res0 = await session.RunAsync($@"
                     MATCH (c:Chunk)
                     WHERE c.provision_uid = $uid AND c.content <> ''{NoAr}
-                      AND ( coalesce(c.part_number, 1) = 1
+                      AND ( NOT $needPct
+                            OR coalesce(c.part_number, 1) = 1
                             OR ( ($contains = '' OR toLower(c.content) CONTAINS $contains)
-                                 AND (NOT $needPct OR c.content CONTAINS '%') ) )
+                                 AND c.content CONTAINS '%' ) )
                     RETURN {F}, 0.98 AS score
-                    ORDER BY coalesce(c.part_number, 1) ASC LIMIT 12",
+                    ORDER BY coalesce(c.part_number, 1) ASC LIMIT 16",
                     new { uid, contains, needPct = requirePercent });
                 await foreach (var r in res0)
                 { var t = r["text"]?.As<string>() ?? ""; if (!ContainsArabic(t)) TryAdd(results, seen, r, 0.98); }
@@ -749,14 +752,18 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
             await foreach (var r in docRes) { newest = r["doc"].As<string>(); break; }
             if (newest is null) return results;
 
-            // (2) header + predicate-matching parts + NEXT_PART neighbours, in reading order
+            // (2) header + predicate-matching parts + NEXT_PART neighbours, in reading order.
+            //     Clip to the anchor line ONLY for a multi-rate article ($needPct); otherwise return the
+            //     whole article — so on the old whole-article graph a single-regime article (CDPF 112)
+            //     still comes back complete even though TextContains is now always supplied as an anchor.
             var res = await session.RunAsync($@"
                 MATCH (c:Chunk)
                 WHERE coalesce(c.doc_id, c.document_id) = $doc
                   AND toString(c.article_number) = $num AND c.content <> ''{NoAr}
-                  AND ( coalesce(c.part_number, 1) = 1
+                  AND ( NOT $needPct
+                        OR coalesce(c.part_number, 1) = 1
                         OR ( ($contains = '' OR toLower(c.content) CONTAINS $contains)
-                             AND (NOT $needPct OR c.content CONTAINS '%') ) )
+                             AND c.content CONTAINS '%' ) )
                 OPTIONAL MATCH (c)-[:NEXT_PART]->(nx:Chunk)
                     WHERE toString(nx.article_number) = $num
                 OPTIONAL MATCH (pv:Chunk)-[:NEXT_PART]->(c)
@@ -893,6 +900,7 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         list.Add(new LegalSourceDto
         {
             ChunkId      = id,
+            ProvisionUid = r.Keys.Contains("provision_uid") ? r["provision_uid"]?.As<string>() ?? "" : "",
             DocName      = r["doc_name"]?.As<string>()      ?? "",
             DocType      = dt,
             ArticleRef   = r["article_ref"]?.As<string>()   ?? "",

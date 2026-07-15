@@ -233,7 +233,8 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
                 DocFragment: "code_tva", ArticleNumber: "3", FetchDocFragment: "code_tva"),
             Ctva7(),
             new("ctva_19", "CTVA Art.19 (retenue de 100% de la TVA — prestataire non établi)", Critical: true,
-                DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
+                DocFragment: "code_tva", ArticleNumber: "19", TextContains: "réalisation par les personnes morales",
+                FetchDocFragment: "code_tva"),
             // The privileged-regime LIST lives in NC 16/2019 (the arrêté reproduced there names the
             // countries, e.g. Hong Kong). Target that document directly — the old generic keyword
             // fetch (doc='') pulled random chunks and never the list, so the writer said "aucune
@@ -564,7 +565,8 @@ public sealed class RedevanceAgent : CaseAgentBase
                 DocFragment: "code_tva", ArticleNumber: "3", FetchDocFragment: "code_tva"),
             Ctva7(),
             new("ctva_19", "CTVA Art.19 (retenue de la TVA — prestataire non établi)", Critical: false,
-                DocFragment: "code_tva", ArticleNumber: "19", FetchDocFragment: "code_tva"),
+                DocFragment: "code_tva", ArticleNumber: "19", TextContains: "réalisation par les personnes morales",
+                FetchDocFragment: "code_tva"),
             Cdpf112,
             Nc112Doctrine,
             BctCirculaire,
