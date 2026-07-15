@@ -83,10 +83,16 @@ public sealed class GenerateConsultationCommandHandler(
         "  CONCURRENTS pour la MÊME situation (convention vs droit commun ; régime standard vs régime réduit\n" +
         "  dont les conditions sont remplies), jamais entre sous-taux de catégories différentes.\n" +
         "PRESTATAIRE ÉTRANGER — séquence obligatoire:\n" +
-        "  0. RÉGIME FISCAL PRIVILÉGIÉ (À VÉRIFIER EN PREMIER): le pays du bénéficiaire figure-t-il dans la\n" +
-        "     liste des États/territoires à régime fiscal privilégié [Sn] ? SI OUI → NE PAS analyser NI\n" +
-        "     mentionner l'établissement stable (notion écartée pour un bénéficiaire à régime privilégié) :\n" +
-        "     passer directement à la RS (pt.2), sans verdict d'ES. SI NON → dérouler l'ES au pt.1.\n" +
+        "  RÈGLE D'EXCLUSION: le RÉGIME PRIVILÉGIÉ (droit commun) et la CONVENTION ne coexistent JAMAIS.\n" +
+        "     • S'IL EXISTE UNE CONVENTION avec le pays → N'ÉVOQUE PAS le régime privilégié ; déroule l'ES\n" +
+        "       (pt.1) puis la qualification conventionnelle (pt.2).\n" +
+        "     • À DÉFAUT DE CONVENTION seulement → vérifie le régime privilégié (pt.0/pt.3) ; et si le pays\n" +
+        "       est à régime privilégié, N'ANALYSE PAS l'établissement stable.\n" +
+        "  0. RÉGIME FISCAL PRIVILÉGIÉ (À VÉRIFIER EN PREMIER, UNIQUEMENT EN L'ABSENCE DE CONVENTION): le\n" +
+        "     pays du bénéficiaire figure-t-il dans la liste des États/territoires à régime fiscal\n" +
+        "     privilégié [Sn] ? SI OUI → NE PAS analyser NI mentionner l'établissement stable (notion\n" +
+        "     écartée pour un bénéficiaire à régime privilégié) : passer directement à la RS (pt.2), sans\n" +
+        "     verdict d'ES. SI NON → dérouler l'ES au pt.1.\n" +
         "  1. ES (établissement stable) — SEULEMENT si le bénéficiaire n'est PAS à régime privilégié:\n" +
         "     trancher OUI/NON, d'abord SELON LE DROIT COMMUN (Art.45/47 CIRPPIS\n" +
         "     + doctrine: interprétation extensive, règle des 6 mois même pour une seule prestation), PUIS\n" +
@@ -105,7 +111,8 @@ public sealed class GenerateConsultationCommandHandler(
         "     • SANS CONVENTION: droit commun — Art.52 CIRPPIS, au taux correspondant à la nature du revenu\n" +
         "       et à la qualité du bénéficiaire [Sn]. ES SUPERFÉTATOIRE si ce taux s'applique que l'ES existe\n" +
         "       ou non (le préciser ; ne pas mettre 'NON DOCUMENTÉ' pour l'ES). Puis vérifier le régime privilégié (pt.3).\n" +
-        "  3. RÉGIME FISCAL PRIVILÉGIÉ — VÉRIFIER le pays du bénéficiaire DANS la liste retrouvée [Sn]. NE\n" +
+        "  3. RÉGIME FISCAL PRIVILÉGIÉ (SANS CONVENTION UNIQUEMENT — si une convention s'applique, IGNORE ce\n" +
+        "     point et ne le mentionne pas) — VÉRIFIER le pays du bénéficiaire DANS la liste retrouvée [Sn]. NE\n" +
         "     JAMAIS affirmer qu'un pays n'y figure pas sans avoir lu la liste. S'il Y FIGURE, la majoration de\n" +
         "     RS ne s'applique QUE si l'activité relève du taux d'IS le plus élevé ; sinon elle ne s'applique\n" +
         "     pas ; si l'arrêté n'est pas actualisé, son application est incertaine → conclure prudemment au\n" +
@@ -610,11 +617,18 @@ public sealed class GenerateConsultationCommandHandler(
         // Candidate countries come from BOTH the planner AND the CountryDetector — the planner's
         // DetectedCountry is empty when the embed server is down, so relying on it alone silently
         // dropped the whole privileged-regime branch (Hong Kong analysed as an ordinary ES case).
+        //
+        // MUTUAL EXCLUSION WITH THE CONVENTION BRANCH: the privileged-regime analysis and the
+        // convention analysis are ALTERNATIVES that never coexist. The privileged regime is a
+        // DROIT-COMMUN notion; the moment a convention applies it prevails (« la convention prime »)
+        // and the privileged regime is neither examined nor mentioned. So gate the whole detection on
+        // !hasConvention — with a treaty in force we run the ES + convention-qualification path instead
+        // (and, symmetrically, when the privileged regime DOES fire we suppress the ES section below).
         var candidateCountries = new List<string>();
         if (!string.IsNullOrWhiteSpace(plan.DetectedCountry)) candidateCountries.Add(plan.DetectedCountry!);
         if (detectedCountries is { Count: > 0 }) candidateCountries.AddRange(detectedCountries);
         var country = candidateCountries.FirstOrDefault()?.Trim().ToLowerInvariant() ?? "";
-        bool privilegedRegime = candidateCountries
+        bool privilegedRegime = !hasConvention && candidateCountries
             .Select(c => c.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "")
             .Where(key => key.Length >= 3 && key != "tunis" && key != "tunisie")
             .Any(key => sources.Any(s =>
@@ -642,6 +656,12 @@ public sealed class GenerateConsultationCommandHandler(
         if (isIntl || plan.EsRiskPossible)
         {
             bg.AppendLine("  CAS INTERNATIONAL — séquence d'analyse:");
+            if (hasConvention)
+                bg.AppendLine("  ⚠️ CONVENTION EN VIGUEUR → applique le régime CONVENTIONNEL : ANALYSE " +
+                              "l'établissement stable (droit commun + Art.5) puis la qualification du revenu. " +
+                              "N'ÉVOQUE JAMAIS le « régime fiscal privilégié » ni la liste des États à régime " +
+                              "privilégié : c'est une notion de DROIT COMMUN, SANS OBJET dès qu'une convention " +
+                              "s'applique (la convention prime). Les deux régimes ne COEXISTENT jamais.");
             if (!privilegedRegime)
             {
                 // ES step is EMITTED only when the beneficiary is NOT in a privileged regime.
