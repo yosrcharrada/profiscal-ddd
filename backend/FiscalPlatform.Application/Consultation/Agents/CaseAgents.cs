@@ -268,6 +268,13 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
             list.Add(new("conv_redevances_test",
                 "Article « Redevances » de la convention (pour écarter/retenir la qualification redevance du service)",
                 Critical: false, ConventionSubject: new[] { "Redevances", "Redevance" }, ExistenceConditional: true));
+            // Treaty « Bénéfices des entreprises » article — the default qualification once ES and
+            // redevance are excluded. Fetch it explicitly so the writer can CITE it (Art.7-type) instead
+            // of naming it with an « article non reproduit dans les sources » disclaimer.
+            list.Add(new("conv_benefices",
+                "Article « Bénéfices des entreprises » de la convention (traitement par défaut, hors ES et redevance)",
+                Critical: false, ConventionSubject: new[] { "fices des entreprises", "néfice des entreprises" },
+                ExistenceConditional: true));
             if (!state.Countries.Any(c => c.Contains("allemagne", StringComparison.OrdinalIgnoreCase)))
                 list.Add(new("nc2_2015", "Note commune N°2/2015 (lecture des conventions par pays)",
                     Critical: false, DocFragment: "NC_2015_02",
@@ -612,11 +619,17 @@ public sealed class RsServiceLocalAgent : CaseAgentBase
         "       inexistante et qui sont facturées SÉPARÉMENT — elles relèvent de la ligne des\n" +
         "       paiements au-delà du seuil prévu par l'Art.52 pour les montants payés au titre des\n" +
         "       acquisitions de biens et services [Sn].\n" +
-        "B. TAUX DE LA RS — lis dans l'Art.52 [Sn] la LIGNE correspondant à la qualification retenue\n" +
-        "   ET à la qualité du bénéficiaire : pour des honoraires servis à une PERSONNE MORALE\n" +
-        "   SOUMISE À L'IS, c'est la ligne du taux RÉDUIT des honoraires (pas la ligne générale des\n" +
-        "   honoraires du régime réel). Le verdict peut être DOUBLE si les faits le justifient\n" +
-        "   (honoraires → taux réduit ; services non intellectuels facturés séparément → ligne du seuil).\n" +
+        "B. TAUX DE LA RS — ATTENTION, l'Art.52 comporte PLUSIEURS lignes « honoraires » à des taux\n" +
+        "   DIFFÉRENTS : une ligne GÉNÉRALE (taux le plus élevé, honoraires payés par l'État, les\n" +
+        "   collectivités et les personnes morales en général) ET une ligne RÉDUITE (taux plus bas)\n" +
+        "   assortie de la CONDITION expresse « honoraires servis aux personnes morales soumises à\n" +
+        "   l'impôt sur les sociétés ». NE T'ARRÊTE PAS à la première ligne « honoraires » venue :\n" +
+        "   parcours tout l'article et RETIENS la ligne dont la CONDITION correspond aux faits. Le\n" +
+        "   bénéficiaire étant ici une personne morale soumise à l'IS, applique la LIGNE RÉDUITE\n" +
+        "   (le taux le plus BAS des honoraires, celui qui vise expressément les PM soumises à l'IS) —\n" +
+        "   JAMAIS la ligne générale plus élevée. Recopie le taux EXACT lu dans cette ligne [Sn].\n" +
+        "   Le verdict peut être DOUBLE si les faits le justifient (honoraires → taux réduit ;\n" +
+        "   services non intellectuels facturés SÉPARÉMENT → ligne du seuil des acquisitions).\n" +
         "C. TVA — uniquement si demandée dans l'étendue : territorialité (Art.3) et taux (Art.7) [Sn].\n";
 
     protected override string ForbiddenSteps =>

@@ -301,9 +301,19 @@ public sealed class ConsultationWorkflow(
         {
             var all = new List<LegalSourceDto>();
             foreach (var country in state.Countries.Where(c => !string.IsNullOrWhiteSpace(c)).Take(2))
+            {
+                // TITLE-AWARE first: treaty articles carry clean titles (« Article 5 : Etablissement
+                // stable », « Article 7 : Bénéfices des entreprises », « Article 12 : Redevances »), so
+                // matching the subject against the article TITLE reliably lands the exact article. The
+                // BM25-only path (FetchBySubject) silently missed Art.5/Art.7 for some treaties, and the
+                // writer then hedged « article non reproduit dans les sources » for an article that IS in
+                // the graph. FetchBySubject is kept as a fallback for treaties with messier titles.
+                all.AddRange(await retrieval.FetchConventionArticleAsync(
+                    country, item.ConventionSubject, ct) ?? new());
                 all.AddRange(await retrieval.FetchBySubjectAsync(
                     "conv_" + country, item.ConventionSubject, brief.Topics,
                     item.ConventionSubject.Select(s => s.ToLowerInvariant()).ToArray(), ct) ?? new());
+            }
             return all;
         }
 
@@ -472,12 +482,19 @@ public sealed class ConsultationWorkflow(
         bool SatisfiesChecklist(LegalSourceDto s) =>
             brief.RequiredSources.Any(req => req.IsSatisfiedBy(s, countries));
 
-        var treaty   = sources.Where(IsTreaty).ToList();
+        // Cap the treaty block: the relevant treaty articles (ES, redevance, bénéfices…) are a handful;
+        // keeping every convention fragment up front pushes the domestic code articles out of the window.
+        var treaty   = sources.Where(IsTreaty).OrderByDescending(s => s.Score).Take(6).ToList();
         var seen     = new HashSet<LegalSourceDto>(treaty);
         var domestic = sources.Where(s => !seen.Contains(s) && IsDomesticRate(s))
                               .OrderByDescending(Year).ToList();
         foreach (var s in domestic) seen.Add(s);
-        var checklist = sources.Where(s => !seen.Contains(s) && SatisfiesChecklist(s)).ToList();
+        // CRITICAL checklist items first (CDPF 112, CTVA 19, régime-privilégié list…) so they are
+        // guaranteed inside the writer's window — a wide international checklist otherwise buries them.
+        bool SatisfiesCritical(LegalSourceDto s) =>
+            brief.RequiredSources.Any(req => req.Critical && req.IsSatisfiedBy(s, countries));
+        var checklist = sources.Where(s => !seen.Contains(s) && SatisfiesChecklist(s))
+                              .OrderByDescending(s => SatisfiesCritical(s) ? 1 : 0).ToList();
         foreach (var s in checklist) seen.Add(s);
         var rest     = sources.Where(s => !seen.Contains(s)).ToList();
 
@@ -593,7 +610,9 @@ public sealed class ConsultationWorkflow(
         ConsultationState state, IWorkflowContext ctx, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
-        var sourcesList = string.Join("\n", state.Sources.Take(18)
+        // Same window as the writer (SourcesBlock MaxSources) — otherwise the judge flags as « missing »
+        // articles that ARE in the writer's window, spending judge-retrieval budget chasing nothing.
+        var sourcesList = string.Join("\n", state.Sources.Take(26)
             .Select(s => $"[S{s.Index}] {s.DocType} {s.DocName} {s.ArticleRef}"));
         if (!string.IsNullOrWhiteSpace(state.Brief!.JudgeCriteria))
             sourcesList += "\n\n═══ CRITÈRES SPÉCIFIQUES AU CAS ═══\n" + state.Brief.JudgeCriteria;

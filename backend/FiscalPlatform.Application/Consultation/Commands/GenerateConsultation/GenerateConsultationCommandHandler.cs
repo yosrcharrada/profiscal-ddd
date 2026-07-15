@@ -492,11 +492,14 @@ public sealed class GenerateConsultationCommandHandler(
         // line is ~char 1000, the non-résident b) 15% ~char 2 830, the DIVIDENDES c bis) ~char 4 450,
         // the cession f) 2,5% ~char 7 660. A 3 300 cap hid the dividend line and the model guessed the
         // wrong rate — the cap must cover the whole menu so the model reads the RIGHT paragraph.
-        // Sources are now coalesced to ONE entry per article (parts merged upstream), so 18 slots =
-        // ~18 distinct articles — enough for even the widest case (RS foreign: ES + RS + TVA 3/7/19 +
-        // NC + CDPF 112 + BCT). PlainChars raised because a coalesced non-rate article (e.g. CTVA
-        // territorialité) is several parts long and 1100 chars used to clip the operative rule.
-        const int MaxSources = 18, RateChars = 8600, PlainChars = 2600;
+        // Sources are coalesced to ONE entry per article (parts merged upstream). 18 slots was too
+        // tight for an INTERNATIONAL case: the treaty carries many convention chunks (ES, redevance,
+        // bénéfices, dividende, intérêt…) which, added to the domestic checklist (ES 45/47 + RS 52 +
+        // TVA 3/7/19 + NC 3/2015 + CDPF 112 + BCT 21), pushed the LAST-pinned code articles (Art.19,
+        // 112, 21) past slot 18 — the writer then couldn't see their text and hedged « article non
+        // reproduit dans les sources » for articles that WERE fetched. 26 comfortably fits treaty +
+        // the full foreign-service checklist; gpt-4o's window absorbs the extra text easily.
+        const int MaxSources = 26, RateChars = 8600, PlainChars = 2600;
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
         foreach (var s in sources.Take(MaxSources))
         {
@@ -712,7 +715,16 @@ public sealed class GenerateConsultationCommandHandler(
             "catégorie « non domiciliés ni établis ») et le CONSTAT direct (le pays figure OU NON sur la liste).\n" +
             "CITATIONS: utilise le NUMÉRO RÉEL de la source, p.ex. [S1], [S7] — JAMAIS le littéral « [Sn] » ni\n" +
             "« [S…] ». NON DOCUMENTÉ est réservé au cas où l'information est réellement absente des sources —\n" +
-            "PAS quand tu n'as pas pris la peine de lire le texte fourni.\n";
+            "PAS quand tu n'as pas pris la peine de lire le texte fourni.\n" +
+            "═══ INTERDICTION ABSOLUE — « ARTICLE NON REPRODUIT DANS LES SOURCES » ═══\n" +
+            "N'écris JAMAIS « (article non reproduit dans les sources) », « non reproduit », « non fourni »,\n" +
+            "« texte non disponible » ni aucune variante. Si tu cites un article (Art.5/7/12 d'une convention,\n" +
+            "Art.19 CTVA, Art.112 CDPF, Art.21 circulaire BCT…), c'est que son texte figure dans les SOURCES\n" +
+            "ci-dessus sous un [Sn] : RETROUVE-le (les conventions sont sous DocType « Convention », la\n" +
+            "circulaire BCT sous « doctrine_circulaire_bct », le CDPF sous « code_droits_procedures ») et\n" +
+            "cite-le par son [Sn] réel. Si — et seulement si — l'article est réellement absent de toute source\n" +
+            "fournie, N'AVANCE PAS son numéro : appuie-toi sur les textes réellement présents. Il est INTERDIT\n" +
+            "d'énoncer un numéro d'article assorti d'un aveu qu'on ne dispose pas de son texte.\n";
 
         // The démarche is enforced as TITLED sub-sections (like the EY gold memos), with flowing prose
         // INSIDE each. This prevents the model from collapsing everything into one paragraph and
@@ -907,15 +919,19 @@ public sealed class GenerateConsultationCommandHandler(
         foreach (var s in neo4jSources)
             if (seen.Add(Key(s))) result.Add(s);
 
-        // Diversity: limit Commentaire to 4, Doctrine to 3
+        // Diversity caps. Convention is capped too: a treaty analysis needs a HANDFUL of articles
+        // (ES, redevance, bénéfices, dividende, intérêt), but the planner returns ~19 near-duplicate
+        // convention fragments that used to occupy 19/30 pre-graph slots and starve the Code articles.
+        // Keep the 10 best-scored; the deterministic treaty-by-subject fetchers add the exact articles.
+        var conv  = result.Where(r => r.DocType == "Convention").OrderByDescending(r => r.Score).Take(10).ToList();
         var com   = result.Where(r => r.DocType == "Commentaire").OrderByDescending(r => r.Score).Take(4).ToList();
         var doc   = result.Where(r => r.DocType == "Doctrine").OrderByDescending(r => r.Score).Take(3).ToList();
-        var other = result.Where(r => r.DocType != "Commentaire" && r.DocType != "Doctrine")
-                          .OrderBy(r => r.DocType == "Convention" ? 0 : r.DocType == "Code" ? 1 : 2)
-                          .ThenByDescending(r => r.Score).ToList();
+        var code  = result.Where(r => r.DocType != "Convention" && r.DocType != "Commentaire" && r.DocType != "Doctrine")
+                          .OrderByDescending(r => r.Score).ToList();
 
-        var merged = other.Take(maxTotal - com.Count - doc.Count)
-                          .Concat(com).Concat(doc).Take(maxTotal).ToList();
+        // Code first so the operative articles are never crowded out, then the capped treaty, then doctrine.
+        var merged = code.Concat(conv).Take(maxTotal - com.Count - doc.Count)
+                         .Concat(com).Concat(doc).Take(maxTotal).ToList();
         for (int i = 0; i < merged.Count; i++) merged[i].Index = i + 1;
         return merged;
     }
