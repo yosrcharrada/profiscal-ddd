@@ -124,7 +124,11 @@ public abstract class CaseAgentBase : ICaseAgent
         Key: "nc3_2015", Critical: true,
         Description: "Note commune N°3/2015 (assiette de la retenue à la source)",
         DocFragment: "NC_2015_03",
-        FetchKeywords: new[] { "honoraires", "assiette", "montant brut" });
+        // Scope the keyword fetch to NC_2015_03 — without this the fetch searched ALL docs and the
+        // assiette note lost its slot to unrelated 'honoraires' chunks (NC_2002_12…), so the writer
+        // attributed the « montant brut TVA comprise » rule to Art.52 instead of NC 3/2015.
+        FetchDocFragment: "NC_2015_03",
+        FetchKeywords: new[] { "assiette de la retenue", "montant brut", "toute taxe comprise" });
 
     /// <summary>CIRPPIS Art.52 — the multi-rate menu. TextContains narrows to the LINE this case
     /// reads (métier: 'right rate, wrong case' = picking the wrong line).</summary>

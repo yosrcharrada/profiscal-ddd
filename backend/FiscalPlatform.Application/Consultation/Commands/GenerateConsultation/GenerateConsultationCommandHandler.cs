@@ -571,7 +571,8 @@ public sealed class GenerateConsultationCommandHandler(
 
     internal static string BuildPhase2Prompt(GenerateConsultationCommand cmd,
         List<LegalSourceDto> sources, List<string> etendueItems, string sommaire,
-        string contexteFaits, bool isIntl, HashSet<string> branches, RetrievalPlan plan)
+        string contexteFaits, bool isIntl, HashSet<string> branches, RetrievalPlan plan,
+        ICollection<string>? detectedCountries = null)
     {
         var n  = etendueItems.Count;
         var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i+1}. {x}"));
@@ -590,30 +591,40 @@ public sealed class GenerateConsultationCommandHandler(
         }.Any(hay.Contains);
 
         // DETERMINISTIC régime-privilégié detection (no hardcoded country list — reads the retrieved
-        // list itself): a source that IS the privileged-regime list AND names the detected country.
-        // Métier rule: for a beneficiary in a privileged regime, ES is NOT analysed at all — so we
-        // don't leave that to the model reading the list; we detect it here and hard-forbid ES below.
-        var country = (plan.DetectedCountry ?? "").Trim().ToLowerInvariant();
-        var countryKey = country.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-        bool privilegedRegime = country.Length > 0 && countryKey.Length >= 3 && sources.Any(s =>
-        {
-            var t = (s.Text ?? "").ToLowerInvariant();
-            var doc = (s.DocName ?? "").ToLowerInvariant();
-            return t.Contains(countryKey) &&
-                   (t.Contains("privilég") ||
-                    doc.Contains("nc_2019_16") ||
-                    doc.Contains("doctrine_colloque"));
-        });
+        // list itself): a source that IS the privileged-regime list AND names a country of the case.
+        // Métier rule: for a beneficiary in a privileged regime, ES is treated as superfétatoire.
+        // Candidate countries come from BOTH the planner AND the CountryDetector — the planner's
+        // DetectedCountry is empty when the embed server is down, so relying on it alone silently
+        // dropped the whole privileged-regime branch (Hong Kong analysed as an ordinary ES case).
+        var candidateCountries = new List<string>();
+        if (!string.IsNullOrWhiteSpace(plan.DetectedCountry)) candidateCountries.Add(plan.DetectedCountry!);
+        if (detectedCountries is { Count: > 0 }) candidateCountries.AddRange(detectedCountries);
+        var country = candidateCountries.FirstOrDefault()?.Trim().ToLowerInvariant() ?? "";
+        bool privilegedRegime = candidateCountries
+            .Select(c => c.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "")
+            .Where(key => key.Length >= 3 && key != "tunis" && key != "tunisie")
+            .Any(key => sources.Any(s =>
+            {
+                var t = (s.Text ?? "").ToLowerInvariant();
+                var doc = (s.DocName ?? "").ToLowerInvariant();
+                return t.Contains(key) &&
+                       (t.Contains("privilég") || doc.Contains("nc_2019_16") || doc.Contains("doctrine_colloque"));
+            }));
 
         var bg = new StringBuilder();
         if (privilegedRegime)
             bg.AppendLine($"  ⚠️ RÉGIME FISCAL PRIVILÉGIÉ DÉTECTÉ — le pays du bénéficiaire ({country}) figure " +
-                          "dans la liste des États/territoires à régime fiscal privilégié retrouvée [Sn]. " +
-                          "EN CONSÉQUENCE : INTERDICTION ABSOLUE d'analyser OU DE MENTIONNER l'établissement " +
-                          "stable (ni en droit interne, ni au sens de la convention) — aucune sous-section, " +
-                          "aucun verdict, aucune phrase à son sujet. Applique DIRECTEMENT la retenue à la " +
-                          "source (majorée si le taux de la majoration figure dans les sources [Sn] ; sinon " +
-                          "droit commun de l'Art.52 [Sn]), puis la TVA et le formalisme du transfert.");
+                          "dans la liste des États/territoires à régime fiscal privilégié retrouvée [Sn].\n" +
+                          "  • ÉTABLISSEMENT STABLE — ne DÉVELOPPE PAS d'analyse d'ES (pas de section, pas de règle " +
+                          "des 6 mois, pas de verdict OUI/NON). Précise SEULEMENT, en une phrase, que le taux de la " +
+                          "retenue à la source de droit commun applicable aux rémunérations de services versées aux " +
+                          "non-résidents (Art.52 [Sn]) s'applique INDÉPENDAMMENT de l'existence d'un établissement " +
+                          "stable — le MÊME taux frappant les établissements stables non immatriculés — de sorte que " +
+                          "l'analyse de l'ES est SANS INCIDENCE PRATIQUE sur le taux (caractère superfétatoire).\n" +
+                          "  • MAJORATION À 25 % — ne l'applique QUE si les faits relèvent effectivement du taux d'IS " +
+                          "le plus élevé visé par l'arrêté ET si le taux de la majoration figure dans les sources [Sn]. " +
+                          "Pour de simples prestations de services relevant du taux de droit commun, la majoration ne " +
+                          "s'applique PAS : retiens le droit commun de l'Art.52 [Sn]. Puis TVA et formalisme du transfert.");
         if (isIntl || plan.EsRiskPossible)
         {
             bg.AppendLine("  CAS INTERNATIONAL — séquence d'analyse:");

@@ -512,7 +512,8 @@ public sealed class ConsultationWorkflow(
         var prompt = brief.UsesOwnPrompt
             ? BuildBriefPrompt(state, brief)
             : H.BuildPhase2Prompt(state.Command, state.Sources, state.EtendueItems, state.Sommaire,
-                                  state.ContexteFaits, state.IsInternational, state.Branches, state.Plan);
+                                  state.ContexteFaits, state.IsInternational, state.Branches, state.Plan,
+                                  state.Countries);
 
         if (!string.IsNullOrWhiteSpace(state.JudgeGuidance) && state.WriterLoops > 1)
             prompt += "\n\n═══ CORRECTIONS DEMANDÉES (relecture qualité) ═══\n" + state.JudgeGuidance +
