@@ -8,17 +8,27 @@ using Neo4j.Driver;
 namespace FiscalPlatform.Infrastructure.Agents;
 
 /// <summary>
-/// Retrieval Agent — Neo4j graph queries for the "taxmind" knowledge graph.
+/// Retrieval Agent — Neo4j graph queries for the current "taxmindvf" knowledge graph.
 ///
-/// taxmind ontology (vs the old flat graph):
-///   (:Chunk {chunk_id, content, title, doc_id, corpus, chunk_type, article_number, article_display, embedding(384)})
+/// taxmindvf ontology (introspected from the live DB — supersedes the old tunisian-fiscal /
+/// taxmind schemas, which had (:Topic) nodes + [:HAS_TOPIC]/[:NEXT]/[:SAME_TOPIC]/[:SIMILAR_TO]
+/// relationships that NO LONGER EXIST here):
+///   (:Chunk {chunk_id, content, title, doc_id|document_id, corpus|folder, chunk_type,
+///            article_number, article_display, provision_uid, part_number, total_parts,
+///            topic_id, topic_label, embedding(384)})
 ///   corpus ∈ {Conventions, Lois_des_Finances, Notes_Communes, Recueils_textes_fiscaux}
 ///   chunk_type ∈ {article, section, introduction, resume, preamble, metadata, ...}
-///   rels: NEXT/PREVIOUS, CONTAINS, PART_OF/PART_OF_SECTION, CITES, HAS_TOPIC,
-///         SAME_TOPIC/SAME_SECTION/SAME_CHAPTER/SIMILAR_TO, MODIFIES/NEXT_VERSION, SIGNED_WITH
+///   TOPICS are now Chunk PROPERTIES (topic_id slug + topic_label display, ~50 convention
+///     subjects on ~3 500 chunks), NOT separate nodes — so "topic-mediated" retrieval matches
+///     on c.topic_label / c.topic_id instead of traversing a (:Topic) node.
+///   chunk↔chunk rels: NEXT_PART / NEXT_ARTICLE / NEXT_SECTION (sequential context),
+///     CITES_ARTICLE / REFERENCES_ARTICLE (citations ≈ related content), COMMENTS_ON (doctrine),
+///     ADDS_TO / ABROGATES / MODIFIES / REPLACES (amendment history).
+///   doc-level rels: HAS_SECTION, CONTAINS_CHUNK, NEXT_VERSION / NEXT_EDITION, BELONGS_TO_YEAR.
 ///   indexes: chunk_embeddings (VECTOR 384) + chunk_content (FULLTEXT/BM25 on content,title)
+///     + chunk_art_idx(article_number) + chunk_doc_idx(document_id) + chunk_unique(chunk_id).
 ///
-/// The RETURN projections below map taxmind properties onto the SAME aliases the rest of the
+/// The RETURN projections below map taxmindvf properties onto the SAME aliases the rest of the
 /// code expects (id/text/doc_name/doc_type/article_ref/section_title/annee), so TryAdd /
 /// MapChunks / LegalSourceDto stay unchanged.
 /// </summary>
@@ -150,9 +160,10 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         try
         {
             await using var s = _driver.AsyncSession(o => o.WithDatabase(_db));
+            // taxmindvf has no (:Topic) nodes — topics are Chunk properties now, so "entities"
+            // is the count of distinct topic labels carried on chunks.
             var r = await s.RunAsync(@"
-                MATCH (c:Chunk)    WITH count(c) AS chunks
-                OPTIONAL MATCH (t:Topic) WITH chunks, count(t) AS ents
+                MATCH (c:Chunk) WITH count(c) AS chunks, count(DISTINCT c.topic_label) AS ents
                 MATCH ()-[rel]->() RETURN chunks, ents, count(rel) AS rels");
             var rec = await r.SingleAsync();
             stats.TotalChunks    = rec["chunks"].As<long>();
@@ -343,44 +354,55 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         var results = new List<LegalSourceDto>();
         if (!seedIds.Any()) return results;
 
-        // a. sequential context (NEXT)
+        // a. sequential context — taxmindvf has no generic [:NEXT]; the adjacency edges are
+        //    NEXT_PART (next paragraph of the same article/provision) and NEXT_ARTICLE (next
+        //    article), both directed forward from the seed. Together they give the same
+        //    "read-on" context the old [:NEXT] did.
         try
         {
             var r = await session.RunAsync($@"
                 UNWIND $ids AS sid
-                MATCH (seed:Chunk {{chunk_id: sid}})-[:NEXT]->(c:Chunk)
+                MATCH (seed:Chunk {{chunk_id: sid}})-[:NEXT_PART|NEXT_ARTICLE]->(c:Chunk)
                 WHERE c.content <> ''
                 RETURN DISTINCT {F}, 0.75 AS score LIMIT 6",
                 new { ids = seedIds });
             await foreach (var rec in r) TryAdd(results, seen, rec, 0.75);
         }
-        catch (Exception ex) { _logger.LogDebug(ex, "NEXT"); }
+        catch (Exception ex) { _logger.LogDebug(ex, "NEXT_PART/NEXT_ARTICLE"); }
 
-        // b. same-topic neighbours
+        // b. same-topic neighbours — taxmindvf has no [:SAME_TOPIC] relationship; topics are a
+        //    Chunk property (topic_id), so chunks sharing the seed's topic_id are the same-topic
+        //    neighbours. Only convention chunks carry a topic_id, so the WITH…WHERE tid IS NOT
+        //    NULL gate skips the scan entirely for the (majority) code/law seeds.
         try
         {
             var r = await session.RunAsync($@"
                 UNWIND $ids AS sid
-                MATCH (seed:Chunk {{chunk_id: sid}})-[:SAME_TOPIC]-(c:Chunk)
-                WHERE c.content <> '' AND c.chunk_id <> sid
+                MATCH (seed:Chunk {{chunk_id: sid}})
+                WITH DISTINCT seed.topic_id AS tid WHERE tid IS NOT NULL AND tid <> ''
+                MATCH (c:Chunk {{topic_id: tid}})
+                WHERE c.content <> ''
                 RETURN DISTINCT {F}, 0.65 AS score LIMIT 8",
                 new { ids = seedIds });
             await foreach (var rec in r) TryAdd(results, seen, rec, 0.65);
         }
-        catch (Exception ex) { _logger.LogDebug(ex, "SAME_TOPIC"); }
+        catch (Exception ex) { _logger.LogDebug(ex, "same-topic (topic_id)"); }
 
-        // c. semantically-similar neighbours (precomputed SIMILAR_TO edges, chunk↔chunk)
+        // c. related neighbours — taxmindvf has no precomputed [:SIMILAR_TO]; the nearest
+        //    "related content" edges are the citation links CITES_ARTICLE / REFERENCES_ARTICLE
+        //    (a chunk and the provision it cites), traversed undirected so we reach both the
+        //    citing and the cited chunk.
         try
         {
             var r = await session.RunAsync($@"
                 UNWIND $ids AS sid
-                MATCH (seed:Chunk {{chunk_id: sid}})-[:SIMILAR_TO]-(c:Chunk)
+                MATCH (seed:Chunk {{chunk_id: sid}})-[:CITES_ARTICLE|REFERENCES_ARTICLE]-(c:Chunk)
                 WHERE c.content <> '' AND c.chunk_id <> sid
                 RETURN DISTINCT {F}, 0.7 AS score LIMIT 5",
                 new { ids = seedIds });
             await foreach (var rec in r) TryAdd(results, seen, rec, 0.7);
         }
-        catch (Exception ex) { _logger.LogDebug(ex, "SIMILAR_TO"); }
+        catch (Exception ex) { _logger.LogDebug(ex, "CITES_ARTICLE/REFERENCES_ARTICLE"); }
 
         return results;
     }
@@ -432,11 +454,13 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         try
         {
             await using var session = _driver.AsyncSession(o => o.WithDatabase(_db));
-            // Topic-mediated expansion: chunks linked to topics whose label matches a term.
+            // Topic-mediated expansion: in taxmindvf the topic is a Chunk property (topic_label),
+            // not a (:Topic) node, so match chunks whose topic_label contains a term directly.
             var r = await session.RunAsync(@"
                 UNWIND $terms AS term
-                MATCH (t:Topic) WHERE toLower(t.label) CONTAINS toLower(term)
-                MATCH (t)<-[:HAS_TOPIC]-(c:Chunk) WHERE c.content <> ''
+                MATCH (c:Chunk)
+                WHERE c.topic_label IS NOT NULL AND toLower(c.topic_label) CONTAINS toLower(term)
+                  AND c.content <> ''
                 RETURN DISTINCT coalesce(c.doc_id, c.document_id) AS doc_name, 0 AS page_num,
                        c.content AS text, c.chunk_type AS chunk_type,
                        coalesce(c.article_display, c.article_number, '') AS article_ref, 0.7 AS score
@@ -818,16 +842,18 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
                 catch (Exception ex) { _logger.LogDebug(ex, "FetchBySubject anchors BM25"); }
             }
 
-            // 2) Topic-mediated (taxmind HAS_TOPIC taxonomy).
+            // 2) Topic-mediated — in taxmindvf the convention subject is a Chunk property
+            //    (topic_label, e.g. "Redevances", "Bénéfices des entreprises"), not a (:Topic)
+            //    node, so match chunks whose topic_label contains the subject directly.
             foreach (var topic in (topics ?? Array.Empty<string>()).Take(6))
             {
                 if (results.Count >= 14 || string.IsNullOrWhiteSpace(topic)) continue;
                 try
                 {
                     var res = await session.RunAsync($@"
-                        MATCH (t:Topic) WHERE toLower(t.label) CONTAINS toLower($topic)
-                        MATCH (t)<-[:HAS_TOPIC]-(c:Chunk)
-                        WHERE c.content <> '' AND ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag))
+                        MATCH (c:Chunk)
+                        WHERE c.topic_label IS NOT NULL AND toLower(c.topic_label) CONTAINS toLower($topic)
+                          AND c.content <> '' AND ($frag = '' OR toLower(coalesce(c.doc_id, c.document_id)) CONTAINS toLower($frag))
                         RETURN {F}, 0.85 AS score
                         ORDER BY (CASE WHEN c.chunk_type='article' THEN 0 ELSE 1 END) LIMIT 2",
                         new { frag, topic });
