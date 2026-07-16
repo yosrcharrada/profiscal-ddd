@@ -610,6 +610,26 @@ public sealed class ConsultationWorkflow(
         ConsultationState state, IWorkflowContext ctx, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
+
+        // The verdict is ONLY ever consumed to route this graph (NeedsJudgeRetrieval /
+        // NeedsWriterRevision / ProceedToExpert) and to pick a log label — it never reaches the
+        // consultation. Once the writer budget is spent, BOTH retry predicates are false by
+        // construction (each requires WriterLoops < MaxWriterLoops), so ProceedToExpert is true
+        // whatever the judge says: accept and reject take the identical edge to ExpertVoice with
+        // the identical draft. Paying a full LLM round-trip (15–20s observed) for a verdict that
+        // cannot change a single byte of output is pure waste, so skip it.
+        // NOT a relaxed bar: on every pass where the verdict CAN still route (WriterLoops <
+        // MaxWriterLoops), the judge runs exactly as before.
+        if (state.WriterLoops >= ConsultationState.MaxWriterLoops)
+        {
+            state.JudgeRan = true;   // keeps ProceedToExpert true; JudgeAccepted stays as-is
+            sw.Stop();
+            state.Timings.Add(("W6. Judge", sw.Elapsed.TotalMilliseconds, "skipped (writer budget spent — verdict cannot route)"));
+            logger.LogInformation(
+                "► [GRAPH:Judge] skipped — writer budget spent (wl={W}/{M}); verdict cannot change routing",
+                state.WriterLoops, ConsultationState.MaxWriterLoops);
+            return state;
+        }
         // Same window as the writer (SourcesBlock MaxSources) — otherwise the judge flags as « missing »
         // articles that ARE in the writer's window, spending judge-retrieval budget chasing nothing.
         var sourcesList = string.Join("\n", state.Sources.Take(26)

@@ -93,8 +93,14 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
                 guidance = "Corrige: " + string.Join(" ; ", issues);
 
             var verdict = new AcceptanceVerdict(accept, score, issues, needs, topics, guidance);
-            logger.LogInformation("[ACCEPT] accept={A} score={S:F2} needsMore={N} issues={I} topics=[{T}]",
-                verdict.Accept, verdict.Score, verdict.NeedsMoreSources, issues.Count, string.Join(", ", topics));
+            // Log the issue/guidance TEXT, not just a count: when the judge rejects, the count alone
+            // gives no way to tell a real quality gap from the judge asking for something the case's
+            // démarche forbids or the corpus doesn't contain (either of which burns a full
+            // writer+judge revision cycle for nothing).
+            logger.LogInformation(
+                "[ACCEPT] accept={A} score={S:F2} needsMore={N} issues=[{I}] topics=[{T}] guidance={G}",
+                verdict.Accept, verdict.Score, verdict.NeedsMoreSources,
+                string.Join(" | ", issues), string.Join(", ", topics), verdict.RevisionGuidance);
             return verdict;
         }
         catch (Exception ex) { logger.LogWarning(ex, "[ACCEPT] parse failed — accepting"); return Pass(); }
