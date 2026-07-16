@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import COUNTRIES from "../../data/countries";
 import { useLanguage } from "../../context/LanguageContext";
 import fiscalService, { openDocumentPdf } from "../../services/fiscalService";
 import { useToast } from "../../components/common/Toast";
@@ -72,15 +73,83 @@ const TYPE_BADGE = {
   },
 };
 
-const COUNTRIES = [
-  "Tunisie",
-  "France",
-  "Allemagne",
-  "Italie",
-  "Belgique",
-  "Canada",
-  "Maroc",
-];
+/// Multi-select country picker. The list is the whole world (~195), so it gets a filter box and
+/// a scroll area rather than the flat button list the old 7-country version used — and selection
+/// is a set, since a consultation can concern several countries at once.
+/// Matching is accent-insensitive both ways: the corpus writes "Emirats" as often as "Émirats",
+/// and a user typing "egypte" should still find "Égypte".
+const fold = (s) =>
+  (s || "")
+    .normalize("NFD")
+    // Strip the combining marks NFD just split off (U+0300..U+036F).
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+
+function CountryPicker({ selected, onToggle, onClear }) {
+  const [filter, setFilter] = useState("");
+  const shown = useMemo(() => {
+    const f = fold(filter.trim());
+    if (!f) return COUNTRIES;
+    return COUNTRIES.filter((c) => fold(c).includes(f));
+  }, [filter]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5">
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filtrer les pays…"
+          className="flex-1 min-w-0 bg-white border border-border rounded-lg px-2.5 py-1 text-[12.5px] text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+        />
+        {selected.length > 0 && (
+          <button
+            onClick={onClear}
+            className="shrink-0 text-[11px] font-bold text-muted hover:text-dark px-1.5 py-1 rounded-md hover:bg-light transition-colors"
+            title="Tout désélectionner"
+          >
+            ✕ {selected.length}
+          </button>
+        )}
+      </div>
+
+      <div className="max-h-56 overflow-y-auto space-y-px pr-0.5">
+        {shown.length === 0 && (
+          <p className="text-[12px] text-muted px-2.5 py-2">Aucun pays trouvé.</p>
+        )}
+        {shown.map((c) => {
+          const active = selected.includes(c);
+          return (
+            <button
+              key={c}
+              onClick={() => onToggle(c)}
+              role="checkbox"
+              aria-checked={active}
+              className={`w-full flex items-center gap-2 text-left rounded-lg px-2.5 py-1.5 text-[13px] transition-all ${
+                active
+                  ? "bg-brand/15 text-dark font-semibold"
+                  : "text-body hover:text-dark hover:bg-light/60"
+              }`}
+            >
+              <span
+                className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center ${
+                  active ? "bg-brand border-brand" : "border-border bg-white"
+                }`}
+              >
+                {active && (
+                  <svg className="w-2.5 h-2.5 text-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                  </svg>
+                )}
+              </span>
+              {c}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 const STANDARD_KEYWORDS = [
   "TVA",
   "IS",
@@ -213,8 +282,9 @@ function FiltersPanel({
   dateFrom,
   dateTo,
   onDates,
-  country,
-  onCountry,
+  countries,
+  onToggleCountry,
+  onClearCountries,
   keywords,
   onToggleKeyword,
   recent,
@@ -367,28 +437,15 @@ function FiltersPanel({
               </div>
             </FilterSection>
 
-            <FilterSection title={t("search.country")} defaultOpen={false}>
-              <div className="space-y-px">
-                {COUNTRIES.map((c) => {
-                  const active = country === c;
-                  return (
-                    <button
-                      key={c}
-                      onClick={() => onCountry(active ? "" : c)}
-                      className={`w-full flex items-center gap-2 text-left rounded-lg px-2.5 py-2 text-[13px] transition-all ${
-                        active
-                          ? "bg-brand/15 text-dark font-semibold"
-                          : "text-body hover:text-dark hover:bg-light/60"
-                      }`}
-                    >
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${active ? "bg-brand" : "bg-border"}`}
-                      />
-                      {c}
-                    </button>
-                  );
-                })}
-              </div>
+            <FilterSection
+              title={t("search.country")}
+              defaultOpen={countries.length > 0}
+            >
+              <CountryPicker
+                selected={countries}
+                onToggle={onToggleCountry}
+                onClear={onClearCountries}
+              />
             </FilterSection>
 
             <FilterSection title={t("search.keywords")}>
@@ -464,7 +521,7 @@ export default function Search() {
   const [clientSearch, setClientSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [country, setCountry] = useState("");
+  const [countries, setCountries] = useState([]);
   const [keywords, setKeywords] = useState([]);
   const [lawRes, setLawRes] = useState(null);
   const [consRes, setConsRes] = useState(null);
@@ -494,7 +551,7 @@ export default function Search() {
     clientSearch !== "" ||
     dateFrom !== "" ||
     dateTo !== "" ||
-    country !== "" ||
+    countries.length > 0 ||
     keywords.length > 0;
   const filtersActive = mode === "law" ? lawFiltersActive : consFiltersActive;
 
@@ -533,7 +590,7 @@ export default function Search() {
       clientSearch !== "" ||
       dateFrom !== "" ||
       dateTo !== "" ||
-      country !== "" ||
+      countries.length > 0 ||
       keywords.length > 0;
     if (!text && !(m === "law" ? lawActive : consActive)) return;
     setLoading(true);
@@ -566,13 +623,13 @@ export default function Search() {
           const q2 = clientSearch.toLowerCase();
           list = list.filter((c) => (c.clientName || "").toLowerCase().includes(q2));
         }
-        if (country) {
-          const q2 = country.toLowerCase();
-          list = list.filter(
-            (c) =>
-              (c.fiscalQuestion || "").toLowerCase().includes(q2) ||
-              (c.clientName || "").toLowerCase().includes(q2),
-          );
+        if (countries.length) {
+          // OR across the selection: keep a consultation matching ANY chosen country.
+          const wanted = countries.map(fold);
+          list = list.filter((c) => {
+            const hay = fold(`${c.fiscalQuestion || ""} ${c.clientName || ""}`);
+            return wanted.some((w) => hay.includes(w));
+          });
         }
         if (keywords.length) {
           list = list.filter((c) => {
@@ -632,7 +689,7 @@ export default function Search() {
       setClientSearch("");
       setDateFrom("");
       setDateTo("");
-      setCountry("");
+      setCountries([]);
       setKeywords([]);
     }
   };
@@ -704,8 +761,13 @@ export default function Search() {
         setDateFrom(f);
         setDateTo(t);
       }}
-      country={country}
-      onCountry={setCountry}
+      countries={countries}
+      onToggleCountry={(c) =>
+        setCountries((prev) =>
+          prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
+        )
+      }
+      onClearCountries={() => setCountries([])}
       keywords={keywords}
       onToggleKeyword={toggleKeyword}
       recent={recent}
