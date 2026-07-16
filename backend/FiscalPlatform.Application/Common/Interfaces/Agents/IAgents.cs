@@ -105,6 +105,10 @@ public interface ISearchAgent
     /// document-level "open" view — the Google model: results collapse to one card per
     /// document, clicking one shows the entire text.</summary>
     Task<LegalDocumentDto?> GetDocumentAsync(string documentId, CancellationToken ct = default);
+    /// <summary>Cheap lookup of just the original PDF filename for a document_id — used to
+    /// locate the source PDF on disk for the "open in PDF" action, without paying the cost
+    /// of stitching the whole document text together (GetDocumentAsync).</summary>
+    Task<string?> ResolveFilenameAsync(string documentId, CancellationToken ct = default);
 }
 
 // ─── SHARED DTOs for agents ──────────────────────────────────────────────────

@@ -232,6 +232,24 @@ public sealed class Neo4jSearchAgent : ISearchAgent, IDisposable
         catch { return null; }
     }
 
+    public async Task<string?> ResolveFilenameAsync(string documentId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId)) return null;
+        try
+        {
+            await using var s = _driver.AsyncSession(o => o.WithDatabase(_db));
+            var r = await s.RunAsync(
+                @"MATCH (c:Chunk)
+                  WHERE coalesce(c.doc_id, c.document_id) = $id
+                  RETURN coalesce(c.filename, c.doc_id, c.document_id) AS filename
+                  LIMIT 1",
+                new { id = documentId });
+            var rec = await r.SingleAsync();
+            return rec["filename"].As<string>();
+        }
+        catch { return null; }
+    }
+
     private static string Highlight(string text, List<string> terms)
     {
         var lower = text.ToLower();

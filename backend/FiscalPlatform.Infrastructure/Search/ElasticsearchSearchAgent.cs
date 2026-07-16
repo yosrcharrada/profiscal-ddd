@@ -176,6 +176,27 @@ public sealed class ElasticsearchSearchAgent(
         catch { return null; }
     }
 
+    public async Task<string?> ResolveFilenameAsync(string documentId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId)) return null;
+        var body = JsonSerializer.Serialize(new
+        {
+            size    = 1,
+            query   = new { term = new { document_id = documentId } },
+            _source = new[] { "filename" }
+        });
+        try
+        {
+            var resp = await _http.PostAsync($"{_host}/{_index}/_search",
+                new StringContent(body, Encoding.UTF8, "application/json"), ct);
+            var text = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(text);
+            var hits = doc.RootElement.GetProperty("hits").GetProperty("hits");
+            return hits.GetArrayLength() == 0 ? null : Str(hits[0].GetProperty("_source"), "filename");
+        }
+        catch (Exception ex) { logger.LogWarning(ex, "ResolveFilename failed for {Id}", documentId); return null; }
+    }
+
     private static object MultiMatch(string q) => new object[]
     {
         new

@@ -67,6 +67,37 @@ public sealed class FiscalController(
             : Ok(ApiResponse<LegalDocumentDto>.Ok(doc));
     }
 
+    /// <summary>Streams the ORIGINAL source PDF for a search result, so a user can browse the
+    /// real document (not just the indexed passage) and, when the browser's PDF viewer is
+    /// asked to via a #page=N fragment on the frontend, jump straight to it. The corpus root
+    /// (Documents:Root) is an environment-specific config value — like Neo4j/Elasticsearch,
+    /// it's not committed and may be empty on machines that don't have the raw PDF corpus
+    /// mounted, in which case this degrades to a clear 404 rather than a silent failure.</summary>
+    [HttpGet("search/document/{documentId}/pdf")]
+    public async Task<IActionResult> GetDocumentPdf(
+        string documentId, [FromServices] IConfiguration config, CancellationToken ct)
+    {
+        var root = config["Documents:Root"];
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+            return NotFound(ApiResponse<object>.Fail(
+                "Le corpus PDF source n'est pas configuré sur cet environnement."));
+
+        var filename = await searchAgent.ResolveFilenameAsync(documentId, ct);
+        if (string.IsNullOrWhiteSpace(filename) || filename.IndexOfAny(new[] { '/', '\\' }) >= 0)
+            return NotFound(ApiResponse<object>.Fail("Document introuvable."));
+
+        var path = Directory.EnumerateFiles(root, "*.pdf", SearchOption.AllDirectories)
+            .FirstOrDefault(p => string.Equals(Path.GetFileName(p), filename, StringComparison.OrdinalIgnoreCase));
+        if (path is null)
+            return NotFound(ApiResponse<object>.Fail("Fichier PDF source introuvable sur cet environnement."));
+
+        // No fileDownloadName: that would force Content-Disposition: attachment (a download).
+        // Leaving it unset serves inline, so the frontend's blob URL opens in the browser's
+        // native PDF viewer where a #page=N fragment can jump straight to the right page.
+        var stream = System.IO.File.OpenRead(path);
+        return File(stream, "application/pdf", enableRangeProcessing: true);
+    }
+
     [HttpGet("search/health")]
     public async Task<IActionResult> SearchHealth()
     {
