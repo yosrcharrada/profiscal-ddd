@@ -1,6 +1,13 @@
-import { NavLink, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { taskService, jortService } from "../../services/authService";
+
+// Shared with the News page: newest activity date last viewed. Kept in sync so the
+// "new" dot on the News nav item clears once the user opens the feed.
+const NEWS_SEEN_KEY = "taxmind.news.lastSeen";
+const BADGE_POLL_MS = 60000;
 
 const ICONS = {
   dashboard: (
@@ -111,6 +118,13 @@ const ICONS = {
       d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
     />
   ),
+  news: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z"
+    />
+  ),
 };
 
 function Tip({ label }) {
@@ -121,7 +135,7 @@ function Tip({ label }) {
   );
 }
 
-function Item({ to, label, icon, badge, onNavigate, collapsed, end }) {
+function Item({ to, label, icon, badge, dot, onNavigate, collapsed, end }) {
   return (
     <NavLink
       to={to}
@@ -141,15 +155,21 @@ function Item({ to, label, icon, badge, onNavigate, collapsed, end }) {
     >
       {({ isActive }) => (
         <>
-          <svg
-            className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-[#e9d200]" : "text-muted dark:text-[#a0a0b0] group-hover:text-body dark:group-hover:text-[#d0d0dd]"}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.8}
-          >
-            {icon}
-          </svg>
+          <span className="relative shrink-0">
+            <svg
+              className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-[#e9d200]" : "text-muted dark:text-[#a0a0b0] group-hover:text-body dark:group-hover:text-[#d0d0dd]"}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.8}
+            >
+              {icon}
+            </svg>
+            {/* Collapsed: dot sits on the icon (no label to sit beside). */}
+            {dot && collapsed && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-[#1a1a24]" />
+            )}
+          </span>
           <span
             className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${
               collapsed
@@ -159,6 +179,10 @@ function Item({ to, label, icon, badge, onNavigate, collapsed, end }) {
           >
             {label}
           </span>
+          {/* Expanded: dot sits at the end of the row. */}
+          {dot && !collapsed && (
+            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+          )}
           {badge && !collapsed && (
             <span
               className={`text-[9px] font-bold rounded-full px-1.5 py-0.5 uppercase tracking-wide ${isActive ? "bg-brand text-dark" : "bg-brand/30 text-dark"}`}
@@ -188,6 +212,49 @@ function SectionLabel({ children, collapsed }) {
 export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
   const { isAdmin, isManager, isConsultant } = useAuth();
   const { t } = useLanguage();
+  const location = useLocation();
+  const [newTask, setNewTask] = useState(false);
+  const [newNews, setNewNews] = useState(false);
+
+  // Lightweight nav badges: a red dot on "My tasks" when a task is still Pending
+  // (assigned, not yet started), and on "News" when the JORT feed has activity newer
+  // than what the user last viewed. Poll on an interval and re-check on navigation
+  // (so opening either page clears its dot). Failures are silent — badges are cosmetic.
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      if (isConsultant) {
+        try {
+          const { data: res } = await taskService.mine();
+          if (alive)
+            setNewTask((res.data || []).some((x) => x.status === "Pending"));
+        } catch {
+          /* ignore */
+        }
+      }
+      try {
+        const { data: res } = await jortService.activities(20);
+        const newest = (res.data || []).reduce(
+          (max, a) => (a?.date && a.date > max ? a.date : max),
+          "",
+        );
+        const seen = localStorage.getItem(NEWS_SEEN_KEY) || "";
+        if (alive) setNewNews(Boolean(newest) && newest > seen);
+      } catch {
+        /* ignore */
+      }
+    };
+    check();
+    const id = setInterval(check, BADGE_POLL_MS);
+    const onSeen = () => setNewNews(false);
+    window.addEventListener("news-seen", onSeen);
+    return () => {
+      alive = false;
+      clearInterval(id);
+      window.removeEventListener("news-seen", onSeen);
+    };
+  }, [isConsultant, location.pathname]);
+
   return (
     <div className="h-full flex flex-col overflow-visible">
       <div
@@ -311,11 +378,20 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
               onNavigate={onNavigate}
               collapsed={collapsed}
             />
+            <Item
+              to="/app/news"
+              label={t("sidebar.news")}
+              icon={ICONS.news}
+              dot={newNews}
+              onNavigate={onNavigate}
+              collapsed={collapsed}
+            />
             {isConsultant && (
               <Item
                 to="/app/tasks"
                 label={t("sidebar.tasks")}
                 icon={ICONS.tasks}
+                dot={newTask}
                 onNavigate={onNavigate}
                 collapsed={collapsed}
               />

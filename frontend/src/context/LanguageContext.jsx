@@ -336,6 +336,8 @@ const STRINGS = {
 
     // Sidebar (rôles)
     "sidebar.tasks": "Mes tâches",
+    "sidebar.news": "Actualités",
+    "news.subtitle": "Dernières publications du Journal Officiel",
     "sidebar.management": "Management",
     "sidebar.consultants": "Consultants",
     "sidebar.adminOverview": "Vue d'ensemble",
@@ -882,6 +884,8 @@ const STRINGS = {
 
     // Sidebar (roles)
     "sidebar.tasks": "My tasks",
+    "sidebar.news": "News",
+    "news.subtitle": "Latest Official Gazette publications",
     "sidebar.management": "Management",
     "sidebar.consultants": "Consultants",
     "sidebar.adminOverview": "Overview",
