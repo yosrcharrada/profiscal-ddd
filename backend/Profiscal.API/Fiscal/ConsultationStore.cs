@@ -83,6 +83,34 @@ public sealed class ConsultationStore(AppDbContext db)
     public Task<FiscalConsultation?> GetAsync(Guid id, CancellationToken ct = default) =>
         db.FiscalConsultations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
 
+    /// <summary>Rename a consultation (its display/client name). Owner-only unless admin.</summary>
+    public async Task<bool> RenameAsync(Guid id, string clientName, Guid? requesterId, bool isAdmin, CancellationToken ct = default)
+    {
+        var row = await db.FiscalConsultations.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (row is null) return false;
+        if (!isAdmin && row.OwnerUserId != requesterId) return false;
+        row.ClientName = clientName;
+        row.UpdatedAt  = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    /// <summary>Delete a consultation. Owner-only unless admin. Unlinks any task pointing at it.</summary>
+    public async Task<bool> DeleteAsync(Guid id, Guid? requesterId, bool isAdmin, CancellationToken ct = default)
+    {
+        var row = await db.FiscalConsultations.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (row is null) return false;
+        if (!isAdmin && row.OwnerUserId != requesterId) return false;
+
+        // Detach tasks that reference this consultation so the FK doesn't block the delete.
+        await db.WorkTasks.Where(t => t.ConsultationId == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(t => t.ConsultationId, (Guid?)null), ct);
+
+        db.FiscalConsultations.Remove(row);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     public ConsultationOutput? DeserializeOutput(FiscalConsultation row)
     {
         try { return JsonSerializer.Deserialize<ConsultationOutput>(row.OutputJson, Json); }

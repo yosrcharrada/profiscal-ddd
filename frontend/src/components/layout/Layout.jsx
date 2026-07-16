@@ -159,7 +159,12 @@ export default function Layout() {
   const isSearch = pathname === "/app/search";
   const isConsultations = pathname.startsWith("/app/consultations");
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
-  const fullBleed = isChat || isSearch || isConsultations || isAdmin;
+  const isConsultantsMgr = pathname.startsWith("/manager/consultants");
+  const isSupport = pathname.startsWith("/app/support");
+  const isNews = pathname.startsWith("/app/news");
+  const fullBleed =
+    isChat || isSearch || isConsultations || isAdmin || isConsultantsMgr ||
+    isSupport || isNews;
   const hideBubble = fullBleed;
 
   return (
@@ -228,8 +233,8 @@ export default function Layout() {
               <Outlet />
             </div>
           ) : (
-            <div className="h-full bg-white rounded-2xl border-border/90 border shadow-sm overflow-y-auto">
-              <div className="mx-auto w-full px-6 lg:px-6 pb-6 pt-9 max-w-[1100px]">
+            <div className="h-full bg-white rounded-2xl border-border/90 border shadow-sm overflow-y-auto overflow-x-hidden">
+              <div className="mx-auto w-full px-6 lg:px-6 pb-6 pt-9 max-w-[1200px]">
                 <Outlet />
               </div>
             </div>

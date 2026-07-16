@@ -119,20 +119,37 @@ function groupLabel(ts, t) {
   return t("chat.older");
 }
 
-function ConversationItem({ conv, active, onSelect, onDelete, t }) {
+function ConversationItem({ conv, active, onSelect, onDelete, onRename, t }) {
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(conv.title);
+  const inputRef = useRef();
   useEffect(() => {
     if (!confirming) return;
     const timer = setTimeout(() => setConfirming(false), 2500);
     return () => clearTimeout(timer);
   }, [confirming]);
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const next = title.trim();
+    if (next && next !== conv.title) onRename?.(conv.id, next);
+    else setTitle(conv.title);
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(conv.id)}
+      onClick={() => !editing && onSelect(conv.id)}
       onKeyDown={(e) => {
-        if (e.key === "Enter") onSelect(conv.id);
+        if (e.key === "Enter" && !editing) onSelect(conv.id);
       }}
       className={`group relative w-full text-left rounded-xl px-3 py-2.5 cursor-pointer transition-all duration-200 ${
         active
@@ -155,11 +172,38 @@ function ConversationItem({ conv, active, onSelect, onDelete, t }) {
           />
         </svg>
         <div className="flex-1 min-w-0">
-          <p
-            className={`text-[13px] font-medium leading-snug truncate ${active ? "text-dark font-semibold" : "text-dark"}`}
-          >
-            {conv.title}
-          </p>
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={commit}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") commit();
+                if (e.key === "Escape") {
+                  setTitle(conv.title);
+                  setEditing(false);
+                }
+              }}
+              className="w-full bg-white border border-brand rounded-md px-1.5 py-0.5 text-[13px] font-medium text-dark focus:outline-none focus:ring-2 focus:ring-brand/50"
+            />
+          ) : (
+            <p
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (onRename) {
+                  setTitle(conv.title);
+                  setEditing(true);
+                }
+              }}
+              title={t("chat.renameHint")}
+              className={`text-[13px] font-medium leading-snug truncate ${active ? "text-dark font-semibold" : "text-dark"}`}
+            >
+              {conv.title}
+            </p>
+          )}
           <p
             className={`text-[11px] mt-0.5 ${active ? "text-body" : "text-muted"}`}
           >
@@ -203,6 +247,7 @@ function HistoryPanel({
   onSelect,
   onNew,
   onDelete,
+  onRename,
   onClose,
   t,
 }) {
@@ -276,6 +321,7 @@ function HistoryPanel({
                   active={c.id === activeId}
                   onSelect={onSelect}
                   onDelete={onDelete}
+                  onRename={onRename}
                   t={t}
                 />
               ))}
@@ -428,7 +474,7 @@ function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, t }) {
 export default function Chat() {
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { conversations, create, update, remove } = useChatHistory();
+  const { conversations, create, update, remove, rename } = useChatHistory();
   const [activeId, setActiveId] = useState(null);
   const [openTabs, setOpenTabs] = useState([]);
   const [input, setInput] = useState("");
@@ -448,7 +494,7 @@ export default function Chat() {
   }, [histOpen]);
 
   const active = conversations.find((c) => c.id === activeId);
-  const messages = active?.messages || [];
+  const messages = useMemo(() => active?.messages || [], [active]);
   const empty = messages.length === 0;
 
   const allSources = useMemo(() => {
@@ -586,6 +632,14 @@ export default function Chat() {
     }
   };
 
+  const renameConversation = (id, title) => {
+    rename(id, title);
+    // Keep any open tab label in sync with the new name.
+    setOpenTabs((prev) =>
+      prev.map((tab) => (tab.id === id ? { ...tab, title } : tab)),
+    );
+  };
+
   const openSource = (sources) => (i) => {
     const list = (sources || []).map((s, j) => normalizeSource(s, j + 1));
     setViewList(list);
@@ -607,6 +661,7 @@ export default function Chat() {
             onSelect={selectConversation}
             onNew={newConversation}
             onDelete={deleteConversation}
+            onRename={renameConversation}
             t={t}
           />
         </div>
@@ -626,6 +681,7 @@ export default function Chat() {
               onSelect={selectConversation}
               onNew={newConversation}
               onDelete={deleteConversation}
+              onRename={renameConversation}
               onClose={() => setMobileHist(false)}
               t={t}
             />

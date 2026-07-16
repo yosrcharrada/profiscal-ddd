@@ -9,8 +9,11 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminReclamations from './pages/admin/AdminReclamations';
 import AdminActivity from './pages/admin/AdminActivity';
 import AdminKnowledge from './pages/admin/AdminKnowledge';
+import ManagerConsultantsShell from './pages/manager/ManagerConsultantsShell';
 import Consultants from './pages/manager/Consultants';
 import ConsultantDetail from './pages/manager/ConsultantDetail';
+import ManagerTasks from './pages/manager/ManagerTasks';
+import ConsultationView from './pages/fiscal/ConsultationView';
 import MyTasks from './pages/tasks/MyTasks';
 import Support from './pages/Support';
 import ChangePassword from './pages/ChangePassword';
@@ -48,9 +51,15 @@ function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/settings/password" element={<ChangePassword />} />
 
-            {/* Manager space */}
-            <Route path="/manager/consultants" element={<ProtectedRoute roles={['Manager', 'Admin']}><Consultants /></ProtectedRoute>} />
-            <Route path="/manager/consultants/:id" element={<ProtectedRoute roles={['Manager', 'Admin']}><ConsultantDetail /></ProtectedRoute>} />
+            {/* Manager space — Chrome-tab shell with a fixed Consultants tab
+                and a closeable onglet per opened consultant. */}
+            <Route path="/manager/consultants" element={<ProtectedRoute roles={['Manager', 'Admin']}><ManagerConsultantsShell /></ProtectedRoute>}>
+              <Route index element={<Consultants />} />
+              <Route path=":id" element={<ConsultantDetail />} />
+            </Route>
+
+            {/* Manager task board — all assigned tasks in one filterable table. */}
+            <Route path="/manager/tasks" element={<ProtectedRoute roles={['Manager', 'Admin']}><ManagerTasks /></ProtectedRoute>} />
 
             {/* Admin space */}
             <Route path="/admin" element={<ProtectedRoute roles={['Admin']}><AdminOverview /></ProtectedRoute>} />
@@ -59,6 +68,10 @@ function App() {
             <Route path="/admin/activity" element={<ProtectedRoute roles={['Admin']}><AdminActivity /></ProtectedRoute>} />
             <Route path="/admin/knowledge" element={<ProtectedRoute roles={['Admin']}><AdminKnowledge /></ProtectedRoute>} />
           </Route>
+          {/* Standalone read-only document render — opened in a NEW browser tab
+              from the manager Tasks board (validate + export live in its header). */}
+          <Route path="/view/consultations/:id" element={<ProtectedRoute><ConsultationView /></ProtectedRoute>} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
         </ToastProvider>

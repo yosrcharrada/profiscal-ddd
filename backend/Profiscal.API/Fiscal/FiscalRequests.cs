@@ -47,6 +47,12 @@ public sealed class RateApiRequest
     public string? Comment        { get; set; }
 }
 
+public sealed class RenameConsultationApiRequest
+{
+    /// <summary>New display name for the consultation (shown in histories/rails).</summary>
+    public string ClientName { get; set; } = "";
+}
+
 public sealed class ExportApiRequest
 {
     public string?             Reference     { get; set; }

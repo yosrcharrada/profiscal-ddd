@@ -31,6 +31,8 @@ public class TasksController(
 
     private bool IsManager => User.IsInRole("Manager") || User.IsInRole("Admin");
 
+    private bool IsAdminRole => User.IsInRole("Admin");
+
     // ───────────────────────── MANAGER SIDE ─────────────────────────
 
     /// <summary>Create a task for one of my consultants, optionally inviting collaborators by email.</summary>
@@ -71,6 +73,12 @@ public class TasksController(
 
         db.WorkTasks.Add(task);
         await db.SaveChangesAsync(ct);
+
+        // Tell the consultant (and any collaborators) they have new work.
+        Notify(consultant.Id, "Nouvelle tâche assignée", task.Title, "/app/tasks");
+        foreach (var c in task.Collaborators)
+            Notify(c.UserId, "Nouvelle tâche (collaboration)", task.Title, "/app/tasks");
+
         await AuditAsync(consultant.Id, consultant.Email!, AuthEvent.TaskAssigned,
             $"\"{task.Title}\" by manager {CurrentUserId}", ct);
 
@@ -78,13 +86,18 @@ public class TasksController(
         return Ok(ApiResponse<object>.Ok(new { task = ToDto(created!), skippedCollaborators = skipped }));
     }
 
-    /// <summary>Tasks I assigned (manager view), newest first. Filter by consultant and status.</summary>
+    /// <summary>
+    /// Tasks I assigned (manager view), newest first. Admins see every task on the
+    /// platform. Filter by consultant and status.
+    /// </summary>
     [HttpGet("assigned")]
     [Authorize(Roles = "Manager,Admin")]
     public async Task<IActionResult> Assigned(
         [FromQuery] Guid? consultantId, [FromQuery] string? status, CancellationToken ct)
     {
-        var query = TaskQuery().Where(t => t.ManagerId == CurrentUserId);
+        var query = User.IsInRole("Admin")
+            ? TaskQuery()
+            : TaskQuery().Where(t => t.ManagerId == CurrentUserId);
         if (consultantId is not null) query = query.Where(t => t.ConsultantId == consultantId);
         if (Enum.TryParse<WorkTaskStatus>(status, true, out var s)) query = query.Where(t => t.Status == s);
 
@@ -172,13 +185,14 @@ public class TasksController(
     public async Task<IActionResult> Approve(Guid id, CancellationToken ct)
     {
         var task = await LoadTaskAsync(id, ct);
-        if (task is null || task.ManagerId != CurrentUserId)
+        if (task is null || (!IsAdminRole && task.ManagerId != CurrentUserId))
             return NotFound(ApiResponse<object>.Fail("Task not found."));
         if (task.Status != WorkTaskStatus.Submitted)
             return BadRequest(ApiResponse<object>.Fail("Only submitted tasks can be approved."));
 
         task.Status = WorkTaskStatus.Approved;
         task.ApprovedAt = DateTime.UtcNow;
+        Notify(task.ConsultantId, "Tâche validée ✓", task.Title, "/app/tasks");
         await db.SaveChangesAsync(ct);
         return Ok(ApiResponse<object>.Ok(ToDto(task)));
     }
@@ -189,12 +203,13 @@ public class TasksController(
     public async Task<IActionResult> Reopen(Guid id, CancellationToken ct)
     {
         var task = await LoadTaskAsync(id, ct);
-        if (task is null || task.ManagerId != CurrentUserId)
+        if (task is null || (!IsAdminRole && task.ManagerId != CurrentUserId))
             return NotFound(ApiResponse<object>.Fail("Task not found."));
 
         task.Status = WorkTaskStatus.InProgress;
         task.SubmittedAt = null;
         task.ApprovedAt = null;
+        Notify(task.ConsultantId, "Tâche renvoyée pour révision", task.Title, "/app/tasks");
         await db.SaveChangesAsync(ct);
         return Ok(ApiResponse<object>.Ok(ToDto(task)));
     }
@@ -204,7 +219,8 @@ public class TasksController(
     [Authorize(Roles = "Manager,Admin")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        var task = await db.WorkTasks.FirstOrDefaultAsync(t => t.Id == id && t.ManagerId == CurrentUserId, ct);
+        var task = await db.WorkTasks.FirstOrDefaultAsync(
+            t => t.Id == id && (IsAdminRole || t.ManagerId == CurrentUserId), ct);
         if (task is null) return NotFound(ApiResponse<object>.Fail("Task not found."));
         if (task.Status is WorkTaskStatus.Submitted or WorkTaskStatus.Approved)
             return BadRequest(ApiResponse<object>.Fail("Submitted work can't be deleted."));
@@ -231,6 +247,18 @@ public class TasksController(
 
         task.Collaborators.Add(new WorkTaskCollaborator { WorkTaskId = task.Id, UserId = user.Id, User = user });
         await db.SaveChangesAsync(ct);
+        return Ok(ApiResponse<object>.Ok(ToDto(task)));
+    }
+
+    /// <summary>One task, visible to its manager, consultant or collaborators (document-view page).</summary>
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetOne(Guid id, CancellationToken ct)
+    {
+        var me = CurrentUserId;
+        var task = await TaskQuery().FirstOrDefaultAsync(
+            t => t.Id == id && (t.ManagerId == me || t.ConsultantId == me ||
+                                t.Collaborators.Any(c => c.UserId == me) || User.IsInRole("Admin")), ct);
+        if (task is null) return NotFound(ApiResponse<object>.Fail("Task not found."));
         return Ok(ApiResponse<object>.Ok(ToDto(task)));
     }
 
@@ -285,6 +313,10 @@ public class TasksController(
         task.Status         = WorkTaskStatus.Submitted;
         task.SubmittedAt    = DateTime.UtcNow;
         task.StartedAt    ??= task.SubmittedAt;
+
+        // Ping the manager that work is ready for validation.
+        Notify(task.ManagerId, "Tâche soumise pour validation", task.Title,
+            $"/manager/consultants/{task.ConsultantId}");
         await db.SaveChangesAsync(ct);
 
         var me = await db.Users.FindAsync([CurrentUserId], ct);
@@ -346,6 +378,17 @@ public class TasksController(
             }),
         };
     }
+
+    /// <summary>Queue an in-app notification (saved with the caller's next SaveChanges).</summary>
+    private void Notify(Guid recipientId, string title, string body, string? link) =>
+        db.Notifications.Add(new Notification
+        {
+            RecipientId = recipientId,
+            Type        = "task",
+            Title       = title,
+            Body        = body,
+            LinkUrl     = link
+        });
 
     private async Task AuditAsync(Guid? userId, string email, AuthEvent evt, string? detail, CancellationToken ct)
     {

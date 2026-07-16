@@ -16,6 +16,10 @@ namespace Profiscal.Infrastructure.Services;
 /// separated) that receive a BCC copy of EVERY credentials email, so an administrator
 /// always gets the new account's email + temporary password regardless of who the new
 /// user is. BCC (not To/CC) so the new user never sees the admin copy. Empty = no copy.
+///
+/// Smtp:OverrideTo (optional, TESTING) — when set, EVERY credentials email is delivered
+/// to this address instead of the new user's real inbox (the body still shows the real
+/// account email). Lets an admin verify the email flow without spamming real users.
 /// </summary>
 public class SmtpEmailService(IConfiguration config, ILogger<SmtpEmailService> logger) : IEmailService
 {
@@ -57,7 +61,13 @@ public class SmtpEmailService(IConfiguration config, ILogger<SmtpEmailService> l
                 Body = BuildBody(fullName, toEmail, role, temporaryPassword, appUrl),
                 IsBodyHtml = true
             };
-            message.To.Add(toEmail);
+
+            // Testing hook: redirect delivery while keeping the real account email in the body.
+            var overrideTo = config["Smtp:OverrideTo"];
+            var deliverTo  = string.IsNullOrWhiteSpace(overrideTo) ? toEmail : overrideTo.Trim();
+            message.To.Add(deliverTo);
+            if (deliverTo != toEmail)
+                logger.LogInformation("Smtp:OverrideTo active — credentials email for {Email} delivered to {Override}.", toEmail, deliverTo);
 
             // Optional admin copy: BCC every credentials email to the configured address(es), so an
             // administrator always receives the new account's email + password. BCC keeps it invisible

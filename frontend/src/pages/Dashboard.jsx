@@ -5,6 +5,8 @@ import { useLanguage } from "../context/LanguageContext";
 import useSystemHealth from "../hooks/useSystemHealth";
 import fiscalService from "../services/fiscalService";
 import { jortService } from "../services/authService";
+import HeroBanner from "../components/common/HeroBanner";
+import { openLiveJort } from "./news/News";
 
 const fmtDate = (d, lang) =>
   d
@@ -467,10 +469,8 @@ function JortFeed({ t, lang, isAdmin }) {
               {refreshing ? t("jort.refreshing") : t("jort.refresh")}
             </button>
           )}
-          <a
-            href="http://www.iort.gov.tn"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            to="/app/news"
             className="text-[11px] font-semibold text-muted hover:text-dark flex items-center gap-0.5 transition-colors"
           >
             {t("jort.seeAll")}
@@ -484,10 +484,10 @@ function JortFeed({ t, lang, isAdmin }) {
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
+                d="M8.25 4.5l7.5 7.5-7.5 7.5"
               />
             </svg>
-          </a>
+          </Link>
         </div>
       </div>
       <div className="divide-y divide-border/30">
@@ -507,12 +507,10 @@ function JortFeed({ t, lang, isAdmin }) {
           </p>
         )}
         {items?.map((item) => (
-          <a
+          <button
             key={item.id}
-            href="http://www.iort.gov.tn"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-start gap-2.5 px-4 py-3 hover:bg-light/40 transition-colors group"
+            onClick={() => openLiveJort("latest")}
+            className="w-full text-left flex items-start gap-2.5 px-4 py-3 hover:bg-light/40 transition-colors group"
           >
             <span
               className="mt-1.5 w-2 h-2 rounded-full shrink-0"
@@ -545,7 +543,7 @@ function JortFeed({ t, lang, isAdmin }) {
                 )}
               </div>
             </div>
-          </a>
+          </button>
         ))}
       </div>
     </div>
@@ -605,45 +603,55 @@ export default function Dashboard() {
     : null;
 
   return (
-    <div className="animate-fade-up space-y-4">
-      {/* greeting */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-extrabold text-dark tracking-tight pb-1">
-            {greeting()}, {user?.firstName}
-          </h1>
-          <p className="text-[14px] text-muted mt-0.5 pb-2">
-            {t("dashboard.subtitle")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/app/chat"
-            className="text-[12px] font-semibold text-body border border-border hover:border-brand/50 hover:bg-brand/5 rounded-lg px-3 py-2 transition-all"
-          >
-            {t("dashboard.askQuestion")}
-          </Link>
-          <Link
-            to="/app/consultations?new=1"
-            className="bg-brand text-black text-[12px] font-bold rounded-lg px-3.5 py-2 hover:shadow-lg hover:bg-black/60 hover:text-white transition-all flex items-center gap-1.5"
-          >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2.4}
+    <div className="animate-fade-up space-y-4 max-w-full overflow-x-hidden">
+      {/* greeting — hero box with the primary actions inside */}
+      <HeroBanner
+        greeting={greeting()}
+        name={user?.firstName}
+        subtitle={t("dashboard.subtitle")}
+        actions={
+          <>
+            <Link
+              to="/app/chat"
+              className="flex items-center gap-1.5 text-[12px] font-bold text-dark bg-white/80 dark:bg-white/10 border border-dark/15 dark:border-white/15 backdrop-blur rounded-xl px-3.5 py-2.5 hover:border-brand hover:bg-brand/20 hover:-translate-y-0.5 transition-all shadow-sm"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 4.5v15m7.5-7.5h-15"
-              />
-            </svg>
-            {t("dashboard.newConsultation")}
-          </Link>
-        </div>
-      </div>
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
+                />
+              </svg>
+              {t("dashboard.askQuestion")}
+            </Link>
+            <Link
+              to="/app/consultations?new=1"
+              className="flex items-center gap-1.5 bg-dark text-brand text-[12px] font-bold rounded-xl px-4 py-2.5 hover:shadow-xl hover:shadow-dark/25 hover:-translate-y-0.5 transition-all"
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.4}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 4.5v15m7.5-7.5h-15"
+                />
+              </svg>
+              {t("dashboard.newConsultation")}
+            </Link>
+          </>
+        }
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
