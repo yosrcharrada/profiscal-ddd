@@ -38,12 +38,19 @@ public sealed class ChatQueryHandler(
     IBranchDetector branchDetector,
     ICountryDetector countryDetector,
     IKeywordExtractor keywordExtractor,
+    IRuleBasedRetrieval ruleRetrieval,
     IFiscalGuardrails guardrails,
     ILogger<ChatQueryHandler> logger)
     : IRequestHandler<ChatQuery, ChatResponseDto>
 {
     private const int MaxPlanningRounds = 2;
     private const int MaxSources        = 10;
+    // Per-source character caps for the answer prompt. A rate-bearing article must arrive whole
+    // or its rate lines — which sit at the END of the menu — are cut off (see BuildAnswerPrompt).
+    // Mirrors the consultation writer's 15 000; worst case here is 10 sources, but only the rate
+    // articles reach the high cap and gpt-4o's window absorbs it.
+    private const int RateChars         = 15000;
+    private const int PlainChars        = 1500;
     // Minimum-quality bar for the accumulated source set before we let the agent answer. The chat
     // pipeline has no Completeness node (the consultation workflow does), so a planner round that
     // returns 1-2 weak/tangential chunks used to sail straight through. Below this count — or when
@@ -280,7 +287,20 @@ public sealed class ChatQueryHandler(
         {
             var s       = sources[i];
             var txt     = s.Text ?? "";
-            var preview = txt.Length > 600 ? txt[..600] + "…" : txt;
+            // Retrieval hands back ONE coalesced entry per article (all parts merged), so a
+            // rate-bearing article arrives whole — the CIRPPIS Art.52 rate menu alone is ~13 200
+            // chars, and its lines are ordered general-first: « 3% … honoraires servis aux PM
+            // soumises à l'IS » sits near char 12 000 and « 1% … bénéfices soumis à l'IS au taux
+            // de 20% » after it. A flat 600-char cap therefore truncated every article to its
+            // heading — "ARTICLE 52 : … font l'objet d'une retenue à la source aux taux suivants :"
+            // — and cut away every rate below it. The chatbot then answered NON DOCUMENTÉ to
+            // "quel est le taux de RS sur les honoraires ?", correctly, about the text it was
+            // shown. Same failure the consultation writer hit at an 8 600 cap; it caps
+            // rate-bearing sources at 15 000 for exactly this reason, so mirror that here.
+            var rateBearing = txt.Contains('%') ||
+                              txt.Contains("taux", StringComparison.OrdinalIgnoreCase);
+            var cap     = rateBearing ? RateChars : PlainChars;
+            var preview = txt.Length > cap ? txt[..cap] + "…" : txt;
             srcBlock.AppendLine($"[Source {i + 1}] {s.Category} — {s.DocName} {s.ArticleRef}".TrimEnd());
             srcBlock.AppendLine(preview);
             srcBlock.AppendLine();
@@ -362,10 +382,56 @@ public sealed class ChatQueryHandler(
         var branches            = branchDetector.Detect(query, "");
         var (keywords, entities)= keywordExtractor.Extract(query, "");
         var (countries, isIntl) = countryDetector.Detect(query);
-        var src = await retrieval.RetrieveSourcesAsync(
+
+        // The rule-based policy and the generic keyword/graph search answer different questions.
+        // The policy is the "fiscal routing map": for a domestic service-fee branch it PINS
+        // CIRPPIS Art.52 + NC 3/2015 by anchor phrase, which is the only reliable way to land on
+        // the rate article — the generic search ranks by keyword overlap and, on "quel taux de RS
+        // sur les honoraires ?", returned Art.51 sexies and Art.2 while never surfacing Art.52 at
+        // all. The consultation handler has always called the policy; the chat never did, which is
+        // precisely why it answered NON DOCUMENTÉ to questions the engine answers correctly —
+        // the very failure IRuleBasedRetrieval's own summary says it exists to prevent.
+        // Policy hits go FIRST so they survive the MaxSources cut.
+        var ruleSources = new List<LegalSourceDto>();
+        try
+        {
+            ruleSources = await ruleRetrieval.RetrieveAsync(
+                new RuleContext(branches, isIntl, countries, query, ""), ct);
+        }
+        catch (Exception ex)
+        {
+            // The policy is an enhancement, not a precondition: keep the generic search on failure.
+            logger.LogWarning(ex, "│  [CHAT-AGENT] rule-based retrieval failed — generic search only");
+        }
+
+        var generic = await retrieval.RetrieveSourcesAsync(
             keywords, entities, countries, isIntl, branches,
             new List<LegalSourceDto>(), maxResults: 12, ct);
-        return src.Select(ToChunk).ToList();
+
+        // De-dupe on the chunk, keeping the policy's copy when both fire.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var merged = new List<LegalSourceDto>();
+        foreach (var s in ruleSources.Concat(generic))
+        {
+            var key = $"{s.DocName}|{s.ArticleRef}|{s.ChunkId}";
+            if (seen.Add(key)) merged.Add(s);
+        }
+
+        // Merge the paragraph-PARTS of each article into one source, exactly as the consultation
+        // graph does before its writer sees them. The graph stores an article as ~37 parts and part 1
+        // is only the heading ("ARTICLE 52 : … aux taux suivants :") — every rate lives in a later
+        // part. Without this the chat ranked 71 individual parts by score, kept the top 10, and the
+        // rate parts never survived the cut, so the answer was NON DOCUMENTÉ while Art.52 was
+        // nominally "retrieved". Coalescing restores "1 article = 1 slot" and hands the whole rate
+        // menu to the answer prompt as a single source.
+        Consultation.Orchestration.ConsultationWorkflow.CoalesceArticleParts(merged);
+
+        if (ruleSources.Count > 0)
+            logger.LogInformation("│  [CHAT-AGENT] rule-based policy pinned {N} part(s) → {M} coalesced source(s): {Arts}",
+                ruleSources.Count, merged.Count,
+                string.Join(", ", merged.Select(s => s.ArticleRef).Where(a => a.Length > 0).Take(6)));
+
+        return merged.Select(ToChunk).ToList();
     }
 
     private static SourceChunkDto ToChunk(LegalSourceDto s) => new()
