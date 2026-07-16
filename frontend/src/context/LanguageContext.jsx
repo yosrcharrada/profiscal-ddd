@@ -84,9 +84,11 @@ const STRINGS = {
     "chat.hoursAgo": "il y a {n} h",
     "chat.exchange": "échange",
     "chat.exchanges": "échanges",
-    "chat.confirmDelete": "Confirmer la suppression",
     "chat.deleteConversation": "Supprimer la conversation",
-    "chat.clickToConfirm": "Cliquez pour confirmer",
+    "chat.deleteConfirmTitle": "Supprimer cette conversation ?",
+    "chat.deleteConfirmBody": "« {title} » et tous ses messages seront définitivement supprimés. Cette action est irréversible.",
+    "chat.deleteConfirmAction": "Supprimer",
+    "common.cancel": "Annuler",
     "chat.greeting": "une question fiscale ?",
     "chat.greetingDesc":
       "Chaque réponse est fondée sur le corpus juridique tunisien — et cite ses sources, consultables en un clic.",
@@ -117,6 +119,9 @@ const STRINGS = {
     // Search page
     "search.lawTab": "Textes de loi",
     "search.consultationsTab": "Consultations",
+    "search.viewPdf": "Voir le PDF",
+    "search.pdfUnavailable": "PDF source indisponible sur cet environnement.",
+    "search.pdfPopupBlocked": "Fenêtre bloquée — autorisez les pop-ups pour ouvrir le PDF.",
     "search.filters": "Filtres",
     "search.clearAll": "Tout effacer",
     "search.textType": "Type de texte",
@@ -152,9 +157,6 @@ const STRINGS = {
     "search.doctrine": "Doctrine",
     "search.commentaires": "Commentaires",
     "search.searchFailed": "La recherche a échoué — vérifiez la connexion du moteur.",
-    "search.viewPdf": "Voir le PDF",
-    "search.pdfUnavailable": "PDF source indisponible sur cet environnement.",
-    "search.pdfPopupBlocked": "Fenêtre bloquée — autorisez les pop-ups pour ouvrir le PDF.",
 
     // Consultations page
     "cons.newConsultation": "Nouvelle consultation",
@@ -337,7 +339,7 @@ const STRINGS = {
     // Sidebar (rôles)
     "sidebar.tasks": "Mes tâches",
     "sidebar.news": "Actualités",
-    "news.subtitle": "Dernières publications du Journal Officiel",
+    "news.subtitle": "Dernier paru — lois, décrets, arrêtés et avis (iort.gov.tn)",
     "sidebar.management": "Management",
     "sidebar.consultants": "Consultants",
     "sidebar.adminOverview": "Vue d'ensemble",
@@ -554,6 +556,79 @@ const STRINGS = {
     "support.pending": "En attente",
     "support.resolved": "Résolue",
     "support.teamReply": "Réponse de l'équipe",
+    "support.tabHome": "Support",
+    "support.awaitingReply": "En attente de la réponse de l'équipe…",
+
+    // Sidebar — manager tasks
+    "sidebar.managerTasks": "Tâches",
+
+    // Consultation generation (new pipeline view)
+    "cons.genDone": "Consultation prête ✓",
+    "cons.genDoneHint": "Ouverture de l'éditeur…",
+    "cons.generatingDoc": "Rédaction du mémo en cours…",
+    "cons.genStayHint": "Vous pouvez rester sur cette page — le document s'ouvrira automatiquement dès qu'il est prêt.",
+    "cons.prefilledFromTask": "Formulaire pré-rempli depuis la tâche assignée",
+    "cons.renamed": "Consultation renommée.",
+    "cons.renameFailed": "Échec du renommage.",
+    "cons.deleted": "Consultation supprimée.",
+    "cons.deleteFailed": "Échec de la suppression.",
+
+    // Chat history rename
+    "chat.renameHint": "Double-clic pour renommer",
+
+    // Manager team list view
+    "manager.team.colConsultant": "Consultant",
+    "manager.team.viewGrid": "Grille",
+    "manager.team.viewList": "Liste",
+
+    // Manager task board
+    "manager.tasks.title": "Tâches",
+    "manager.tasks.subtitle": "Toutes les tâches assignées — filtrez par statut, ouvrez le livrable, validez et exportez.",
+    "manager.tasks.searchPh": "Rechercher une tâche…",
+    "manager.tasks.all": "Toutes",
+    "manager.tasks.emptyTitle": "Aucune tâche",
+    "manager.tasks.emptyHint": "Assignez une tâche à un consultant depuis l'espace Consultants.",
+    "manager.tasks.colTask": "Tâche",
+    "manager.tasks.colConsultant": "Consultant",
+    "manager.tasks.colStatus": "Statut",
+    "manager.tasks.colActions": "Actions",
+    "manager.tasks.openDoc": "Voir le document",
+    "manager.tasks.openDocHint": "Ouvrir le document dans un nouvel onglet",
+
+    // Read-only document view (new tab)
+    "view.opening": "Ouverture du document…",
+    "view.loadFailed": "Impossible de charger la consultation.",
+    "view.validate": "Valider",
+    "view.validated": "Tâche validée — le document peut être exporté.",
+    "view.validateFailed": "Échec de la validation.",
+    "view.exportClient": "Exporter .docx",
+    "view.exportLocked": "Validez la tâche pour débloquer l'export client.",
+    "view.exportFailed": "Échec de l'export.",
+    "view.submittedBanner": "a soumis ce livrable pour validation.",
+
+    // News page
+    "news.all": "Tous",
+    "news.openOnIort": "Ouvrir sur iort.gov.tn (nouvel onglet)",
+    "news.tabFeed": "Journal Officiel",
+    "news.openDocHint": "Ouvrir le texte officiel (PDF)",
+    "news.pdfLoading": "Récupération du texte officiel…",
+    "news.pdfUnavailable": "PDF indisponible",
+    "news.pdfUnavailableHint":
+      "Ce texte n'est plus sur la page du dernier JORT paru — consultez-le directement sur le site officiel.",
+    "news.openOnIortBtn": "Ouvrir sur iort.gov.tn",
+
+    // JORT categories (French feed)
+    "jort.cat.Loi": "Loi",
+    "jort.cat.Decret": "Décret",
+    "jort.cat.Arrete": "Arrêté",
+    "jort.cat.Avis": "Avis",
+    "jort.cat.Decision": "Décision",
+    "jort.cat.Autre": "Texte",
+
+    // Admin users — delete
+    "admin.users.delete": "Supprimer",
+    "admin.users.deleteConfirm": "Confirmer ?",
+    "admin.users.new.emailInvalid": "Adresse email invalide.",
   },
   en: {
     // Sidebar
@@ -638,9 +713,11 @@ const STRINGS = {
     "chat.hoursAgo": "{n}h ago",
     "chat.exchange": "exchange",
     "chat.exchanges": "exchanges",
-    "chat.confirmDelete": "Confirm deletion",
     "chat.deleteConversation": "Delete conversation",
-    "chat.clickToConfirm": "Click to confirm",
+    "chat.deleteConfirmTitle": "Delete this conversation?",
+    "chat.deleteConfirmBody": "“{title}” and all its messages will be permanently deleted. This cannot be undone.",
+    "chat.deleteConfirmAction": "Delete",
+    "common.cancel": "Cancel",
     "chat.greeting": "a tax question?",
     "chat.greetingDesc":
       "Every answer is grounded in the Tunisian legal corpus — with clickable cited sources.",
@@ -668,6 +745,9 @@ const STRINGS = {
     // Search page
     "search.lawTab": "Legal texts",
     "search.consultationsTab": "Consultations",
+    "search.viewPdf": "View PDF",
+    "search.pdfUnavailable": "Source PDF unavailable on this environment.",
+    "search.pdfPopupBlocked": "Pop-up blocked — allow pop-ups to open the PDF.",
     "search.filters": "Filters",
     "search.clearAll": "Clear all",
     "search.textType": "Text type",
@@ -702,9 +782,6 @@ const STRINGS = {
     "search.doctrine": "Doctrine",
     "search.commentaires": "Comments",
     "search.searchFailed": "Search failed — check the engine connection.",
-    "search.viewPdf": "View PDF",
-    "search.pdfUnavailable": "Source PDF unavailable on this environment.",
-    "search.pdfPopupBlocked": "Pop-up blocked — allow pop-ups to open the PDF.",
 
     // Consultations page
     "cons.newConsultation": "New consultation",
@@ -887,7 +964,7 @@ const STRINGS = {
     // Sidebar (roles)
     "sidebar.tasks": "My tasks",
     "sidebar.news": "News",
-    "news.subtitle": "Latest Official Gazette publications",
+    "news.subtitle": "Latest issue — laws, decrees, orders and notices (iort.gov.tn)",
     "sidebar.management": "Management",
     "sidebar.consultants": "Consultants",
     "sidebar.adminOverview": "Overview",
@@ -1104,6 +1181,79 @@ const STRINGS = {
     "support.pending": "Pending",
     "support.resolved": "Resolved",
     "support.teamReply": "Team reply",
+    "support.tabHome": "Support",
+    "support.awaitingReply": "Awaiting the team's reply…",
+
+    // Sidebar — manager tasks
+    "sidebar.managerTasks": "Tasks",
+
+    // Consultation generation (new pipeline view)
+    "cons.genDone": "Consultation ready ✓",
+    "cons.genDoneHint": "Opening the editor…",
+    "cons.generatingDoc": "Writing the memo…",
+    "cons.genStayHint": "You can stay on this page — the document opens automatically as soon as it's ready.",
+    "cons.prefilledFromTask": "Form pre-filled from your assigned task",
+    "cons.renamed": "Consultation renamed.",
+    "cons.renameFailed": "Rename failed.",
+    "cons.deleted": "Consultation deleted.",
+    "cons.deleteFailed": "Delete failed.",
+
+    // Chat history rename
+    "chat.renameHint": "Double-click to rename",
+
+    // Manager team list view
+    "manager.team.colConsultant": "Consultant",
+    "manager.team.viewGrid": "Grid",
+    "manager.team.viewList": "List",
+
+    // Manager task board
+    "manager.tasks.title": "Tasks",
+    "manager.tasks.subtitle": "Every assigned task — filter by status, open the deliverable, validate and export.",
+    "manager.tasks.searchPh": "Search a task…",
+    "manager.tasks.all": "All",
+    "manager.tasks.emptyTitle": "No tasks",
+    "manager.tasks.emptyHint": "Assign a task to a consultant from the Consultants space.",
+    "manager.tasks.colTask": "Task",
+    "manager.tasks.colConsultant": "Consultant",
+    "manager.tasks.colStatus": "Status",
+    "manager.tasks.colActions": "Actions",
+    "manager.tasks.openDoc": "View document",
+    "manager.tasks.openDocHint": "Open the document in a new tab",
+
+    // Read-only document view (new tab)
+    "view.opening": "Opening the document…",
+    "view.loadFailed": "Couldn't load the consultation.",
+    "view.validate": "Validate",
+    "view.validated": "Task validated — the document can now be exported.",
+    "view.validateFailed": "Validation failed.",
+    "view.exportClient": "Export .docx",
+    "view.exportLocked": "Validate the task to unlock the client export.",
+    "view.exportFailed": "Export failed.",
+    "view.submittedBanner": "submitted this deliverable for validation.",
+
+    // News page
+    "news.all": "All",
+    "news.openOnIort": "Open on iort.gov.tn (new tab)",
+    "news.tabFeed": "Official Gazette",
+    "news.openDocHint": "Open the official text (PDF)",
+    "news.pdfLoading": "Fetching the official text…",
+    "news.pdfUnavailable": "PDF unavailable",
+    "news.pdfUnavailableHint":
+      "This text is no longer on the latest JORT page — read it directly on the official site.",
+    "news.openOnIortBtn": "Open on iort.gov.tn",
+
+    // JORT categories (French feed)
+    "jort.cat.Loi": "Law",
+    "jort.cat.Decret": "Decree",
+    "jort.cat.Arrete": "Order",
+    "jort.cat.Avis": "Notice",
+    "jort.cat.Decision": "Decision",
+    "jort.cat.Autre": "Text",
+
+    // Admin users — delete
+    "admin.users.delete": "Delete",
+    "admin.users.deleteConfirm": "Confirm?",
+    "admin.users.new.emailInvalid": "Invalid email address.",
   },
 };
 

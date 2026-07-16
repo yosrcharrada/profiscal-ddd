@@ -7,6 +7,22 @@ import ConsultationsRail from "../../components/fiscal/ConsultationsRail";
 
 const EASE = "ease-[cubic-bezier(.16,1,.3,1)]";
 
+/* Handed over by "Create consultation" on an assigned task (MyTasks) so the
+   intake form arrives pre-filled — client, situation and question copied from
+   the task instead of retyped. */
+export const CONSULTATION_PREFILL_KEY = "taxmind.consultations.prefill";
+
+const readPrefill = () => {
+  try {
+    const raw = sessionStorage.getItem(CONSULTATION_PREFILL_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(CONSULTATION_PREFILL_KEY);
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
 const PIPELINE_KEYS = [
   {
     label: "cons.pipeline1",
@@ -93,6 +109,13 @@ const STEP_ICONS = {
 
 function GeneratingView({ done, clientName, t }) {
   const [step, setStep] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     if (done) {
       setStep(PIPELINE_KEYS.length);
@@ -103,132 +126,165 @@ function GeneratingView({ done, clientName, t }) {
     );
     return () => timers.forEach(clearTimeout);
   }, [done]);
+
   const pct = Math.min(100, Math.round((step / PIPELINE_KEYS.length) * 100));
+  const mm = String(Math.floor(elapsed / 60)).padStart(1, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
 
   return (
-    <div className="h-full flex items-center justify-center px-6">
-      <div className="max-w-2xl w-full animate-fade-up">
-        <div className="text-center mb-10">
-          <div className="relative inline-flex items-center justify-center w-20 h-20 mb-6">
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-brand to-[#F59E0B] animate-pulse opacity-30" />
-            <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-dark to-[#3a3a4a] flex items-center justify-center shadow-2xl">
-              <svg
-                className="w-8 h-8 text-brand animate-spin"
-                style={{ animationDuration: "3s" }}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
-                />
-              </svg>
-            </div>
-          </div>
-          <h2 className="font-display text-3xl text-dark mb-2">
-            {t("cons.generating")}
-            {clientName ? ` — ${clientName}` : ""}
-          </h2>
-          <p className="text-muted text-sm">{t("cons.generatingHint")}</p>
-        </div>
-
-        <div className="relative mb-8">
-          <div className="h-2 bg-light rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-brand via-[#F59E0B] to-emerald-400 rounded-full transition-all duration-1000 ease-out"
-              style={{ width: `${Math.max(4, pct)}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-2">
-            <span className="text-[11px] font-bold text-muted">{pct}%</span>
-            <span className="text-[11px] font-bold text-muted">
-              {step}/{PIPELINE_KEYS.length}
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {PIPELINE_KEYS.map((s, i) => {
-            const state = i < step ? "done" : i === step ? "active" : "todo";
-            return (
-              <div
-                key={s.label}
-                className={`relative rounded-xl border p-4 transition-all duration-500 ${
-                  state === "done"
-                    ? "bg-white border-emerald-200 shadow-sm"
-                    : state === "active"
-                      ? "bg-white border-brand shadow-lg shadow-brand/10 scale-[1.02]"
-                      : "bg-light/50 border-border opacity-50"
-                }`}
-                style={{ animationDelay: `${i * 100}ms` }}
-              >
-                <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 transition-all ${
-                    state === "done"
-                      ? "bg-emerald-100 text-emerald-600"
-                      : state === "active"
-                        ? `bg-gradient-to-br ${s.color} text-white shadow-md`
-                        : "bg-light text-muted"
-                  }`}
-                >
-                  {state === "done" ? (
-                    <svg
-                      className="w-4.5 h-4.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M4.5 12.75l6 6 9-13.5"
-                      />
-                    </svg>
-                  ) : state === "active" ? (
-                    <svg
-                      className="w-4.5 h-4.5 animate-pulse"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.8}
-                    >
-                      {STEP_ICONS[s.icon]}
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.8}
-                    >
-                      {STEP_ICONS[s.icon]}
-                    </svg>
-                  )}
+    <div className="h-full overflow-y-auto">
+      <div className="min-h-full flex items-center justify-center px-4 sm:px-6 py-8">
+        <div className="max-w-3xl w-full grid lg:grid-cols-[1fr,280px] gap-8 animate-fade-up">
+          {/* left — friendly header + vertical stepper */}
+          <div>
+            <div className="flex items-center gap-4 mb-8">
+              <div className="relative shrink-0">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-[#F59E0B] flex items-center justify-center shadow-lg shadow-brand/30">
+                  <svg className="w-7 h-7 text-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12H9m5.25 3H9m10.5-9.75H10.5a2.25 2.25 0 00-2.25 2.25v10.5a2.25 2.25 0 002.25 2.25h8.25a2.25 2.25 0 002.25-2.25V9l-4.5-4.5z" />
+                  </svg>
                 </div>
-                <p
-                  className={`text-[12px] font-bold transition-colors ${state === "todo" ? "text-muted" : "text-dark"}`}
-                >
-                  {t(s.label)}
-                </p>
-                <p className="text-[10px] text-muted mt-0.5 line-clamp-2">
-                  {t(s.detail)}
-                </p>
-                {state === "active" && (
-                  <div className="absolute top-2 right-2">
-                    <span className="flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand" />
-                    </span>
-                  </div>
+                {!done && (
+                  <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-60" />
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-brand border-2 border-white dark:border-[#1a1a24]" />
+                  </span>
                 )}
               </div>
-            );
-          })}
+              <div className="min-w-0">
+                <h2 className="font-display text-2xl sm:text-3xl text-dark leading-tight truncate">
+                  {done ? t("cons.genDone") : t("cons.generating")}
+                </h2>
+                <p className="text-muted text-[13px] mt-0.5 truncate">
+                  {clientName ? `${clientName} · ` : ""}
+                  {done ? t("cons.genDoneHint") : t("cons.generatingHint")}
+                </p>
+              </div>
+            </div>
+
+            {/* progress bar + timer */}
+            <div className="mb-7">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-bold text-dark tabular-nums">{pct}%</span>
+                <span className="text-[11px] font-semibold text-muted tabular-nums flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {mm}:{ss}
+                </span>
+              </div>
+              <div className="h-2.5 bg-light rounded-full overflow-hidden">
+                <div
+                  className="relative h-full bg-gradient-to-r from-brand to-[#F59E0B] rounded-full transition-all duration-1000 ease-out overflow-hidden"
+                  style={{ width: `${Math.max(4, pct)}%` }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-marquee" style={{ animationDuration: "1.6s" }} />
+                </div>
+              </div>
+            </div>
+
+            {/* vertical timeline of stages */}
+            <ol className="relative space-y-1">
+              {PIPELINE_KEYS.map((s, i) => {
+                const state = i < step ? "done" : i === step && !done ? "active" : done ? "done" : "todo";
+                const last = i === PIPELINE_KEYS.length - 1;
+                return (
+                  <li key={s.label} className="relative flex gap-3.5">
+                    {/* connector line */}
+                    {!last && (
+                      <span
+                        className={`absolute left-[17px] top-10 bottom-0 w-[2px] rounded-full transition-colors duration-500 ${
+                          state === "done" ? "bg-emerald-300" : "bg-border/70"
+                        }`}
+                      />
+                    )}
+                    {/* status bullet */}
+                    <span
+                      className={`relative z-10 w-9 h-9 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-500 ${
+                        state === "done"
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : state === "active"
+                            ? "bg-white dark:bg-cream border-brand text-dark shadow-md shadow-brand/30"
+                            : "bg-light border-border text-muted"
+                      }`}
+                    >
+                      {state === "done" ? (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                        </svg>
+                      ) : state === "active" ? (
+                        <span className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          {STEP_ICONS[s.icon]}
+                        </svg>
+                      )}
+                    </span>
+                    {/* label */}
+                    <div
+                      className={`flex-1 min-w-0 rounded-xl px-3.5 py-2.5 mb-2 border transition-all duration-500 ${
+                        state === "active"
+                          ? "bg-brand/10 border-brand/40 shadow-sm"
+                          : state === "done"
+                            ? "bg-white dark:bg-cream border-border/50"
+                            : "bg-transparent border-transparent opacity-60"
+                      }`}
+                    >
+                      <p className={`text-[13px] font-bold ${state === "todo" ? "text-muted" : "text-dark"}`}>
+                        {t(s.label)}
+                        {state === "active" && (
+                          <span className="ml-2 inline-flex gap-0.5 align-middle">
+                            {[0, 150, 300].map((d) => (
+                              <span key={d} className="w-1 h-1 bg-dark/60 rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                            ))}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-muted mt-0.5">{t(s.detail)}</p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+
+          {/* right — live document skeleton being “written” */}
+          <div className="hidden lg:block">
+            <div className="sticky top-0">
+              <div className="bg-white dark:bg-cream border border-border rounded-2xl shadow-xl shadow-dark/[0.06] overflow-hidden">
+                <div className="h-1.5 bg-gradient-to-r from-brand via-[#F59E0B] to-brand" />
+                <div className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <svg width="18" height="6" viewBox="0 0 26 8" aria-hidden="true">
+                      <polygon points="0,8 26,0 26,8" fill="#FFE600" />
+                    </svg>
+                    <span className="text-[10px] font-bold text-dark tracking-[0.25em] uppercase">EY | Taxmind</span>
+                  </div>
+                  <p className="text-[13px] font-extrabold text-dark truncate">{clientName || "Client"}</p>
+                  <p className="text-[10px] text-muted mb-4">{t("cons.generatingDoc")}</p>
+                  <div className="space-y-3">
+                    {[0, 1, 2, 3, 4].map((i) => {
+                      const written = i < step;
+                      const writing = i === step && !done;
+                      return (
+                        <div key={i} className="space-y-1.5">
+                          <div className={`h-2.5 rounded w-1/3 transition-colors duration-700 ${written || done ? "bg-brand/60" : writing ? "bg-brand/40 animate-pulse" : "bg-light"}`} />
+                          <div className={`h-2 rounded w-full transition-colors duration-700 ${written || done ? "bg-light" : writing ? "bg-light/80 animate-pulse" : "bg-light/40"}`} />
+                          <div className={`h-2 rounded w-4/5 transition-colors duration-700 ${written || done ? "bg-light" : writing ? "bg-light/80 animate-pulse" : "bg-light/40"}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[9px] text-muted mt-5 pt-3 border-t border-border/60 text-center tracking-wider">
+                    {t("cons.previewFooter")}
+                  </p>
+                </div>
+              </div>
+              <p className="text-center text-[11px] text-muted mt-3 px-2 leading-relaxed">
+                {t("cons.genStayHint")}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -236,11 +292,6 @@ function GeneratingView({ done, clientName, t }) {
 }
 
 const SITUATION_TIP_KEYS = ["cons.tip1", "cons.tip2", "cons.tip3", "cons.tip4"];
-const QUESTION_EXAMPLE_KEYS = [
-  "cons.example1",
-  "cons.example2",
-  "cons.example3",
-];
 
 function FieldCheck({ ok, children }) {
   return (
@@ -258,13 +309,15 @@ export default function Consultations() {
   const { toast } = useToast();
   const year = new Date().getFullYear();
   const [items, setItems] = useState(null);
-  const [form, setForm] = useState({
-    clientName: "",
-    reference: "",
-    situation: "",
-    fiscalQuestion: "",
+  // Arriving from an assigned task? Pre-fill everything we know (read once).
+  const [prefill] = useState(readPrefill);
+  const [form, setForm] = useState(() => ({
+    clientName: prefill?.clientName || "",
+    reference: prefill?.reference || "",
+    situation: prefill?.situation || "",
+    fiscalQuestion: prefill?.fiscalQuestion || "",
     mode: "detaillee",
-  });
+  }));
   const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
@@ -330,12 +383,34 @@ export default function Consultations() {
     navigate(`/app/consultations/${id}`);
   };
 
+  const renameConsultation = async (cid, name) => {
+    try {
+      await fiscalService.rename(cid, name);
+      setItems((list) => (list || []).map((c) => (c.id === cid ? { ...c, clientName: name } : c)));
+      toast(t("cons.renamed"), "success");
+    } catch {
+      toast(t("cons.renameFailed"), "error");
+    }
+  };
+
+  const deleteConsultation = async (cid) => {
+    try {
+      await fiscalService.remove(cid);
+      setItems((list) => (list || []).filter((c) => c.id !== cid));
+      toast(t("cons.deleted"), "success");
+    } catch {
+      toast(t("cons.deleteFailed"), "error");
+    }
+  };
+
   const rail = (closeFn) => (
     <ConsultationsRail
       items={items}
       activeId={null}
       onSelect={openConsultation}
       onNew={() => setMobileRail(false)}
+      onRename={renameConsultation}
+      onDelete={deleteConsultation}
       newActive
       onClose={closeFn}
     />
@@ -440,6 +515,19 @@ export default function Consultations() {
                       </p>
                     </div>
                   </div>
+                  {prefill?.taskTitle && (
+                    <div className="mt-3 flex items-start gap-2.5 bg-brand/10 border border-brand/40 rounded-xl px-3.5 py-2.5 animate-pop opacity-0">
+                      <span className="w-6 h-6 rounded-lg bg-brand text-dark flex items-center justify-center shrink-0 mt-0.5">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-bold text-dark">{t("cons.prefilledFromTask")}</p>
+                        <p className="text-[11.5px] text-body truncate">« {prefill.taskTitle} »</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* compact form grid */}

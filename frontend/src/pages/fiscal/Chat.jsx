@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import fiscalService from "../../services/fiscalService";
+import ConfirmDialog from "../../components/common/ConfirmDialog";
 import Markdown from "../../components/common/Markdown";
 import SourceChips from "../../components/fiscal/SourceChips";
 import SourcePanel, {
@@ -119,20 +120,32 @@ function groupLabel(ts, t) {
   return t("chat.older");
 }
 
-function ConversationItem({ conv, active, onSelect, onDelete, t }) {
+function ConversationItem({ conv, active, onSelect, onDelete, onRename, t }) {
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(conv.title);
+  const inputRef = useRef();
   useEffect(() => {
-    if (!confirming) return;
-    const timer = setTimeout(() => setConfirming(false), 2500);
-    return () => clearTimeout(timer);
-  }, [confirming]);
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const next = title.trim();
+    if (next && next !== conv.title) onRename?.(conv.id, next);
+    else setTitle(conv.title);
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(conv.id)}
+      onClick={() => !editing && onSelect(conv.id)}
       onKeyDown={(e) => {
-        if (e.key === "Enter") onSelect(conv.id);
+        if (e.key === "Enter" && !editing) onSelect(conv.id);
       }}
       className={`group relative w-full text-left rounded-xl px-3 py-2.5 cursor-pointer transition-all duration-200 ${
         active
@@ -155,11 +168,38 @@ function ConversationItem({ conv, active, onSelect, onDelete, t }) {
           />
         </svg>
         <div className="flex-1 min-w-0">
-          <p
-            className={`text-[13px] font-medium leading-snug truncate ${active ? "text-dark font-semibold" : "text-dark"}`}
-          >
-            {conv.title}
-          </p>
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={commit}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") commit();
+                if (e.key === "Escape") {
+                  setTitle(conv.title);
+                  setEditing(false);
+                }
+              }}
+              className="w-full bg-white border border-brand rounded-md px-1.5 py-0.5 text-[13px] font-medium text-dark focus:outline-none focus:ring-2 focus:ring-brand/50"
+            />
+          ) : (
+            <p
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (onRename) {
+                  setTitle(conv.title);
+                  setEditing(true);
+                }
+              }}
+              title={t("chat.renameHint")}
+              className={`text-[13px] font-medium leading-snug truncate ${active ? "text-dark font-semibold" : "text-dark"}`}
+            >
+              {conv.title}
+            </p>
+          )}
           <p
             className={`text-[11px] mt-0.5 ${active ? "text-body" : "text-muted"}`}
           >
@@ -170,29 +210,29 @@ function ConversationItem({ conv, active, onSelect, onDelete, t }) {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          if (confirming) onDelete(conv.id);
-          else setConfirming(true);
+          setConfirming(true);
         }}
-        className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
-          confirming
-            ? "opacity-100 bg-red-500 text-white"
-            : `opacity-0 group-hover:opacity-100 ${active ? "text-body hover:text-red-500 hover:bg-red-50" : "text-muted hover:text-red-500 hover:bg-red-50"}`
-        }`}
-        aria-label={
-          confirming ? t("chat.confirmDelete") : t("chat.deleteConversation")
-        }
-        title={confirming ? t("chat.clickToConfirm") : t("chat.deleteConversation")}
+        className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 ${active ? "text-body hover:text-red-500 hover:bg-red-50" : "text-muted hover:text-red-500 hover:bg-red-50"}`}
+        aria-label={t("chat.deleteConversation")}
+        title={t("chat.deleteConversation")}
       >
-        {confirming ? (
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-          </svg>
-        ) : (
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-          </svg>
-        )}
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+        </svg>
       </button>
+
+      <ConfirmDialog
+        open={confirming}
+        title={t("chat.deleteConfirmTitle")}
+        message={t("chat.deleteConfirmBody").replace("{title}", conv.title || "—")}
+        confirmLabel={t("chat.deleteConfirmAction")}
+        cancelLabel={t("common.cancel")}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete(conv.id);
+        }}
+      />
     </div>
   );
 }
@@ -203,6 +243,7 @@ function HistoryPanel({
   onSelect,
   onNew,
   onDelete,
+  onRename,
   onClose,
   t,
 }) {
@@ -276,6 +317,7 @@ function HistoryPanel({
                   active={c.id === activeId}
                   onSelect={onSelect}
                   onDelete={onDelete}
+                  onRename={onRename}
                   t={t}
                 />
               ))}
@@ -428,7 +470,7 @@ function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, t }) {
 export default function Chat() {
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { conversations, create, update, remove } = useChatHistory();
+  const { conversations, create, update, remove, rename } = useChatHistory();
   const [activeId, setActiveId] = useState(null);
   const [openTabs, setOpenTabs] = useState([]);
   const [input, setInput] = useState("");
@@ -448,7 +490,7 @@ export default function Chat() {
   }, [histOpen]);
 
   const active = conversations.find((c) => c.id === activeId);
-  const messages = active?.messages || [];
+  const messages = useMemo(() => active?.messages || [], [active]);
   const empty = messages.length === 0;
 
   const allSources = useMemo(() => {
@@ -586,6 +628,14 @@ export default function Chat() {
     }
   };
 
+  const renameConversation = (id, title) => {
+    rename(id, title);
+    // Keep any open tab label in sync with the new name.
+    setOpenTabs((prev) =>
+      prev.map((tab) => (tab.id === id ? { ...tab, title } : tab)),
+    );
+  };
+
   const openSource = (sources) => (i) => {
     const list = (sources || []).map((s, j) => normalizeSource(s, j + 1));
     setViewList(list);
@@ -607,6 +657,7 @@ export default function Chat() {
             onSelect={selectConversation}
             onNew={newConversation}
             onDelete={deleteConversation}
+            onRename={renameConversation}
             t={t}
           />
         </div>
@@ -626,6 +677,7 @@ export default function Chat() {
               onSelect={selectConversation}
               onNew={newConversation}
               onDelete={deleteConversation}
+              onRename={renameConversation}
               onClose={() => setMobileHist(false)}
               t={t}
             />

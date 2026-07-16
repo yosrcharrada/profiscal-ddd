@@ -93,7 +93,46 @@ const STANDARD_KEYWORDS = [
   "Plus-value",
 ];
 
-const YEARS = { min: 2000, max: 2030 };
+// Corpus year bounds. 1888 is the earliest year Tunisian legal texts in the corpus carry;
+// the upper bound is "today", since a text cannot be dated in the future — a fixed literal
+// would silently expire (the previous 2000..2030 both excluded older texts and allowed
+// years that do not exist yet).
+const YEARS = { min: 1888, max: new Date().getFullYear() };
+
+/// Year field. Keeps a local draft while typing so a half-typed year ("1", "19") is never
+/// clamped mid-keystroke nor fired at the backend — the value is committed, and only then
+/// clamped into range, on blur/Enter. A blank or 0 entry reverts to the last good value
+/// rather than collapsing the bound (the input's own min/max are browser hints only: they
+/// constrain the spinner, but typed or pasted text bypasses them entirely).
+function YearInput({ value, onCommit, label }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+
+  const commit = () => {
+    const n = Math.trunc(Number(draft));
+    if (!Number.isFinite(n) || n === 0) return setDraft(String(value));
+    onCommit(Math.min(YEARS.max, Math.max(YEARS.min, n)));
+  };
+
+  return (
+    <label className="flex-1 min-w-0">
+      <span className="block text-[11px] font-medium text-muted mb-1">{label}</span>
+      <input
+        type="number"
+        inputMode="numeric"
+        min={YEARS.min}
+        max={YEARS.max}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        className="w-full bg-white border border-border rounded-lg px-2.5 py-1 text-[13px] text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
+      />
+    </label>
+  );
+}
 const RECENT_KEY = "taxmind.search.recent";
 
 const fmtDate = (d) =>
@@ -273,26 +312,18 @@ function FiltersPanel({
               defaultOpen={yearMin !== YEARS.min || yearMax !== YEARS.max}
             >
               <div className="flex items-center gap-2">
-                {[
-                  { v: yearMin, set: (y) => onYears(y, yearMax), label: t("search.from") },
-                  { v: yearMax, set: (y) => onYears(yearMin, y), label: t("search.to") },
-                ].map((f) => (
-                  <label key={f.label} className="flex-1 min-w-0">
-                    <span className="block text-[11px] font-medium text-muted mb-1">
-                      {f.label}
-                    </span>
-                    <input
-                      type="number"
-                      min={YEARS.min}
-                      max={YEARS.max}
-                      value={f.v}
-                      onChange={(e) =>
-                        f.set(Number(e.target.value) || YEARS.min)
-                      }
-                      className="w-full bg-white border border-border rounded-lg px-2.5 py-1 text-[13px] text-dark focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
-                    />
-                  </label>
-                ))}
+                {/* Committing one bound drags the other with it when they would cross,
+                    so the range can never read "de 2020 à 1995". */}
+                <YearInput
+                  label={t("search.from")}
+                  value={yearMin}
+                  onCommit={(y) => onYears(y, Math.max(y, yearMax))}
+                />
+                <YearInput
+                  label={t("search.to")}
+                  value={yearMax}
+                  onCommit={(y) => onYears(Math.min(y, yearMin), y)}
+                />
               </div>
             </FilterSection>
           </>

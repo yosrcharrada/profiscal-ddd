@@ -104,6 +104,19 @@ public class UsersController(IUserAdminService userAdminService) : ControllerBas
         return Ok(ApiResponse<UserResponse>.Ok(result));
     }
 
+    /// <summary>
+    /// Permanently delete a user. Only locked, non-admin accounts can be deleted
+    /// (lock first, then delete) — and never your own account.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<object>), 200)]
+    [ProducesResponseType(typeof(ApiResponse<object>), 400)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        await userAdminService.DeleteUserAsync(CurrentUserId, id, ct);
+        return Ok(ApiResponse<object>.Ok(new { deleted = true }));
+    }
+
     /// <summary>Recent authentication activity for a user (login attempts, sessions, changes).</summary>
     [HttpGet("{id:guid}/activity")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<AuditLogResponse>>), 200)]

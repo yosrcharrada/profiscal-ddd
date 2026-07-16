@@ -215,6 +215,7 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
   const location = useLocation();
   const [newTask, setNewTask] = useState(false);
   const [newNews, setNewNews] = useState(false);
+  const [newSubmitted, setNewSubmitted] = useState(false);
 
   // Lightweight nav badges: a red dot on "My tasks" when a task is still Pending
   // (assigned, not yet started), and on "News" when the JORT feed has activity newer
@@ -228,6 +229,15 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
           const { data: res } = await taskService.mine();
           if (alive)
             setNewTask((res.data || []).some((x) => x.status === "Pending"));
+        } catch {
+          /* ignore */
+        }
+      }
+      if (isManager) {
+        // Red dot on the manager task board while deliverables await validation.
+        try {
+          const { data: res } = await taskService.assigned({ status: "Submitted" });
+          if (alive) setNewSubmitted((res.data || []).length > 0);
         } catch {
           /* ignore */
         }
@@ -253,7 +263,7 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
       clearInterval(id);
       window.removeEventListener("news-seen", onSeen);
     };
-  }, [isConsultant, location.pathname]);
+  }, [isConsultant, isManager, location.pathname]);
 
   return (
     <div className="h-full flex flex-col overflow-visible">
@@ -350,13 +360,24 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
             {t("sidebar.workspace")}
           </SectionLabel>
           <div className="space-y-0.5">
-            <Item
-              to="/dashboard"
-              label={t("sidebar.dashboard")}
-              icon={ICONS.dashboard}
-              onNavigate={onNavigate}
-              collapsed={collapsed}
-            />
+            {isAdmin ? (
+              <Item
+                to="/admin"
+                end
+                label={t("sidebar.adminOverview")}
+                icon={ICONS.overview}
+                onNavigate={onNavigate}
+                collapsed={collapsed}
+              />
+            ) : (
+              <Item
+                to="/dashboard"
+                label={t("sidebar.dashboard")}
+                icon={ICONS.dashboard}
+                onNavigate={onNavigate}
+                collapsed={collapsed}
+              />
+            )}
             <Item
               to="/app/search"
               label={t("sidebar.search")}
@@ -415,6 +436,14 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
                 onNavigate={onNavigate}
                 collapsed={collapsed}
               />
+              <Item
+                to="/manager/tasks"
+                label={t("sidebar.managerTasks")}
+                icon={ICONS.tasks}
+                dot={newSubmitted}
+                onNavigate={onNavigate}
+                collapsed={collapsed}
+              />
             </div>
           </div>
         )}
@@ -427,14 +456,6 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
               <div className="mx-1.5 mb-2 border-t border-border/50" />
             )}
             <div className="space-y-0.5">
-              <Item
-                to="/admin"
-                end
-                label={t("sidebar.adminOverview")}
-                icon={ICONS.overview}
-                onNavigate={onNavigate}
-                collapsed={collapsed}
-              />
               <Item
                 to="/admin/users"
                 label={t("sidebar.users")}
@@ -472,13 +493,15 @@ export default function Sidebar({ onNavigate, collapsed = false, onToggle }) {
       <div
         className={`py-2 border-t border-border/40 space-y-0.5 shrink-0 ${collapsed ? "px-1.5" : "px-2"}`}
       >
-        <Item
-          to="/app/support"
-          label={t("sidebar.support")}
-          icon={ICONS.support}
-          onNavigate={onNavigate}
-          collapsed={collapsed}
-        />
+        {!isAdmin && (
+          <Item
+            to="/app/support"
+            label={t("sidebar.support")}
+            icon={ICONS.support}
+            onNavigate={onNavigate}
+            collapsed={collapsed}
+          />
+        )}
         <Item
           to="/settings"
           label={t("sidebar.settings")}

@@ -85,32 +85,31 @@ public class JortSyncService(
             return 0;
         }
 
-        // Notify admins — but skip the initial backfill flood unless forced (manual refresh).
+        // Notify every user (JORT news matters to the whole platform) — but skip the
+        // initial backfill flood unless forced (manual refresh).
         if (forceNotify || !isFirstEverRun)
         {
-            var adminIds = await (
-                from ur in db.UserRoles
-                join r in db.Roles on ur.RoleId equals r.Id
-                where r.Name == "Admin"
-                select ur.UserId).Distinct().ToListAsync(ct);
+            var userIds = await db.Users.Select(u => u.Id).ToListAsync(ct);
 
             // Newest first so the most recent notice is the freshest notification.
             var ordered = fresh.OrderBy(f => f.PublishedOn ?? DateTime.MinValue).ToList();
-            foreach (var adminId in adminIds)
+            foreach (var userId in userIds)
                 foreach (var f in ordered)
                     db.Notifications.Add(new Notification
                     {
-                        RecipientId = adminId,
+                        RecipientId = userId,
                         Type        = "jort",
                         Title       = f.Category switch
                         {
-                            "Tender"      => "Nouvel appel d'offres (JORT)",
-                            "Plan"        => "Nouveau plan (JORT)",
-                            "Publication" => "Nouvelle publication (JORT)",
-                            _             => "Nouveau document (JORT)"
+                            "Loi"      => "Nouvelle loi (JORT)",
+                            "Decret"   => "Nouveau décret (JORT)",
+                            "Arrete"   => "Nouvel arrêté (JORT)",
+                            "Avis"     => "Nouvel avis (JORT)",
+                            "Decision" => "Nouvelle décision (JORT)",
+                            _          => "Nouveau texte (JORT)"
                         },
                         Body    = f.Title,
-                        LinkUrl = "/dashboard"
+                        LinkUrl = "/app/news"
                     });
         }
 

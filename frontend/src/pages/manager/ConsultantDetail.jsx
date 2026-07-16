@@ -228,7 +228,7 @@ function TaskCard({ task, onAction, busy, t }) {
                   </div>
                   <Link
                     to={`/app/consultations/${task.consultation.id}`}
-                    className="px-3 py-1.5 bg-dark text-white text-[11px] font-bold rounded-md hover:bg-black transition-colors inline-flex items-center gap-1.5"
+                    className="px-3 py-1.5 border border-border text-body text-[11px] font-bold rounded-md hover:border-brand/50 hover:bg-brand/5 transition-all inline-flex items-center gap-1.5"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     {t('tasks.viewExport')}
@@ -312,11 +312,6 @@ export default function ConsultantDetail() {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <Link to="/manager/consultants" className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted hover:text-dark transition-colors">
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
-        {t('manager.detail.back')}
-      </Link>
-
       {/* Profile header */}
       <div className="bg-cream rounded-xl border border-border/60 p-4 sm:p-5 flex flex-wrap items-center gap-4">
         <span className="w-14 h-14 rounded-2xl bg-brand/25 text-dark flex items-center justify-center text-[17px] font-extrabold">
@@ -328,7 +323,7 @@ export default function ConsultantDetail() {
         </div>
         <button
           onClick={() => setShowAssign((v) => !v)}
-          className={`px-4 py-2.5 text-[13px] font-bold rounded-lg transition-all inline-flex items-center gap-1.5 ${showAssign ? 'bg-dark text-white' : 'bg-brand text-dark hover:shadow-lg hover:shadow-brand/40'}`}
+          className={`px-4 py-2.5 text-[13px] font-bold rounded-lg transition-all inline-flex items-center gap-1.5 ${showAssign ? 'border border-border text-body hover:border-brand/50 hover:bg-brand/5' : 'bg-brand text-dark hover:shadow-lg hover:shadow-brand/40'}`}
         >
           <svg className={`w-4 h-4 transition-transform ${showAssign ? 'rotate-45' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
           {showAssign ? t('admin.recl.cancel') : t('manager.detail.assignTask')}

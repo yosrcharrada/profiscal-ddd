@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import ConfirmDialog from "../common/ConfirmDialog";
 
 /* Previous-consultations rail — the chat-history analog for the consultation
    workspace. Shared by the create page and the document editor.
-   Collapse/expand is owned by the parent (width-animated aside). */
+   Collapse/expand is owned by the parent (width-animated aside).
+   Double-click a name to rename it inline; hover shows a delete button, which
+   asks for confirmation in a dialog before anything is destroyed. */
 
 function groupLabel(d) {
   if (!d) return "Plus ancien";
@@ -18,11 +21,118 @@ function groupLabel(d) {
   return "Plus ancien";
 }
 
+function RailItem({ c, active, onSelect, onRename, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(c.clientName || "");
+  const [confirming, setConfirming] = useState(false);
+  const inputRef = useRef();
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const next = name.trim();
+    if (next && next !== c.clientName) onRename?.(c.id, next);
+    else setName(c.clientName || "");
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => !editing && onSelect(c.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !editing) onSelect(c.id);
+      }}
+      className={`group relative w-full text-left rounded-xl px-3 py-2.5 cursor-pointer transition-colors ${active ? "bg-white shadow-sm" : "hover:bg-light"}`}
+    >
+      <span className="flex items-center gap-2 min-w-0 pr-6">
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commit}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") {
+                setName(c.clientName || "");
+                setEditing(false);
+              }
+            }}
+            className="flex-1 min-w-0 bg-white border border-brand rounded-md px-1.5 py-0.5 text-[13px] font-semibold text-dark focus:outline-none focus:ring-2 focus:ring-brand/50"
+          />
+        ) : (
+          <span
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              if (onRename) {
+                setName(c.clientName || "");
+                setEditing(true);
+              }
+            }}
+            title={onRename ? "Double-clic pour renommer" : undefined}
+            className="text-[13px] font-semibold truncate text-dark"
+          >
+            {c.clientName}
+          </span>
+        )}
+        <span
+          className={`shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 ${active ? "bg-brand text-dark" : "text-dark"}`}
+        >
+          {c.reference}
+        </span>
+      </span>
+      <span
+        className={`block text-[11.5px] truncate mt-0.5 pr-6 ${active ? "text-gray-500" : "text-muted"}`}
+      >
+        {c.fiscalQuestion}
+      </span>
+
+      {onDelete && !editing && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirming(true);
+          }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 text-muted hover:text-red-500 hover:bg-red-50"
+          aria-label="Supprimer la consultation"
+          title="Supprimer"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+          </svg>
+        </button>
+      )}
+
+      <ConfirmDialog
+        open={confirming}
+        title="Supprimer cette consultation ?"
+        message={`« ${c.clientName || "Sans nom"} » sera définitivement supprimée. Cette action est irréversible.`}
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete(c.id);
+        }}
+      />
+    </div>
+  );
+}
+
 export default function ConsultationsRail({
   items,
   activeId,
   onSelect,
   onNew,
+  onRename,
+  onDelete,
   newActive = false,
   onClose,
 }) {
@@ -146,34 +256,16 @@ export default function ConsultationsRail({
               {g.label}
             </p>
             <div className="space-y-0.5">
-              {g.items.map((c) => {
-                const active = c.id === activeId;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => onSelect(c.id)}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors ${active ? "bg-white shadow-sm" : "hover:bg-light"}`}
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={`text-[13px] font-semibold truncate ${active ? "text-dark" : "text-dark"}`}
-                      >
-                        {c.clientName}
-                      </span>
-                      <span
-                        className={`shrink-0 text-[9px] font-bold rounded-full px-1.5 py-0.5 ${active ? "bg-brand text-dark" : " text-dark"}`}
-                      >
-                        {c.reference}
-                      </span>
-                    </span>
-                    <span
-                      className={`block text-[11.5px] truncate mt-0.5 ${active ? "text-gray-500" : "text-muted"}`}
-                    >
-                      {c.fiscalQuestion}
-                    </span>
-                  </button>
-                );
-              })}
+              {g.items.map((c) => (
+                <RailItem
+                  key={c.id}
+                  c={c}
+                  active={c.id === activeId}
+                  onSelect={onSelect}
+                  onRename={onRename}
+                  onDelete={onDelete}
+                />
+              ))}
             </div>
           </div>
         ))}

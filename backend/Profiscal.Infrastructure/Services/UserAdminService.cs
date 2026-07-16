@@ -24,7 +24,10 @@ public class UserAdminService(
     /// <summary>Roles an admin can hand out. "User" is legacy-only and no longer assignable.</summary>
     private static readonly string[] AssignableRoles = ["Admin", "Manager", "Consultant"];
 
-    private string AllowedDomain => config["Registration:AllowedDomain"] ?? "tn.ey.com";
+    /// <summary>Comma/semicolon-separated list of email domains an admin can provision.</summary>
+    private string[] AllowedDomains =>
+        (config["Registration:AllowedDomains"] ?? config["Registration:AllowedDomain"] ?? "tn.ey.com")
+        .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public async Task<PagedResponse<UserResponse>> GetUsersAsync(
         PaginationRequest pagination, string? search, string? role, CancellationToken ct = default)
@@ -68,8 +71,8 @@ public class UserAdminService(
     {
         var email = req.Email.Trim();
 
-        if (!email.EndsWith($"@{AllowedDomain}", StringComparison.OrdinalIgnoreCase))
-            throw new DomainException($"Access is restricted to @{AllowedDomain} email addresses.");
+        if (!AllowedDomains.Any(d => email.EndsWith($"@{d}", StringComparison.OrdinalIgnoreCase)))
+            throw new DomainException($"Access is restricted to: {string.Join(", ", AllowedDomains.Select(d => "@" + d))}.");
 
         if (!AssignableRoles.Contains(req.Role))
             throw new DomainException($"Role must be one of: {string.Join(", ", AssignableRoles)}.");
@@ -296,6 +299,41 @@ public class UserAdminService(
         }
 
         return ToUserResponse(user, await userManager.GetRolesAsync(user));
+    }
+
+    public async Task DeleteUserAsync(Guid actorId, Guid userId, CancellationToken ct = default)
+    {
+        if (actorId == userId)
+            throw new DomainException("You cannot delete your own account.");
+
+        var user = await userManager.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new NotFoundException(nameof(AppUser), userId);
+
+        var roles = await userManager.GetRolesAsync(user);
+        if (roles.Contains("Admin"))
+            throw new DomainException("Admin accounts cannot be deleted.");
+
+        // Deleting is a two-step act: the account must be locked first (the UI only
+        // shows the delete button on locked accounts — enforce it here too).
+        if (!(user.LockoutEnd.HasValue && user.LockoutEnd > DateTimeOffset.UtcNow))
+            throw new DomainException("Lock the account before deleting it.");
+
+        var email = user.Email!;
+
+        // Clear data the FK graph won't cascade for us:
+        //  - tasks they MANAGED (Restrict FK) — tasks they were assigned cascade with the user
+        //  - keep their consultations but detach ownership so the documents survive
+        //  - notifications they received
+        await db.WorkTasks.Where(t => t.ManagerId == userId).ExecuteDeleteAsync(ct);
+        await db.FiscalConsultations.Where(c => c.OwnerUserId == userId)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.OwnerUserId, (Guid?)null), ct);
+        await db.Notifications.Where(n => n.RecipientId == userId).ExecuteDeleteAsync(ct);
+
+        var result = await userManager.DeleteAsync(user);
+        if (!result.Succeeded)
+            throw new DomainException(string.Join(", ", result.Errors.Select(e => e.Description)));
+
+        await AuditAsync(null, email, AuthEvent.UserProvisioned, $"Account deleted (by {actorId})", ct);
     }
 
     public async Task<IReadOnlyList<AuditLogResponse>> GetActivityAsync(Guid userId, int take = 20, CancellationToken ct = default)

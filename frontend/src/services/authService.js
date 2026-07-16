@@ -25,12 +25,14 @@ export const adminService = {
   globalActivity: (take = 60) => api.get('/Users/activity', { params: { take } }),
   lock:   (id) => api.post(`/Users/${id}/lock`),
   unlock: (id) => api.post(`/Users/${id}/unlock`),
+  removeUser: (id) => api.delete(`/Users/${id}`),
   activity: (id, take = 20) => api.get(`/Users/${id}/activity`, { params: { take } }),
 };
 
 /** Manager ↔ consultant task workflow. */
 export const taskService = {
   create: (data) => api.post('/tasks', data),
+  get: (id) => api.get(`/tasks/${id}`),
   assigned: ({ consultantId, status } = {}) =>
     api.get('/tasks/assigned', { params: { consultantId, status } }),
   consultants: () => api.get('/tasks/consultants'),
@@ -64,6 +66,10 @@ export const notificationService = {
 export const jortService = {
   activities: (take = 20) => api.get('/jort/activities', { params: { take } }),
   refresh: () => api.post('/jort/refresh'),
+  /** Mint a fresh iort.gov.tn session link (French). target: 'latest' | 'home'. */
+  open: (target = 'latest') => api.get('/jort/open', { params: { target } }),
+  /** Official PDF of one JORT text (streamed through the backend session replay). */
+  pdf: (id) => api.get(`/jort/activities/${id}/pdf`, { responseType: 'blob' }),
 };
 
 export default authService;

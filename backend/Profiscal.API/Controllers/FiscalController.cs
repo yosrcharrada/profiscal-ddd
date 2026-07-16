@@ -254,6 +254,29 @@ public sealed class FiscalController(
         }));
     }
 
+    /// <summary>Rename a consultation from the history rail (double-click rename).</summary>
+    [HttpPut("consultations/{id:guid}/rename")]
+    public async Task<IActionResult> Rename(Guid id, [FromBody] RenameConsultationApiRequest req, CancellationToken ct)
+    {
+        var name = (req.ClientName ?? "").Trim();
+        if (name.Length == 0)
+            return BadRequest(ApiResponse<object>.Fail("A name is required."));
+        var ok = await store.RenameAsync(id, name, CurrentUserId, User.IsInRole("Admin"), ct);
+        return ok
+            ? Ok(ApiResponse<object>.Ok(new { renamed = true, clientName = name }))
+            : NotFound(ApiResponse<object>.Fail("Consultation not found."));
+    }
+
+    /// <summary>Delete a consultation (owner or admin).</summary>
+    [HttpDelete("consultations/{id:guid}")]
+    public async Task<IActionResult> DeleteConsultation(Guid id, CancellationToken ct)
+    {
+        var ok = await store.DeleteAsync(id, CurrentUserId, User.IsInRole("Admin"), ct);
+        return ok
+            ? Ok(ApiResponse<object>.Ok(new { deleted = true }))
+            : NotFound(ApiResponse<object>.Fail("Consultation not found."));
+    }
+
     [HttpPost("consultations/rate")]
     public async Task<IActionResult> Rate([FromBody] RateApiRequest req, CancellationToken ct)
     {

@@ -98,6 +98,8 @@ const fiscalService = {
   generate: (body) => api.post('/fiscal/consultations/generate', body),
   list:     (search = '', all = false, dateFrom, dateTo) => api.get('/fiscal/consultations', { params: { search: search || undefined, all, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined } }),
   get:      (id) => api.get(`/fiscal/consultations/${id}`),
+  rename:   (id, clientName) => api.put(`/fiscal/consultations/${id}/rename`, { clientName }),
+  remove:   (id) => api.delete(`/fiscal/consultations/${id}`),
   saveOutput: (id, output) => api.put(`/fiscal/consultations/${id}/output`, output),
   rate:     (consultationId, reference, stars, comment) =>
               api.post('/fiscal/consultations/rate', { consultationId, reference, stars, comment }),

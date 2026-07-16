@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminService } from '../../services/authService';
+import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import AdminLayout from '../../components/admin/AdminLayout';
+import HeroBanner from '../../components/common/HeroBanner';
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—');
 const fmtTime = (d) => (d ? new Date(d).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—');
@@ -73,6 +75,16 @@ function RoleBar({ overview, t }) {
 
 export default function AdminOverview() {
   const { t } = useLanguage();
+  const { user } = useAuth();
+
+  const greeting = () => {
+    const h = new Date().getHours();
+    return h < 12
+      ? t('dashboard.greeting.morning')
+      : h < 18
+        ? t('dashboard.greeting.afternoon')
+        : t('dashboard.greeting.evening');
+  };
   const [overview, setOverview] = useState(null);
   const [error, setError] = useState('');
 
@@ -100,25 +112,27 @@ export default function AdminOverview() {
   return (
     <AdminLayout badges={{ '/admin/reclamations': overview.pendingReclamations }}>
       <div className="space-y-4 animate-fade-up">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-dark tracking-tight">{t('admin.overview.title')}</h1>
-          <p className="text-[13px] text-muted mt-0.5">{t('admin.overview.subtitle')}</p>
-        </div>
-        <div className="flex gap-2">
-          <Link to="/admin/users?new=1" className="px-3.5 py-2 bg-brand text-dark text-[13px] font-bold rounded-lg hover:shadow-lg hover:shadow-brand/40 transition-all inline-flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-            {t('admin.overview.addUser')}
-          </Link>
-          <Link to="/admin/reclamations" className="px-3.5 py-2 bg-dark text-white text-[13px] font-semibold rounded-lg hover:bg-black transition-colors">
-            {t('admin.overview.reviewReclamations')}
-            {overview.pendingReclamations > 0 && (
-              <span className="ml-1.5 bg-brand text-dark text-[10px] font-bold rounded-full px-1.5 py-0.5">{overview.pendingReclamations}</span>
-            )}
-          </Link>
-        </div>
-      </div>
+      {/* Header — hero welcome box */}
+      <HeroBanner
+        greeting={greeting()}
+        name={user?.firstName}
+        subtitle={t('admin.overview.subtitle')}
+        badge={t('admin.overview.title')}
+        actions={
+          <>
+            <Link to="/admin/users?new=1" className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white/80 dark:bg-white/10 border border-dark/15 dark:border-white/15 backdrop-blur text-dark text-[12px] font-bold rounded-xl hover:border-brand hover:bg-brand/20 hover:-translate-y-0.5 transition-all shadow-sm">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              {t('admin.overview.addUser')}
+            </Link>
+            <Link to="/admin/reclamations" className="flex items-center px-4 py-2.5 bg-dark text-brand text-[12px] font-bold rounded-xl hover:shadow-xl hover:shadow-dark/25 hover:-translate-y-0.5 transition-all">
+              {t('admin.overview.reviewReclamations')}
+              {overview.pendingReclamations > 0 && (
+                <span className="ml-1.5 bg-brand text-dark text-[10px] font-bold rounded-full px-1.5 py-0.5">{overview.pendingReclamations}</span>
+              )}
+            </Link>
+          </>
+        }
+      />
 
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

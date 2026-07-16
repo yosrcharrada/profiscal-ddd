@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { taskService } from '../../services/authService';
 import fiscalService from '../../services/fiscalService';
 import { useLanguage } from '../../context/LanguageContext';
+import { CONSULTATION_PREFILL_KEY } from '../fiscal/Consultations';
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—');
 
@@ -122,13 +123,36 @@ export default function MyTasks() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Live queue: poll so newly assigned tasks appear without a manual reload.
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 15000);
+    window.addEventListener('focus', load);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', load);
+    };
+  }, [load]);
 
   const start = async (task) => {
     setBusyId(task.id);
     try { await taskService.start(task.id); await load(); }
     catch (err) { setError(err.response?.data?.message || 'Failed.'); }
     finally { setBusyId(null); }
+  };
+
+  /* Hand the task over to the consultation intake form pre-filled — no copy/paste. */
+  const createConsultationFromTask = (task) => {
+    try {
+      sessionStorage.setItem(CONSULTATION_PREFILL_KEY, JSON.stringify({
+        taskId: task.id,
+        taskTitle: task.title,
+        clientName: task.clientName || '',
+        situation: task.description || '',
+        fiscalQuestion: task.title || '',
+      }));
+    } catch { /* storage full — form just opens empty */ }
+    navigate('/app/consultations?new=1');
   };
 
   const open = tasks?.filter((x) => x.status === 'Pending' || x.status === 'InProgress') ?? [];
@@ -143,10 +167,10 @@ export default function MyTasks() {
           <p className="text-[13px] text-muted mt-0.5">{t('tasks.subtitle')}</p>
         </div>
         <div className="flex rounded-lg border border-border/60 bg-white overflow-hidden">
-          <button onClick={() => setTab('open')} className={`px-3.5 py-2 text-[12px] font-semibold transition-colors ${tab === 'open' ? 'bg-dark text-white' : 'text-body hover:text-dark'}`}>
+          <button onClick={() => setTab('open')} className={`px-3.5 py-2 text-[12px] font-semibold transition-colors ${tab === 'open' ? 'bg-brand text-black' : 'text-body hover:text-dark hover:bg-brand/5'}`}>
             {t('tasks.tabOpen')} ({open.length})
           </button>
-          <button onClick={() => setTab('done')} className={`px-3.5 py-2 text-[12px] font-semibold transition-colors ${tab === 'done' ? 'bg-dark text-white' : 'text-body hover:text-dark'}`}>
+          <button onClick={() => setTab('done')} className={`px-3.5 py-2 text-[12px] font-semibold transition-colors ${tab === 'done' ? 'bg-brand text-black' : 'text-body hover:text-dark hover:bg-brand/5'}`}>
             {t('tasks.tabDone')} ({done.length})
           </button>
         </div>
@@ -195,20 +219,20 @@ export default function MyTasks() {
 
               {task.status === 'Pending' && (
                 <button disabled={busyId === task.id} onClick={() => start(task)}
-                  className="text-[11px] font-bold text-white bg-dark rounded-md px-3 py-1.5 hover:bg-black disabled:opacity-50 transition-colors">
+                  className="text-[11px] font-bold text-black bg-brand rounded-md px-3 py-1.5 hover:shadow-md hover:shadow-brand/40 disabled:opacity-50 transition-all">
                   {t('tasks.start')}
                 </button>
               )}
               {task.status === 'InProgress' && (
                 <>
                   <button
-                    onClick={() => navigate('/app/consultations')}
-                    className="text-[11px] font-medium text-body border border-border/60 rounded-md px-3 py-1.5 hover:border-dark/30 hover:text-dark transition-colors"
+                    onClick={() => createConsultationFromTask(task)}
+                    className="text-[11px] font-medium text-body border border-border/60 rounded-md px-3 py-1.5 hover:border-brand/60 hover:bg-brand/10 hover:text-dark transition-colors"
                   >{t('tasks.workOnIt')}</button>
                   <button
                     disabled={busyId === task.id}
                     onClick={() => { setSubmitting(submitting === task.id ? null : task.id); setExpanded(task.id); }}
-                    className={`text-[11px] font-bold rounded-md px-3 py-1.5 disabled:opacity-50 transition-all ${submitting === task.id ? 'bg-dark text-white' : 'text-dark bg-brand hover:shadow-md hover:shadow-brand/40'}`}
+                    className={`text-[11px] font-bold rounded-md px-3 py-1.5 disabled:opacity-50 transition-all ${submitting === task.id ? 'border border-border text-body hover:border-brand/50 hover:bg-brand/5' : 'text-black bg-brand hover:shadow-md hover:shadow-brand/40'}`}
                   >
                     {submitting === task.id ? t('admin.recl.cancel') : t('tasks.submit')}
                   </button>
@@ -241,7 +265,7 @@ export default function MyTasks() {
                       <p className="text-[12px] font-bold text-dark truncate">{task.consultation.reference} — {task.consultation.clientName}</p>
                       <p className="text-[11px] text-muted truncate">{task.consultation.fiscalQuestion}</p>
                     </div>
-                    <Link to={`/app/consultations/${task.consultation.id}`} className="px-3 py-1.5 bg-dark text-white text-[11px] font-bold rounded-md hover:bg-black transition-colors">
+                    <Link to={`/app/consultations/${task.consultation.id}`} className="px-3 py-1.5 border border-border text-body text-[11px] font-bold rounded-md hover:border-brand/50 hover:bg-brand/5 transition-all">
                       {t('tasks.open')}
                     </Link>
                   </div>

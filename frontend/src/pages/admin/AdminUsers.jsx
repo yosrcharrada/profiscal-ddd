@@ -39,7 +39,9 @@ function CreateUserPanel({ managers, onClose, onCreated, t }) {
     e.preventDefault();
     setError('');
     if (!form.firstName.trim() || !form.lastName.trim()) { setError(t('admin.users.new.nameRequired')); return; }
-    if (!/@tn\.ey\.com$/i.test(form.email.trim())) { setError(t('admin.users.new.domainError')); return; }
+    // The backend enforces the allowed email domains (Registration:AllowedDomains) —
+    // here we only check the shape so its error message stays the single source of truth.
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) { setError(t('admin.users.new.emailInvalid')); return; }
     if (form.role === 'Consultant' && !form.managerId) { setError(t('admin.users.new.managerRequired')); return; }
     setBusy(true);
     try {
@@ -101,7 +103,7 @@ function CreateUserPanel({ managers, onClose, onCreated, t }) {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-muted uppercase tracking-[0.08em] mb-1.5">{t('admin.users.new.email')}</label>
-                  <input type="email" value={form.email} onChange={set('email')} placeholder="prenom.nom@tn.ey.com" className={inputCls} />
+                  <input type="email" value={form.email} onChange={set('email')} placeholder="prenom.nom@esprit.tn" className={inputCls} />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-muted uppercase tracking-[0.08em] mb-1.5">{t('admin.users.new.role')}</label>
@@ -201,6 +203,7 @@ export default function AdminUsers() {
   const [busyId, setBusyId]   = useState(null);
   const [error, setError]     = useState('');
   const [expanded, setExpanded] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // user id armed for deletion
   const [activity, setActivity] = useState({});
   const [managers, setManagers] = useState([]);
   const [showCreate, setShowCreate] = useState(params.get('new') === '1');
@@ -230,6 +233,19 @@ export default function AdminUsers() {
     try { await fn(); await load(); await loadManagers(); }
     catch (err) { setError(err.response?.data?.message || 'Action failed.'); }
     finally { setBusyId(null); }
+  };
+
+  // Two-step delete: first click arms the button, second confirms. Auto-disarm.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const timer = setTimeout(() => setConfirmDelete(null), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmDelete]);
+
+  const deleteUser = (u) => {
+    if (confirmDelete !== u.id) { setConfirmDelete(u.id); return; }
+    setConfirmDelete(null);
+    run(u.id, () => adminService.removeUser(u.id));
   };
 
   const toggleActivity = async (id) => {
@@ -385,11 +401,28 @@ export default function AdminUsers() {
                     {expanded === u.id ? t('admin.users.hide') : t('admin.users.activity')}
                   </button>
                   {!isMe && (u.isLockedOut ? (
-                    <button
-                      disabled={busyId === u.id}
-                      onClick={() => run(u.id, () => adminService.unlock(u.id))}
-                      className="text-[11px] font-medium text-green-700 border border-green-200 bg-green-50 rounded-md px-2.5 py-1 hover:bg-green-100 disabled:opacity-50 transition-colors"
-                    >{t("admin.users.unlock")}</button>
+                    <>
+                      <button
+                        disabled={busyId === u.id}
+                        onClick={() => run(u.id, () => adminService.unlock(u.id))}
+                        className="text-[11px] font-medium text-green-700 border border-green-200 bg-green-50 rounded-md px-2.5 py-1 hover:bg-green-100 disabled:opacity-50 transition-colors"
+                      >{t("admin.users.unlock")}</button>
+                      {/* Delete only unlocks once the account is locked — and never for admins. */}
+                      {role !== 'Admin' && (
+                        <button
+                          disabled={busyId === u.id}
+                          onClick={() => deleteUser(u)}
+                          className={`text-[11px] font-bold rounded-md px-2.5 py-1 disabled:opacity-50 transition-all ${
+                            confirmDelete === u.id
+                              ? 'text-white bg-red-600 border border-red-600 hover:bg-red-700'
+                              : 'text-red-600 border border-red-200 bg-white hover:bg-red-50'
+                          }`}
+                          title={confirmDelete === u.id ? t('admin.users.deleteConfirm') : t('admin.users.delete')}
+                        >
+                          {confirmDelete === u.id ? t('admin.users.deleteConfirm') : t('admin.users.delete')}
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <button
                       disabled={busyId === u.id}

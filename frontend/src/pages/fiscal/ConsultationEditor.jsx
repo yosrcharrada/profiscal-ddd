@@ -527,6 +527,28 @@ export default function ConsultationEditor() {
     navigate(`/app/consultations/${cid}`);
   };
 
+  const renameConsultation = async (cid, name) => {
+    try {
+      await fiscalService.rename(cid, name);
+      setSiblings((list) => (list || []).map((c) => (c.id === cid ? { ...c, clientName: name } : c)));
+      if (cid === id) setMeta((m) => (m ? { ...m, clientName: name } : m));
+      toast(t("cons.renamed"), "success");
+    } catch {
+      toast(t("cons.renameFailed"), "error");
+    }
+  };
+
+  const deleteConsultation = async (cid) => {
+    try {
+      await fiscalService.remove(cid);
+      setSiblings((list) => (list || []).filter((c) => c.id !== cid));
+      toast(t("cons.deleted"), "success");
+      if (cid === id) navigate("/app/consultations");
+    } catch {
+      toast(t("cons.deleteFailed"), "error");
+    }
+  };
+
   const created = meta?.createdAt
     ? new Date(meta.createdAt).toLocaleDateString(undefined, {
         day: "numeric",
@@ -565,6 +587,8 @@ export default function ConsultationEditor() {
             activeId={id}
             onSelect={switchConsultation}
             onNew={() => navigate("/app/consultations")}
+            onRename={renameConsultation}
+            onDelete={deleteConsultation}
           />
         </div>
       </aside>
