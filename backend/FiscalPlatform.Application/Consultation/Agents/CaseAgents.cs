@@ -210,12 +210,26 @@ public sealed class RsServiceForeignAgent : CaseAgentBase
     protected override string[] Topics => new[]
         { "remunerations_techniques", "services_professionnels", "etablissement_stable", "benefices_entreprises" };
 
+    // The two régimes are ALTERNATIVES and must be judged as such — this mirrors, on the judge's
+    // side, the mutual-exclusion rule the writer is held to. Previously this criteria opened with a
+    // « RÈGLE PRIORITAIRE » on the régime privilégié unconditionally, so on a TREATY country the
+    // judge demanded an explicit privileged-regime check that the writer is FORBIDDEN to make
+    // (a convention prevails ⇒ the privileged regime is never examined nor mentioned). The writer
+    // obeyed the démarche, the judge scored it a miss, and the draft was rejected on every treaty
+    // case — burning a full writer+judge revision cycle that could never converge. Gating the
+    // criteria on « à défaut de convention » removes the contradiction WITHOUT relaxing the bar:
+    // every substantive criterion below (right Art.52 line, VAT, assiette, transfer formalism)
+    // is unchanged.
     protected override string JudgeCriteria =>
-        "Cas SERVICE / FOURNISSEUR ÉTRANGER. RÈGLE PRIORITAIRE : si le pays du bénéficiaire figure dans la " +
-        "liste des États à régime fiscal privilégié [Sn], l'établissement stable NE doit PAS être analysé ni " +
-        "même mentionné — sa présence dans ce cas est une faute ; on passe directement à la RS. Sinon " +
-        "(pays sans régime privilégié), l'ES est tranché d'abord en droit commun puis selon l'Art.5 de la " +
-        "convention. La RS applique la ligne de l'Art.52 visant les « non domiciliés ni établis » (non les " +
+        "Cas SERVICE / FOURNISSEUR ÉTRANGER. Les deux régimes ci-dessous s'EXCLUENT — n'exige jamais les deux :\n" +
+        "• S'IL EXISTE une convention avec le pays du bénéficiaire [Sn] : l'ES est tranché d'abord en droit " +
+        "commun puis selon l'Art.5 de la convention, puis le revenu est qualifié au regard de la convention. " +
+        "N'exige PAS — et ne compte PAS comme manquante — la vérification du « régime fiscal privilégié » : " +
+        "c'est une notion de droit commun, sans objet quand une convention s'applique ; son absence est CORRECTE.\n" +
+        "• À DÉFAUT de convention seulement : si le pays figure dans la liste des États à régime fiscal " +
+        "privilégié [Sn], l'établissement stable NE doit PAS être analysé ni même mentionné — sa présence " +
+        "dans ce cas est une faute ; on passe directement à la RS.\n" +
+        "La RS applique la ligne de l'Art.52 visant les « non domiciliés ni établis » (non les " +
         "honoraires-résidents). TVA due par retenue de 100% du preneur. Ne doivent pas manquer : l'assiette " +
         "(montant brut TVA comprise) et le formalisme du transfert des fonds à l'étranger — Art.112 CDPF ET " +
         "Art.21 de la circulaire BCT N°2016-9 (les deux ensemble) lorsqu'ils figurent dans les sources [Sn], " +

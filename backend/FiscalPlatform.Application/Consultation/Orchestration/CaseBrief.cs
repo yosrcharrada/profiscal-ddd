@@ -55,8 +55,19 @@ public sealed record RequiredSource(
         if (ConventionSubject is { Length: > 0 })
         {
             if (!string.Equals(s.DocType, "Convention", StringComparison.OrdinalIgnoreCase)) return false;
-            var head = text[..Math.Min(text.Length, 80)];
-            if (!ConventionSubject.Any(v => head.Contains(v, StringComparison.OrdinalIgnoreCase))) return false;
+            // The subject TITLES the article, and on a multi-part convention article only part 1
+            // repeats that title inside its body — parts 2..n carry it solely in article_display /
+            // the section title. Matching the text head ALONE therefore recognised only part 1, so a
+            // pool holding « Article 5 : Etablissement stable (partie 2/3) » was judged to contain no
+            // ES article at all: completeness then logged « conv_es introuvable → traité comme
+            // INEXISTANT (pas de convention → droit commun) » for Italy, a country that HAS a treaty,
+            // pushing the case toward the droit-commun regime. Match the title too — it identifies
+            // the article for EVERY part. Still gated on DocType=Convention + the country, so this
+            // narrows nothing and cannot match a non-treaty source.
+            var head  = text[..Math.Min(text.Length, 80)];
+            var title = (s.ArticleRef ?? "") + " " + (s.SectionTitle ?? "");
+            if (!ConventionSubject.Any(v => head.Contains(v, StringComparison.OrdinalIgnoreCase)
+                                         || title.Contains(v, StringComparison.OrdinalIgnoreCase))) return false;
             if (countries.Count > 0 &&
                 !countries.Any(c => name.Contains(c, StringComparison.OrdinalIgnoreCase))) return false;
         }

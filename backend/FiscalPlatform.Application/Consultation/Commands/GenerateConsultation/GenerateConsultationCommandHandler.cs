@@ -960,8 +960,19 @@ public sealed class GenerateConsultationCommandHandler(
         var code  = result.Where(r => r.DocType != "Convention" && r.DocType != "Commentaire" && r.DocType != "Doctrine")
                           .OrderByDescending(r => r.Score).ToList();
 
-        // Code first so the operative articles are never crowded out, then the capped treaty, then doctrine.
-        var merged = code.Concat(conv).Take(maxTotal - com.Count - doc.Count)
+        // RESERVE the treaty's slots — do NOT let Code consume them. `code` is unbounded (the rule
+        // policy alone returns ~150, overwhelmingly Code), so the previous
+        // `code.Concat(conv).Take(maxTotal - com - doc)` handed every slot to Code and dropped the
+        // treaty ENTIRELY on international cases: a profiled Italy run merged to
+        // « 30 sources [Code:27 Doctrine:3] » — zero Convention — even though conv_italie chunks had
+        // been fetched. Phase 1 and the writer then reasoned about a treaty case with no treaty in
+        // view, and the completeness gate logged « conv_es introuvable → traité comme INEXISTANT
+        // (pas de convention → droit commun) » for a country that HAS one. Reserving keeps the
+        // documented intent (Code first, then the capped treaty) while guaranteeing the treaty its
+        // slots. Domestic cases are unaffected: with no convention, conv is empty and Code still
+        // takes maxTotal - com - doc exactly as before.
+        var codeRoom = Math.Max(0, maxTotal - com.Count - doc.Count - conv.Count);
+        var merged = code.Take(codeRoom).Concat(conv)
                          .Concat(com).Concat(doc).Take(maxTotal).ToList();
         for (int i = 0; i < merged.Count; i++) merged[i].Index = i + 1;
         return merged;
