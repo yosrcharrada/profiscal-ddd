@@ -12,13 +12,10 @@ public sealed class ConsultationOutput
     public string SommairExecutif { get; set; } = "";
     public string Analyses        { get; set; } = "";
     public string Documents       { get; set; } = "";
-    public List<AnalysisRow>    AnalysisTable { get; set; } = new();
     public List<LegalSourceDto> Sources       { get; set; } = new();
     public string Method    { get; set; } = "";
     public double ElapsedMs { get; set; }
 }
-
-public sealed record AnalysisRow(string Sujet, string Analyse, string Conclusion);
 
 public sealed class LegalSourceDto
 {

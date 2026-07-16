@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -13,7 +13,8 @@ namespace FiscalPlatform.Infrastructure.Agents;
 /// Document Generation Agent — fills template_fr.docx with consultation output.
 /// Placeholders: [NOM_CLIENT], [REFERENCE], [DATE], [FAITS], [ETENDUE],
 ///               [ABREVIATIONS], [SOMMAIRE], [ANALYSES], [DOCUMENTS]
-/// Builds EY-branded analysis table (1F3864 header, EBF2FA alternating rows).
+/// Beware: the template's "SOMMAIRE" Heading1 is the table of CONTENTS — the sommaire exécutif is
+/// the separate [SOMMAIRE] section, which sits just before "Analyses".
 /// Token replacement is drawing-safe: runs carrying images/shapes/fields are never
 /// touched, so the EY logo, the yellow client box and the header survive intact.
 /// </summary>
@@ -58,17 +59,16 @@ public sealed class DocumentGenerationAgent(
             ReplaceSectionContent(body, "[FAITS]",        ParseMarkdown(req.Output.ContexteFaits));
             ReplaceSectionContent(body, "[ETENDUE]",      ParseMarkdown(req.Output.Etendue));
             ReplaceSectionContent(body, "[ABREVIATIONS]", ParseMarkdown(req.Output.Abbreviations));
-            ReplaceSectionContent(body, "[SOMMAIRE]",     ParseMarkdown(req.Output.SommairExecutif));
-            ReplaceSectionContent(body, "[ANALYSES]",     ParseMarkdown(req.Output.Analyses));
 
-            var docPs = ParseMarkdown(req.Output.Documents);
-            if (req.Output.AnalysisTable.Any())
-            {
-                docPs.Add(new DocParagraph("", DocStyle.Normal));
-                docPs.Add(new DocParagraph("Tableau de synthèse", DocStyle.Heading3));
-                docPs.Add(new DocParagraph("__TABLE__", DocStyle.Normal));
-            }
-            ReplaceSectionContentWithTable(body, "[DOCUMENTS]", docPs, req.Output.AnalysisTable);
+            // The sommaire exécutif is its own section, ahead of the analyses: the reader gets the
+            // verdicts first, then the demonstration behind them. NOTE: the [SOMMAIRE] placeholder
+            // was ADDED to template_fr.docx for this — the template never had one (its "SOMMAIRE"
+            // Heading1 is the table of CONTENTS), so this call used to match nothing and the
+            // summary was silently dropped from every generated .docx, showing only in the web
+            // editor. If you swap the template, carry the placeholder over.
+            ReplaceSectionContent(body, "[SOMMAIRE]",  ParseMarkdown(req.Output.SommairExecutif));
+            ReplaceSectionContent(body, "[ANALYSES]",  ParseMarkdown(req.Output.Analyses));
+            ReplaceSectionContent(body, "[DOCUMENTS]", ParseMarkdown(req.Output.Documents));
 
             doc.MainDocumentPart.Document.Save();
         }
@@ -139,82 +139,7 @@ public sealed class DocumentGenerationAgent(
         para.Remove();
     }
 
-    private static void ReplaceSectionContentWithTable(
-        Body body, string placeholder, List<DocParagraph> content, List<AnalysisRow> table)
-    {
-        var para = body.Descendants<Paragraph>().FirstOrDefault(p => MergedText(p).Contains(placeholder));
-        if (para is null) return;
-        var parent = para.Parent!;
-        foreach (var dp in content)
-        {
-            if (dp.Text == "__TABLE__") parent.InsertBefore(BuildAnalysisTable(table), para);
-            else parent.InsertBefore(BuildParagraph(dp), para);
-        }
-        para.Remove();
-    }
-
     private static string MergedText(Paragraph p) => string.Concat(p.Elements<Run>().Select(r => r.InnerText));
-
-    // ─── Analysis table (EY colors) ───────────────────────────────────────────
-    private static Table BuildAnalysisTable(List<AnalysisRow> rows)
-    {
-        var tbl = new Table();
-        tbl.AppendChild(new TableProperties(
-            new TableStyle { Val = "TableGrid" },
-            new TableWidth { Width = "9640", Type = TableWidthUnitValues.Dxa }));
-
-        var headers = new[] { ("N",5), ("Sujet / Point de l'étendue",20),
-                               ("Analyse juridique",50), ("Conclusion",25) };
-        var hdr = new TableRow();
-        foreach (var (title, pct) in headers)
-        {
-            var w = ((int)(9640 * pct / 100.0)).ToString();
-            hdr.AppendChild(new TableCell(
-                new TableCellProperties(
-                    new TableCellWidth { Width = w, Type = TableWidthUnitValues.Dxa },
-                    new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = "1F3864" }),
-                new Paragraph(new Run(
-                    new RunProperties(new Bold(), new Color { Val = "FFFFFF" }, new FontSize { Val = "17" }),
-                    new Text(title)))));
-        }
-        tbl.AppendChild(hdr);
-
-        var verdicts = new[] {"OUI","NON","EXONÉR","SOUMIS","DÉDUCTIBL","NON DÉDUCTIBL","SUSPENDU"};
-        for (int i = 0; i < rows.Count; i++)
-        {
-            var row  = rows[i];
-            var fill = i % 2 == 0 ? "EBF2FA" : "FFFFFF";
-            var tr   = new TableRow();
-
-            void AddCell(string text, int pct, bool bold)
-            {
-                var w    = ((int)(9640 * pct / 100.0)).ToString();
-                var cell = new TableCell(new TableCellProperties(
-                    new TableCellWidth { Width = w, Type = TableWidthUnitValues.Dxa },
-                    new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = fill }));
-
-                // Render each "\n"-separated line as its own paragraph so a multi-verdict conclusion
-                // reads as a stacked list ("Établissement stable : NON" / "Retenue à la source : 15%")
-                // instead of one crammed blob.
-                var lines = (text ?? "").Replace("\r", "").Split('\n')
-                    .Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
-                if (lines.Length == 0) lines = new[] { "" };
-                foreach (var line in lines)
-                    cell.AppendChild(new Paragraph(new Run(
-                        new RunProperties(bold ? new Bold() : null!, new FontSize { Val = "16" }),
-                        new Text(line) { Space = SpaceProcessingModeValues.Preserve })));
-                tr.AppendChild(cell);
-            }
-
-            var conclusionBold = verdicts.Any(v => row.Conclusion.ToUpper().StartsWith(v));
-            AddCell((i + 1).ToString(), 5, true);
-            AddCell(row.Sujet,          20, true);
-            AddCell(row.Analyse,        50, false);
-            AddCell(row.Conclusion,     25, conclusionBold);
-            tbl.AppendChild(tr);
-        }
-        return tbl;
-    }
 
     // ─── Markdown parser ──────────────────────────────────────────────────────
     private static List<DocParagraph> ParseMarkdown(string text)

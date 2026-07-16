@@ -157,18 +157,17 @@ public sealed class FiscalGuardrails : FiscalPlatform.Application.Common.Interfa
                 "Le sommaire exécutif est insuffisant"));
         }
 
-        // 4. Check verdicts in table
-        foreach (var row in output.AnalysisTable)
+        // 4. The sommaire must actually deliver verdicts — it replaced the synthesis table, whose
+        //    per-row conclusion this check used to read. Same intent, on the artefact that remains:
+        //    a summary that states no verdict at all is the failure mode worth flagging.
+        if (!string.IsNullOrWhiteSpace(output.SommairExecutif) &&
+            !new[] { "OUI", "NON", "SOUMIS", "EXONÉR", "DÉDUCTIBL", "%" }
+                .Any(v => output.SommairExecutif.ToUpper().Contains(v)))
         {
-            var hasVerdict = new[] { "OUI", "NON", "SOUMIS", "EXONÉR", "DÉDUCTIBL", "%" }
-                .Any(v => row.Conclusion.ToUpper().Contains(v));
-            if (!hasVerdict)
-            {
-                issues.Add(new GuardrailIssue(
-                    GuardrailSeverity.Warning,
-                    $"Row '{row.Sujet[..Math.Min(row.Sujet.Length,40)]}' has no verdict",
-                    "Un point d'analyse n'a pas de verdict clair"));
-            }
+            issues.Add(new GuardrailIssue(
+                GuardrailSeverity.Warning,
+                "Sommaire states no verdict",
+                "Le sommaire exécutif ne donne aucun verdict clair"));
         }
 
         // 5. Check hallucination citation patterns
@@ -225,8 +224,8 @@ public sealed class FiscalGuardrails : FiscalPlatform.Application.Common.Interfa
 
         if (!issues.Any())
             _logger.LogInformation(
-                "OUTPUT GUARDRAIL: ✅ All checks passed ({C} citations, {R} rows)",
-                citationMatches.Count, output.AnalysisTable.Count);
+                "OUTPUT GUARDRAIL: ✅ All checks passed ({C} citations, sommaire {S} chars)",
+                citationMatches.Count, output.SommairExecutif.Length);
         else
             _logger.LogWarning("OUTPUT GUARDRAIL: {N} issue(s) found", issues.Count);
 

@@ -745,25 +745,21 @@ public sealed class ConsultationWorkflow(
         try
         {
             var raw    = await llm.CompleteAsync(H.SystemPrompt,
-                H.BuildTablePrompt(state.EtendueItems, state.Analyses), "Table", 1800, ct);
+                H.BuildSommairePrompt(state.EtendueItems, state.Analyses), "Sommaire", 1800, ct);
             var parsed = raw is not null ? H.ParseJsonDict(raw) : null;
-            if (parsed is not null && parsed.TryGetValue("analysis_table", out var arr) &&
-                arr.ValueKind == JsonValueKind.Array)
+            if (parsed is not null && parsed.TryGetValue("sommaire_executif", out var v) &&
+                v.ValueKind == JsonValueKind.String)
             {
-                var rows = new List<AnalysisRow>();
-                foreach (var el in arr.EnumerateArray())
-                {
-                    if (el.ValueKind != JsonValueKind.Object) continue;
-                    string S(string k) => el.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String
-                        ? v.GetString() ?? "" : "";
-                    rows.Add(new AnalysisRow(S("sujet"), S("analyse"), S("conclusion")));
-                }
-                if (rows.Count > 0) state.Table = rows;
+                var text = (v.GetString() ?? "").Trim();
+                // Keep the Phase-1 draft only if the derivation genuinely produced nothing: a
+                // sommaire built from the FINAL analyses is always the better of the two.
+                if (text.Length > 0) state.Sommaire = text;
             }
         }
-        catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Finalize] table derivation failed"); }
+        catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Finalize] sommaire derivation failed"); }
         sw.Stop();
-        state.Timings.Add(("W8. Finalize (table)", sw.Elapsed.TotalMilliseconds, $"rows={state.Table.Count}"));
+        state.Timings.Add(("W8. Finalize (sommaire)", sw.Elapsed.TotalMilliseconds,
+            $"{state.Sommaire.Length} chars"));
 
         // NOTE: we do NOT ctx.YieldOutputAsync(state) — MAF requires the output TYPE to be declared
         // on the builder, and a graph carrying a mutable domain state uses that same instance as the

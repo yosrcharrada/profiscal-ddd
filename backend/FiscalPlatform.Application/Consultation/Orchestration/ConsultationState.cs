@@ -17,7 +17,10 @@ public sealed class ConsultationState
     public required GenerateConsultationCommand Command   { get; init; }
     public required List<string>    EtendueItems           { get; init; }
     public required string          ContexteFaits          { get; init; }
-    public required string          Sommaire               { get; init; }
+    /// <summary>The sommaire exécutif. Written by Finalize [8] from the FINAL analyses — it is an
+    /// OUTPUT of the graph, not an input: a summary composed before the analyses exist can only
+    /// restate the question and drift from what they conclude.</summary>
+    public string                   Sommaire               { get; set; } = "";
     public required List<string>    Countries              { get; init; }
     public required bool            IsInternational        { get; set; }
     public required HashSet<string> Branches               { get; init; }
@@ -57,7 +60,6 @@ public sealed class ConsultationState
 
     // ── [7]/[8] Expert voice + finalize ──
     public bool ExpertApplied { get; set; }
-    public List<AnalysisRow> Table { get; set; } = new();
 
     // ── Telemetry: per-node timings surfaced back into the handler's timing table ──
     public List<(string Step, double Ms, string Note)> Timings { get; } = new();

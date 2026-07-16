@@ -853,46 +853,6 @@ export default function ConsultationEditor() {
                             onMouseUp={onSectionMouseUp(s.key)}
                             flash={flashKey === s.key}
                           />
-                          {s.key === "analyses" &&
-                            output.analysisTable?.length > 0 && (
-                              <div className="mt-5 border border-border rounded-xl overflow-x-auto">
-                                <table className="w-full text-[12.5px]">
-                                  <thead>
-                                    <tr className="bg-gradient-to-r from-dark to-[#3a3a4a] text-white">
-                                      <th className="text-left px-3.5 py-2.5 font-semibold">
-                                        {t("editor.subject")}
-                                      </th>
-                                      <th className="text-left px-3.5 py-2.5 font-semibold">
-                                        {t("editor.analysis")}
-                                      </th>
-                                      <th className="text-left px-3.5 py-2.5 font-semibold">
-                                        {t("editor.conclusion")}
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {output.analysisTable.map((r, j) => (
-                                      <tr
-                                        key={j}
-                                        className={
-                                          j % 2 ? "bg-light/60" : "bg-white"
-                                        }
-                                      >
-                                        <td className="px-3.5 py-2.5 align-top font-semibold text-dark">
-                                          {r.sujet}
-                                        </td>
-                                        <td className="px-3.5 py-2.5 align-top text-body leading-relaxed">
-                                          {r.analyse}
-                                        </td>
-                                        <td className="px-3.5 py-2.5 align-top font-bold text-dark">
-                                          {r.conclusion}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
                         </section>
                       );
                     })}

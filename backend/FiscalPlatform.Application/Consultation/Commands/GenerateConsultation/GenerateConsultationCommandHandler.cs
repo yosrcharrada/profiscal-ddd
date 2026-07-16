@@ -358,7 +358,6 @@ public sealed class GenerateConsultationCommandHandler(
         }
 
         var etendueItems  = GetList(p1, "etendue_items");
-        var sommaire      = GetStr(p1, "sommaire_executif");
         var contexteFaits = GetStr(p1, "contexte_faits");
         sw5.Stop();
         timings.Add(new("5. LLM Phase 1", sw5.Elapsed.TotalMilliseconds,
@@ -404,7 +403,6 @@ public sealed class GenerateConsultationCommandHandler(
             Command         = cmd,
             EtendueItems    = etendueItems,
             ContexteFaits   = contexteFaits,
-            Sommaire        = sommaire,
             Countries       = countries.ToList(),
             IsInternational = isIntl,
             Branches        = branches,
@@ -418,7 +416,6 @@ public sealed class GenerateConsultationCommandHandler(
 
         sources = state.Sources;                      // graph may have augmented + re-indexed
         var analysesRaw = state.Analyses;
-        var table       = state.Table;
         if (string.IsNullOrWhiteSpace(analysesRaw))
             throw new ConsultationGenerationException("Workflow returned empty analyses");
 
@@ -428,9 +425,9 @@ public sealed class GenerateConsultationCommandHandler(
         timings.Add(new("6. MAF workflow (‖ P3)", sw6.Elapsed.TotalMilliseconds,
             $"case={state.CaseType} rl={state.RetrievalLoops} wl={state.WriterLoops} expert={(state.ExpertApplied ? "y" : "n")}"));
         logger.LogInformation(
-            "└─ [GRAPH] ✓ ({Ms:F0}ms) | case={C} | retrievalLoops={R} writerLoops={W} | judge={J} | expert={E} | table={T}",
+            "└─ [GRAPH] ✓ ({Ms:F0}ms) | case={C} | retrievalLoops={R} writerLoops={W} | judge={J} | expert={E} | sommaire={S}",
             sw6.Elapsed.TotalMilliseconds, state.CaseType, state.RetrievalLoops, state.WriterLoops,
-            state.JudgeAccepted ? "accepted" : "bounded", state.ExpertApplied, table.Count);
+            state.JudgeAccepted ? "accepted" : "bounded", state.ExpertApplied, state.Sommaire.Length);
 
         // ── Step 7: Build output ──────────────────────────────────────────────
         string R(string t) => ResolveCitations(t, sources);
@@ -439,15 +436,13 @@ public sealed class GenerateConsultationCommandHandler(
             ContexteFaits   = GetStr(p1, "contexte_faits"),
             Etendue         = BuildEtendue(etendueItems, GetStr(p1, "etendue")),
             Abbreviations   = GetStr(p1, "abbreviations").Trim(),
-            SommairExecutif = R(sommaire),
+            SommairExecutif = R(state.Sommaire),
             Analyses        = R(analysesRaw),
             // The references section is built DETERMINISTICALLY from the sources actually cited in
-            // the final analyses/table — an LLM used to write it in parallel with the workflow and
-            // its [Sn] numbering drifted when the graph re-indexed sources (garbled label↔target
+            // the final analyses/sommaire — an LLM used to write it in parallel with the workflow
+            // and its [Sn] numbering drifted when the graph re-indexed sources (garbled label↔target
             // pairs, alien conventions). Code can't misalign.
-            Documents       = BuildReferences(analysesRaw, table, sources),
-            AnalysisTable   = table.Select(r =>
-                new AnalysisRow(R(r.Sujet), R(r.Analyse), R(r.Conclusion))).ToList(),
+            Documents       = BuildReferences(analysesRaw, state.Sommaire, sources),
             Sources         = sources,
             Method          = method,
             ElapsedMs       = total.Elapsed.TotalMilliseconds,
@@ -571,14 +566,18 @@ public sealed class GenerateConsultationCommandHandler(
             "- etendue: laisse \"\" — la section 1.2 est construite automatiquement (liste à puces) " +
             "à partir de etendue_items.\n" +
             "- abbreviations: SIGLE : Définition\n" +
-            "- sommaire_executif: verdicts concis, max 1 [Sn] par point, tout taux LU depuis [Sn]. " +
-            "N'INVOQUE JAMAIS une convention fiscale si 'Convention fiscale disponible: NON' — dans ce cas " +
-            "applique le droit commun. N'affirme pas de conclusion contraire à celle qui découlera de l'analyse.\n" +
+            // sommaire_executif is deliberately NOT requested here: at Phase 1 no analysis exists
+            // yet, so anything written now can only restate the question and then drift from what
+            // the analyses actually conclude. It is derived at the END of the graph, from the final
+            // analyses (Finalize [8] / BuildSommairePrompt) — the same rule the tableau de synthèse
+            // it replaced already followed. Nothing consumed the Phase-1 value: the writer never
+            // read it (BuildPhase2Prompt took it as a parameter but never referenced it), so
+            // dropping it costs no context and simply stops generating ~900 chars per run.
             "- pays_non_resident: pays de résidence de la partie étrangère (ex: france, maroc). " +
             "Identifier même si non mentionné explicitement (nom de société, groupe, devise). " +
             "Vide si transaction purement tunisienne.\n\n" +
             "{\"etendue_items\":[],\"contexte_faits\":\"\",\"etendue\":\"\"," +
-            "\"abbreviations\":\"\",\"sommaire_executif\":\"\",\"pays_non_resident\":\"\"}";
+            "\"abbreviations\":\"\",\"pays_non_resident\":\"\"}";
     }
 
     // Section 1.2 — built in code as a bullet list of ONLY the asked questions.
@@ -813,12 +812,13 @@ public sealed class GenerateConsultationCommandHandler(
     }
 
     // References built DETERMINISTICALLY from the sources actually cited in the final analyses and
-    // table — code cannot misalign the label with the target, and never lists an uncited document.
+    // sommaire — code cannot misalign the label with the target, and never lists an uncited
+    // document. The sommaire's [Sn] should always be a subset of the analyses' (BuildSommairePrompt
+    // forbids any other), but it is harvested too so a stray citation can never orphan its entry.
     internal static string BuildReferences(
-        string analyses, List<AnalysisRow> table, List<LegalSourceDto> sources)
+        string analyses, string sommaire, List<LegalSourceDto> sources)
     {
-        var citedText = analyses + " " + string.Join(" ",
-            table.Select(r => r.Sujet + " " + r.Analyse + " " + r.Conclusion));
+        var citedText = analyses + " " + sommaire;
         var indexes = Regex.Matches(citedText, @"\[S(\d+)\]")
             .Select(m => int.TryParse(m.Groups[1].Value, out var i) ? i : -1)
             .Where(i => i > 0).Distinct().OrderBy(i => i).ToList();
@@ -835,26 +835,36 @@ public sealed class GenerateConsultationCommandHandler(
                                 : "5. RÉFÉRENCES\n\n" + string.Join("\n", lines);
     }
 
-    // Synthesis table derived STRICTLY from the finalized analyses (never from raw sources),
-    // so it always matches the body — no "NON DOCUMENTÉ" while the analysis states a rate.
-    internal static string BuildTablePrompt(List<string> etendueItems, string finalAnalyses)
+    /// <summary>
+    /// The SOMMAIRE EXÉCUTIF, derived strictly from the FINAL analyses — the single synthesis
+    /// artefact of the memo (it replaced the old « tableau de synthèse », which said the same thing
+    /// in a table). Built here, at the end of the graph, for the same reason the table was: a
+    /// summary written in Phase 1 — before any analysis exists — can only restate the question and
+    /// then drift from whatever the analyses actually conclude. Same discipline as the table it
+    /// replaces: it may NEVER contradict the analyses, and every figure is copied from them.
+    /// </summary>
+    internal static string BuildSommairePrompt(List<string> etendueItems, string finalAnalyses)
     {
         var n  = etendueItems.Count;
         var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
         return
-            $"TABLEAU DE SYNTHÈSE — JSON: analysis_table ({n} objets, un par point d'étendue, même ordre).\n\n" +
+            $"SOMMAIRE EXÉCUTIF — JSON: sommaire_executif (une entrée par point d'étendue, {n} au total, même ordre).\n\n" +
             $"POINTS D'ÉTENDUE:\n{et}\n\n" +
             $"ANALYSES FINALES (SEULE source de vérité — n'invente rien hors de ce texte):\n{finalAnalyses}\n\n" +
-            "RÈGLES STRICTES (le tableau doit être LISIBLE et SYNTHÉTIQUE) :\n" +
-            "- sujet : le point d'étendue, en 1 ligne courte (pas de recopie intégrale).\n" +
-            "- analyse : 2 à 3 phrases MAXIMUM résumant la position retenue, avec les mêmes [Sn].\n" +
-            "- conclusion : LE verdict chiffré essentiel, TRÈS COURT (ex. « RS 15% ; TVA 19% » ou " +
-            "« EXONÉRÉ »). Si le point porte plusieurs sous-verdicts, mets-en UN par ligne (séparés par " +
-            "un retour à la ligne « \\n »), format « Établissement stable : NON », « Retenue à la source : " +
-            "15% », etc. — JAMAIS un paragraphe. Recopie fidèlement les taux/verdicts des analyses ; " +
-            "INTERDIT d'écrire « NON DOCUMENTÉ » si les analyses tranchent le point. Le tableau NE DOIT " +
-            "JAMAIS contredire les analyses.\n\n" +
-            "{\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"\"}]}";
+            "RÈGLES STRICTES — c'est un RÉSUMÉ DÉCISIONNEL, PAS un résumé de l'analyse :\n" +
+            "- NE REDIS PAS le raisonnement des analyses : le lecteur pressé doit voir LES VERDICTS, " +
+            "pas revivre la démonstration. INTERDIT de recopier des paragraphes des analyses.\n" +
+            "- UNE entrée par point d'étendue, dans l'ordre, au format EXACT :\n" +
+            "  « **Sujet court** : une phrase (deux au maximum) donnant la position retenue. Verdict : X. »\n" +
+            "- Sujet court = le point d'étendue en quelques mots (pas sa recopie intégrale).\n" +
+            "- Verdict = LE résultat chiffré essentiel, TRÈS COURT (« NON », « RS 15% », « TVA 19% », " +
+            "« EXONÉRÉ »). Si le point porte plusieurs sous-verdicts, mets-en UN par ligne, format " +
+            "« Établissement stable : NON », « Retenue à la source : 15% » — JAMAIS un paragraphe.\n" +
+            "- Recopie FIDÈLEMENT les taux et verdicts des analyses ; INTERDIT d'écrire « NON DOCUMENTÉ » " +
+            "si les analyses tranchent le point. Le sommaire NE DOIT JAMAIS contredire les analyses.\n" +
+            "- Au plus UNE citation [Sn] par entrée, et uniquement un [Sn] déjà présent dans les analyses.\n" +
+            "- Entrées séparées par un saut de ligne. Aucun titre, aucune introduction, aucune conclusion.\n\n" +
+            "{\"sommaire_executif\":\"\"}";
     }
 
     // ── Source merging ────────────────────────────────────────────────────────

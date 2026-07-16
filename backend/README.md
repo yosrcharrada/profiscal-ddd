@@ -81,9 +81,12 @@ Step 2  RetrievalPlannerAgent   TRUE ReAct agent (2 rounds, parallel tool calls)
 Step 3  Embed search            Python server @ :8081, sentence-transformers 768-dim       ~2s
 Step 4  Neo4j retrieval         Keyword + graph expansion over 67k chunks                 ~3s
 Step 4b Source merge            Planner > Embed > Neo4j, deduplication, diversity cap
-Step 5  LLM Phase 1             contexte_faits, etendue, sommaire, pays_non_resident       ~15s
+Step 5  LLM Phase 1             contexte_faits, etendue, pays_non_resident                 ~15s
 Step 5b Convention fetch        If Phase 1 detects a country not in Step 1, fetch convs    ~2s
-Step 6  LLM Phase 2+3 (‖)      analyses ‖ analysis_table — run in parallel               ~25s
+Step 6  MAF workflow            analyses; Finalize [8] derives the sommaire exécutif       ~25s
+         → The sommaire is written LAST, from the FINAL analyses (it replaced the
+           « tableau de synthèse »): a summary composed in Phase 1 — before any
+           analysis exists — can only restate the question and then drift from it.
 Step 7  Document generation     Fill template_fr.docx (EY branded), return .docx bytes    ~500ms
 Step 8  Persist                 Write to SQLite FiscalConsultations table (fire & forget)
 ```
