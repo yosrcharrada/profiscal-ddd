@@ -63,7 +63,8 @@ public sealed class ConsultationStore(AppDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<List<FiscalConsultation>> ListAsync(Guid? ownerUserId, string? search, CancellationToken ct = default)
+    public async Task<List<FiscalConsultation>> ListAsync(Guid? ownerUserId, string? search,
+        DateTime? dateFrom = null, DateTime? dateTo = null, CancellationToken ct = default)
     {
         var q = db.FiscalConsultations.AsNoTracking().AsQueryable();
         if (ownerUserId is not null) q = q.Where(c => c.OwnerUserId == ownerUserId);
@@ -74,6 +75,8 @@ public sealed class ConsultationStore(AppDbContext db)
                              c.Reference.ToLower().Contains(s) ||
                              c.FiscalQuestion.ToLower().Contains(s));
         }
+        if (dateFrom is not null) q = q.Where(c => c.CreatedAt >= dateFrom.Value);
+        if (dateTo   is not null) q = q.Where(c => c.CreatedAt <  dateTo.Value.Date.AddDays(1)); // inclusive end-day
         return await q.OrderByDescending(c => c.CreatedAt).Take(100).ToListAsync(ct);
     }
 

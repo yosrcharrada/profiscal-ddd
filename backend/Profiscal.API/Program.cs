@@ -42,6 +42,13 @@ else
     Console.WriteLine("[env] no .env found — using appsettings / environment only");
 }
 
+// BUILD STAMP — proves in the log WHICH binary is running (catches "pulled but ran the old build").
+// The assembly write time changes on every rebuild; if this timestamp predates your last git pull,
+// you are not running the code you think you are.
+var asmPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+Console.WriteLine($"[build] Profiscal.API compiled {File.GetLastWriteTime(asmPath):yyyy-MM-dd HH:mm:ss} | " +
+                  $"NEO4J_DATABASE(.env)='{Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "(unset)"}'");
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
@@ -70,10 +77,14 @@ builder.Services.AddValidatorsFromAssemblyContaining<
 builder.Services.AddScoped<
     FiscalPlatform.Application.Chat.Queries.Chat.ChatQueryHandler>();
 
-// Legal search engine: Neo4j-backed search over the legal Chunk nodes.
-// This keeps the dashboard health/count aligned with the knowledge base that is
-// already loaded in the local Neo4j `tunisian-fiscal` database.
-builder.Services.AddSingleton<ISearchAgent, Neo4jSearchAgent>();
+// Legal search engine: the dedicated /api/fiscal/search endpoint is backed by
+// Elasticsearch (fuzziness AUTO multi_match over the `tunisian_legal` index — the
+// typo/accent tolerance the tax team relies on). Neo4jSearchAgent (BM25 via the
+// native `chunk_content` full-text index, no ES required) is kept below as the
+// fallback: it has NO fuzzy/edit-distance matching, only exact-term OR, so only use
+// it if no Elasticsearch instance is available for this build.
+builder.Services.AddSingleton<ISearchAgent, FiscalPlatform.Infrastructure.Search.ElasticsearchSearchAgent>();
+// builder.Services.AddSingleton<ISearchAgent, Profiscal.API.Fiscal.Neo4jSearchAgent>();
 
 // EF replacements for consultations/ratings persistence.
 builder.Services.AddScoped<IConsultationRepository, EfConsultationRepository>();

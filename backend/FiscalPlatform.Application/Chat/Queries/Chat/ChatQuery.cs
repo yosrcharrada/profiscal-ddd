@@ -38,11 +38,17 @@ public sealed class ChatQueryHandler(
     IBranchDetector branchDetector,
     ICountryDetector countryDetector,
     IKeywordExtractor keywordExtractor,
+    IFiscalGuardrails guardrails,
     ILogger<ChatQueryHandler> logger)
     : IRequestHandler<ChatQuery, ChatResponseDto>
 {
     private const int MaxPlanningRounds = 2;
     private const int MaxSources        = 10;
+    // Minimum-quality bar for the accumulated source set before we let the agent answer. The chat
+    // pipeline has no Completeness node (the consultation workflow does), so a planner round that
+    // returns 1-2 weak/tangential chunks used to sail straight through. Below this count — or when
+    // a targeted-completeness check fails — we fire ONE extra bounded retrieval attempt.
+    private const int MinAcceptableSources = 3;
 
     private const string PlannerSystem =
         "Tu es un agent de recherche juridique fiscale tunisienne. Ton rôle: décider quels outils " +
@@ -66,7 +72,8 @@ public sealed class ChatQueryHandler(
         "Cite chaque affirmation avec [Source N] (N = numéro EXACT de la source utilisée).\n" +
         "Tout taux, article ou règle cité DOIT renvoyer à une [Source N]. Si un point n'est pas " +
         "couvert par les sources, écris 'NON DOCUMENTÉ' pour ce point — n'invente jamais une règle, " +
-        "un taux ou un article. Markdown autorisé (titres, listes, gras).";
+        "un taux ou un article. Markdown autorisé (titres, listes, gras).\n\n" +
+        Common.FiscalPrompts.MetierCore;
 
     // Non-streaming entry point (MediatR). Aggregates the streaming events into one DTO,
     // so there is a SINGLE agent implementation (StreamAsync) behind both endpoints.
@@ -85,6 +92,8 @@ public sealed class ChatQueryHandler(
             }
         }
         var answer = sb.ToString().Trim();
+        // Output guardrail: grounding scan (invalid citations, uncited rates) — logged, non-blocking.
+        guardrails.ValidateTextWarnings(answer, sources.Count);
         return new ChatResponseDto(answer.Length == 0 ? "Je n'ai pas pu répondre." : answer, sources, ms);
     }
 
@@ -98,6 +107,21 @@ public sealed class ChatQueryHandler(
         var sw       = System.Diagnostics.Stopwatch.StartNew();
         var question = (query.Question ?? "").Trim();
         logger.LogInformation("┌─ [CHAT-AGENT] (stream) '{Q}'", question[..Math.Min(question.Length, 60)]);
+
+        // ── Input guardrail: block substantive OFF-TOPIC questions before any LLM/retrieval spend.
+        // Short conversational messages (greetings, thanks, follow-ups) pass through — the agent
+        // handles those without sources.
+        var (inputOk, inputReason) = guardrails.ValidateInput(question, question);
+        var looksSubstantive = question.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 6;
+        if (!inputOk && looksSubstantive)
+        {
+            logger.LogWarning("└─ [CHAT-AGENT] input guardrail blocked: {R}", inputReason);
+            yield return new ChatSourcesEvent(new List<SourceChunkDto>());
+            yield return new ChatTokenEvent(inputReason ??
+                "La question ne semble pas être de nature fiscale. Veuillez préciser votre question fiscale.");
+            yield return new ChatDoneEvent(sw.Elapsed.TotalMilliseconds);
+            yield break;
+        }
 
         var historyText  = BuildHistoryText(query.History);
         var accumulated  = new List<SourceChunkDto>();
@@ -157,17 +181,54 @@ public sealed class ChatQueryHandler(
             }
         }
 
-        // Safety net: full engine retrieval before concluding "no sources".
-        if (accumulated.Count == 0 && question.Length > 0)
+        // ── Completeness safety net (the chat analogue of the consultation Completeness node) ──
+        // Instead of only rescuing a COMPLETELY empty result, verify the accumulated set actually
+        // clears a minimum bar before answering. All checks are cheap and LLM-free (they reuse the
+        // existing CountryDetector + the same '%' rate signal the consultation pipeline uses via
+        // RequirePercent). They trigger AT MOST ONE additional bounded retrieval attempt — never a loop.
+        if (question.Length > 0)
         {
-            yield return new ChatStatusEvent("searching", "Recherche approfondie dans le corpus…");
-            foreach (var c in await DeepRetrieveAsync(question, ct))
+            // (a) foreign country named but no convention for it in the accumulated sources.
+            var (qCountries, _) = countryDetector.Detect(question);
+            var foreignCountries = qCountries
+                .Where(c => { var k = c.Trim().ToLowerInvariant(); return k.Length > 0 && !k.StartsWith("tunis"); })
+                .ToList();
+            bool missingConvention = foreignCountries.Count > 0 && !accumulated.Any(s =>
+                string.Equals(s.Category, "Convention", StringComparison.OrdinalIgnoreCase));
+
+            // (b) question asks for a rate/amount but no accumulated source carries a real rate ('%').
+            //     Same signal family as CaseBrief.RequirePercent (source text must contain '%').
+            var ql = question.ToLowerInvariant();
+            bool asksRate = ql.Contains("taux") || ql.Contains('%') || ql.Contains("pourcentage")
+                            || ql.Contains("combien") || ql.Contains("montant");
+            bool missingRate = asksRate && !accumulated.Any(s => (s.Text ?? "").Contains('%'));
+
+            // baseline blunt net (was `== 0`): a planner round returning a couple of near-empty hits.
+            bool tooFew = accumulated.Count < MinAcceptableSources;
+
+            if (tooFew || missingConvention || missingRate)
             {
-                var txt = c.Text ?? "";
-                var key = (c.DocName + "|" + c.ArticleRef + "|" + txt[..Math.Min(txt.Length, 60)]).Trim();
-                if (seen.Add(key)) accumulated.Add(c);
+                yield return new ChatStatusEvent("searching", "Recherche approfondie dans le corpus…");
+
+                // One bounded attempt: a targeted convention fetch for the named country (only when
+                // that's what's missing) PLUS the full engine deep retrieve, dispatched together.
+                var extraTasks = new List<Task<List<SourceChunkDto>>>();
+                if (missingConvention)
+                    extraTasks.Add(ExecuteToolAsync(
+                        new ChatToolCall("search_convention", question, foreignCountries[0], null), ct));
+                extraTasks.Add(DeepRetrieveAsync(question, ct));
+
+                foreach (var list in await Task.WhenAll(extraTasks))
+                    foreach (var c in list)
+                    {
+                        var txt = c.Text ?? "";
+                        var key = (c.DocName + "|" + c.ArticleRef + "|" + txt[..Math.Min(txt.Length, 60)]).Trim();
+                        if (seen.Add(key)) accumulated.Add(c);
+                    }
+                logger.LogInformation(
+                    "│  [CHAT-AGENT] completeness net (tooFew={F} missingConv={C} missingRate={R}) → {N} sources",
+                    tooFew, missingConvention, missingRate, accumulated.Count);
             }
-            logger.LogInformation("│  [CHAT-AGENT] safety-net deep retrieve: {N} sources", accumulated.Count);
         }
 
         var finalSources = accumulated.OrderByDescending(s => s.Score).Take(MaxSources).ToList();

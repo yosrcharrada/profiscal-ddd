@@ -125,7 +125,7 @@ export default function SourcePanel({
         <div className="bg-white border border-border rounded-2xl shadow-sm px-7 py-7 relative overflow-hidden animate-fade-in">
           <div className="absolute top-0 left-0 w-full h-1 bg-brand" />
           <p className="text-[11px] font-bold text-muted uppercase tracking-[0.2em] mb-1.5">
-            Extrait du document
+            {s.whole ? "Document complet" : "Extrait du document"}
           </p>
           {s.sectionTitle && (
             <p className="text-sm font-bold text-dark mb-4">{s.sectionTitle}</p>

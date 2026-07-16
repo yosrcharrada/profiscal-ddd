@@ -44,10 +44,27 @@ public sealed class FiscalController(
     [HttpPost("search")]
     public async Task<IActionResult> Search([FromBody] SearchRequestDto req, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(req.Query))
-            return BadRequest(ApiResponse<object>.Fail("Query required."));
+        // Allow a filter-only search (no query text) as long as at least one filter narrows it —
+        // e.g. "show all Conventions". Reject only when there is neither a query nor any filter.
+        var hasFilter = !string.Equals(req.DocType, "all", StringComparison.OrdinalIgnoreCase)
+                     || !string.Equals(req.ChunkType, "all", StringComparison.OrdinalIgnoreCase)
+                     || !string.Equals(req.Corpus, "all", StringComparison.OrdinalIgnoreCase)
+                     || req.Year > 0 || req.Number.Length > 0 || req.DateText.Length > 0;
+        if (string.IsNullOrWhiteSpace(req.Query) && !hasFilter)
+            return BadRequest(ApiResponse<object>.Fail("Enter a search term or select a filter."));
         var result = await mediator.Send(new SearchLegalDocumentsQuery(req), ct);
         return Ok(ApiResponse<SearchResultDto>.Ok(result));
+    }
+
+    /// <summary>Whole-document view: assemble every passage of a document in reading order.
+    /// Powers clicking a collapsed search result to read the full text (the Google model).</summary>
+    [HttpGet("search/document/{documentId}")]
+    public async Task<IActionResult> GetDocument(string documentId, CancellationToken ct)
+    {
+        var doc = await searchAgent.GetDocumentAsync(documentId, ct);
+        return doc is null
+            ? NotFound(ApiResponse<object>.Fail("Document introuvable."))
+            : Ok(ApiResponse<LegalDocumentDto>.Ok(doc));
     }
 
     [HttpGet("search/health")]
@@ -178,10 +195,11 @@ public sealed class FiscalController(
 
     /// <summary>List consultations (mine, or all for admins).</summary>
     [HttpGet("consultations")]
-    public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] bool all = false, CancellationToken ct = default)
+    public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] bool all = false,
+        [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, CancellationToken ct = default)
     {
         var owner = (all && User.IsInRole("Admin")) ? (Guid?)null : CurrentUserId;
-        var rows  = await store.ListAsync(owner, search, ct);
+        var rows  = await store.ListAsync(owner, search, dateFrom, dateTo, ct);
         return Ok(ApiResponse<object>.Ok(rows.Select(c => new
         {
             id = c.Id, c.Reference, c.ClientName, c.FiscalQuestion,

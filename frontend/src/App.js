@@ -24,6 +24,7 @@ import Search from './pages/fiscal/Search';
 import Chat from './pages/fiscal/Chat';
 import Consultations from './pages/fiscal/Consultations';
 import ConsultationEditor from './pages/fiscal/ConsultationEditor';
+import News from './pages/news/News';
 
 function App() {
   return (
@@ -41,6 +42,7 @@ function App() {
             <Route path="/app/chat" element={<Chat />} />
             <Route path="/app/consultations" element={<Consultations />} />
             <Route path="/app/consultations/:id" element={<ConsultationEditor />} />
+            <Route path="/app/news" element={<News />} />
             <Route path="/app/tasks" element={<MyTasks />} />
             <Route path="/app/support" element={<Support />} />
             <Route path="/settings" element={<Settings />} />

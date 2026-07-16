@@ -31,36 +31,46 @@ public sealed class AcceptanceAgent(ILlmAgent llm, ILogger<AcceptanceAgent> logg
         "chose) ?\n" +
         "7. TON: document final professionnel, sans raisonnement à voix haute (\"Détermination\", " +
         "\"le scénario applicable\", \"sur la base du fait établi\") ?\n" +
-        "8. ÉTAPES OBLIGATOIRES (cas international): (a) ES analysé avant la conclusion RS/retenue; " +
-        "(b) CONVENTION: une CNDI est invoquée UNIQUEMENT si une source [Sn] 'Convention' du MÊME PAYS " +
-        "que le bénéficiaire est présente — invoquer une convention d'un autre pays ou une convention non " +
-        "citée en [Sn] est une HALLUCINATION; " +
-        "(c) si CNDI valide: vérification explicite si redevance (Art.12) ou bénéfices d'entreprise (Art.7); " +
-        "(d) si SANS CNDI: Art.52 CIRPPIS doit être appliqué — NON DOCUMENTÉ pour la RS non-résidents " +
-        "sans CNDI = faiblesse critique (le droit commun s'applique de plein droit); " +
-        "(e) si RS libératoire: formalisme CDPF Art.112 mentionné; " +
-        "(f) le taux appliqué est cité depuis une SOURCE [Sn] — jamais affirmé sans référence.\n\n" +
-        "Réponds UNIQUEMENT en JSON (COMPACT, pas de prose) — max 800 tokens:\n" +
-        "{\"accept\":true|false,\"score\":0.0-1.0,\"issues\":[\"faiblesse courte\",...]," +
+        "8. ÉTAPES OBLIGATOIRES: pour un prestataire étranger, le risque d'établissement stable " +
+        "est-il traité (droit commun PUIS Art.5 convention) avant la conclusion ?\n" +
+        "9. TAUX LE PLUS FAVORABLE: le taux/traitement retenu est-il le PLUS FAVORABLE légalement " +
+        "applicable (convention vs droit commun) dont toutes les conditions sont remplies ? Si la " +
+        "convention réduit/exonère et que le projet applique quand même le taux de droit commun (RS " +
+        "Art.52) sans écarter la convention par une justification = faiblesse. En l'absence d'ES " +
+        "et hors redevance, le revenu est un bénéfice d'entreprise imposable seulement dans l'État de " +
+        "résidence (pas de RS en Tunisie) : vérifier que cette issue n'a pas été manquée.\n\n" +
+        "Réponds UNIQUEMENT en JSON, de façon CONCISE (limite la longueur):\n" +
+        "{\"accept\":true|false,\"score\":0.0-1.0,\"issues\":[\"faiblesse concrète\"]," +
         "\"needs_more_sources\":true|false," +
-        "\"missing_topics\":[\"ex: Art. 52 CIRPPIS\",...]," +
-        "\"revision_instructions\":\"<= 3 consignes numérotées, chacune <= 20 mots\"}\n" +
-        "MAX 8 issues (les plus critiques seulement). MAX 5 missing_topics.\n" +
-        "accept=false dès qu'il existe une faiblesse réelle (pas seulement un taux manquant). " +
-        "needs_more_sources=true UNIQUEMENT si la correction exige une source absente; sinon false " +
-        "(la faiblesse est corrigeable avec les sources déjà fournies).";
+        "\"missing_topics\":[\"ex: taux retenue à la source\",\"ex: Art. 52 CIRPPIS\"]," +
+        "\"revision_instructions\":\"consignes précises pour corriger le projet\"}\n" +
+        "Liste AU PLUS les 6 faiblesses les plus importantes (issues courtes). " +
+        "missing_topics: AU PLUS 4. revision_instructions: ≤ 120 mots, à l'impératif, sans reformuler le projet.\n" +
+        "accept=false UNIQUEMENT en présence d'une faiblesse MAJEURE : verdict faux, manquant ou " +
+        "conditionnel ; taux affirmé sans source ; hallucination ; section obligatoire absente ; " +
+        "contradiction interne. Des améliorations purement stylistiques ou de simples redondances ne " +
+        "justifient PAS un rejet — dans ce cas accept=true (liste-les quand même dans issues). " +
+        "En cas de doute, si les verdicts principaux sont chiffrés, corrects et ancrés [Sn], accept=true.\n" +
+        "needs_more_sources / missing_topics — RÈGLES STRICTES (ne fais pas boucler la recherche pour rien) :\n" +
+        "• AVANT de réclamer une source, VÉRIFIE qu'elle n'est pas DÉJÀ dans « SOURCES DISPONIBLES » " +
+        "ci-dessus : si le texte y figure, needs_more_sources=false et n'ajoute PAS ce sujet à missing_topics.\n" +
+        "• Ne réclame JAMAIS une convention/traité de non-double-imposition lorsqu'AUCUNE convention n'a " +
+        "été fournie : cela signifie que le pays n'a pas de convention avec la Tunisie, et la bonne réponse " +
+        "est alors le DROIT COMMUN — ce n'est PAS une source manquante.\n" +
+        "• missing_topics doit rester VIDE et needs_more_sources=false dès que la faiblesse est corrigeable " +
+        "avec les sources déjà fournies (reformulation, application aux faits, choix du verdict).";
 
     public async Task<AcceptanceVerdict> ReviewAsync(AcceptanceRequest req, CancellationToken ct = default)
     {
         var user =
             $"QUESTION:\n{req.FiscalQuestion}\n\n" +
             $"ÉTENDUE:\n{req.Etendue}\n\n" +
-            $"PROJET D'ANALYSE:\n{Trunc(req.Analyses, 4000)}\n\n" +
-            $"SOURCES DISPONIBLES:\n{Trunc(req.SourcesList, 800)}\n\n" +
+            $"PROJET D'ANALYSE:\n{Trunc(req.Analyses, 6000)}\n\n" +
+            $"SOURCES DISPONIBLES:\n{Trunc(req.SourcesList, 1500)}\n\n" +
             "Évalue ce projet. Réponds en JSON.";
 
         string? raw;
-        try { raw = await llm.CompleteAsync(JudgeSystem, user, "Acceptance", 900, ct); }
+        try { raw = await llm.CompleteAsync(JudgeSystem, user, "Acceptance", 600, ct); }
         catch (Exception ex) { logger.LogWarning(ex, "[ACCEPT] judge call failed — accepting"); return Pass(); }
 
         if (string.IsNullOrWhiteSpace(raw)) return Pass();

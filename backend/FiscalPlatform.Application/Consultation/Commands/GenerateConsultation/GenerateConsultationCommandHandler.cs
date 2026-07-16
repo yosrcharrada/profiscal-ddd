@@ -5,6 +5,8 @@ using System.Text.RegularExpressions;
 using FiscalPlatform.Application.Common.DTOs;
 using FiscalPlatform.Application.Common.Interfaces.Agents;
 using FiscalPlatform.Application.Common.Interfaces.Services;
+using FiscalPlatform.Application.Consultation.Agents;
+using FiscalPlatform.Application.Consultation.Playbooks;
 using FiscalPlatform.Domain.Exceptions;
 using FiscalPlatform.Domain.Repositories;
 using MediatR;
@@ -49,9 +51,10 @@ public sealed class GenerateConsultationCommandHandler(
     IEmbedSearchAgent        embedAgent,
     IRetrievalAgent          retrievalAgent,
     IRuleBasedRetrieval      ruleRetrieval,
-    IAcceptanceAgent         acceptanceAgent,
     ILlmAgent                llmAgent,
     IDocumentGenerationAgent docAgent,
+    Orchestration.ConsultationWorkflow consultationWorkflow,
+    IFiscalGuardrails        guardrails,
     IConsultationRepository  repository,
     ILogger<GenerateConsultationCommandHandler> logger)
     : IRequestHandler<GenerateConsultationCommand, ConsultationGeneratedDto>
@@ -60,23 +63,77 @@ public sealed class GenerateConsultationCommandHandler(
     private static readonly HashSet<string> NoteCommune2Exceptions =
         new(StringComparer.OrdinalIgnoreCase) { "allemagne" };
 
-    private const string SystemPrompt =
-        "Tu es Faiez Choyakh — fiscaliste tunisien senior, EY Tunisia.\n" +
+    internal const string SystemPrompt =
+        "Tu est un expert — fiscaliste tunisien senior, EY Tunisia.\n" +
         "CITATIONS: [S1],[S2]... uniquement. Jamais de document en clair. Jamais inventer un article.\n" +
-        "TAUX: tout taux (15%,5%,2.5%...) DOIT citer [Sn]. Jamais de taux de mémoire.\n" +
+        "TAUX: LIS chaque taux DEPUIS le texte de l'article cité [Sn] et recopie le chiffre EXACT qui y figure. " +
+        "Jamais de taux de mémoire, jamais inventé, jamais supposé.\n" +
         "ART.92 CIRPPIS: si source contient 'Art 92-X LF' = référence LF, pas article autonome.\n" +
+        "PRINCIPE DIRECTEUR — TAUX LE PLUS FAVORABLE: parmi TOUS les fondements applicables, retenir le\n" +
+        "  traitement le plus favorable au contribuable (taux le plus bas, voire exonération) qui respecte\n" +
+        "  TOUTES les conditions légales. La convention prime toujours le droit commun et peut réduire ou\n" +
+        "  supprimer l'imposition tunisienne. Ne jamais retenir un taux plus élevé s'il existe un fondement\n" +
+        "  plus favorable dont les conditions sont remplies.\n" +
+        "TAUX SPÉCIFIQUE (lex specialis): dans un article de taux, LIS TOUT l'article et applique la LIGNE\n" +
+        "  correspondant PRÉCISÉMENT à la NATURE du revenu ET à la QUALITÉ du bénéficiaire — jamais la\n" +
+        "  première ligne venue. IMPÉRATIF: pour un bénéficiaire NON-RÉSIDENT NON ÉTABLI, applique la ligne\n" +
+        "  qui vise EXPRESSÉMENT les revenus « servis aux non domiciliés ni établis » / « aux non-résidents »,\n" +
+        "  et NON la ligne des paiements aux résidents (régime réel), même si le taux diffère. Le taux\n" +
+        "  spécifique prime le taux général. Le 'taux le plus favorable' ne joue qu'entre fondements RÉELLEMENT\n" +
+        "  CONCURRENTS pour la MÊME situation (convention vs droit commun ; régime standard vs régime réduit\n" +
+        "  dont les conditions sont remplies), jamais entre sous-taux de catégories différentes.\n" +
         "PRESTATAIRE ÉTRANGER — séquence obligatoire:\n" +
-        "  1. ES: analyser risque établissement stable (durée, présence, lieu fixe).\n" +
-        "     Si ES → taux IS. Si pas ES → étape 2.\n" +
-        "  2. Redevance: service = redevance selon Art.12 convention? (définition propre à chaque conv.)\n" +
-        "     Si oui → taux convention. Si non → Art.52 CIRPPIS.\n" +
-        "  3. TVA: toujours analyser.\n" +
+        "  RÈGLE D'EXCLUSION: le RÉGIME PRIVILÉGIÉ (droit commun) et la CONVENTION ne coexistent JAMAIS.\n" +
+        "     • S'IL EXISTE UNE CONVENTION avec le pays → N'ÉVOQUE PAS le régime privilégié ; déroule l'ES\n" +
+        "       (pt.1) puis la qualification conventionnelle (pt.2).\n" +
+        "     • À DÉFAUT DE CONVENTION seulement → vérifie le régime privilégié (pt.0/pt.3) ; et si le pays\n" +
+        "       est à régime privilégié, N'ANALYSE PAS l'établissement stable.\n" +
+        "  0. RÉGIME FISCAL PRIVILÉGIÉ (À VÉRIFIER EN PREMIER, UNIQUEMENT EN L'ABSENCE DE CONVENTION): le\n" +
+        "     pays du bénéficiaire figure-t-il dans la liste des États/territoires à régime fiscal\n" +
+        "     privilégié [Sn] ? SI OUI → NE PAS analyser NI mentionner l'établissement stable (notion\n" +
+        "     écartée pour un bénéficiaire à régime privilégié) : passer directement à la RS (pt.2), sans\n" +
+        "     verdict d'ES. SI NON → dérouler l'ES au pt.1.\n" +
+        "  1. ES (établissement stable) — SEULEMENT si le bénéficiaire n'est PAS à régime privilégié:\n" +
+        "     trancher OUI/NON, d'abord SELON LE DROIT COMMUN (Art.45/47 CIRPPIS\n" +
+        "     + doctrine: interprétation extensive, règle des 6 mois même pour une seule prestation), PUIS\n" +
+        "     SELON l'ART.5 de la convention. Si ES en Tunisie → imposition (IS/RS) selon le régime de l'ES.\n" +
+        "  2. EN L'ABSENCE D'ES — qualifier le revenu et appliquer le régime correspondant:\n" +
+        "     • S'IL EXISTE UNE CONVENTION: qualifier le revenu au regard de la convention (bénéfice\n" +
+        "       d'entreprise, redevance, dividende, intérêt, profession indépendante…) et appliquer le\n" +
+        "       TRAITEMENT CONVENTIONNEL de cette catégorie:\n" +
+        "         - bénéfice d'entreprise (Art.7) → imposable UNIQUEMENT dans l'État de résidence → AUCUNE\n" +
+        "           imposition tunisienne (ni RS) en l'absence d'ES ;\n" +
+        "         - redevance / dividende / intérêt (Art.12/10/11) → imposable dans l'État de la source au\n" +
+        "           TAUX RÉDUIT de la convention [Sn], sous réserve des conditions de la convention.\n" +
+        "       LA CONVENTION PRIME TOUT RÉGIME INTERNE DE RS — l'Art.52 CIRPPIS comme tout régime interne\n" +
+        "       SECTORIEL (travaux, montage, installation, surveillance, construction) ou toute note commune\n" +
+        "       fixant un taux interne : ces régimes ne valent qu'à DÉFAUT de convention.\n" +
+        "     • SANS CONVENTION: droit commun — Art.52 CIRPPIS, au taux correspondant à la nature du revenu\n" +
+        "       et à la qualité du bénéficiaire [Sn]. ES SUPERFÉTATOIRE si ce taux s'applique que l'ES existe\n" +
+        "       ou non (le préciser ; ne pas mettre 'NON DOCUMENTÉ' pour l'ES). Puis vérifier le régime privilégié (pt.3).\n" +
+        "  3. RÉGIME FISCAL PRIVILÉGIÉ (SANS CONVENTION UNIQUEMENT — si une convention s'applique, IGNORE ce\n" +
+        "     point et ne le mentionne pas) — VÉRIFIER le pays du bénéficiaire DANS la liste retrouvée [Sn]. NE\n" +
+        "     JAMAIS affirmer qu'un pays n'y figure pas sans avoir lu la liste. S'il Y FIGURE, la majoration de\n" +
+        "     RS ne s'applique QUE si l'activité relève du taux d'IS le plus élevé ; sinon elle ne s'applique\n" +
+        "     pas ; si l'arrêté n'est pas actualisé, son application est incertaine → conclure prudemment au\n" +
+        "     taux de droit commun [Sn].\n" +
+        "  4. TVA: toujours — champ Art.1, TERRITORIALITÉ Art.3, Art.5 ; taux Art.7 [Sn] (ou taux réduit des\n" +
+        "     tableaux annexes A/B si l'opération y figure). Prestataire NON établi = RETENUE À LA SOURCE DE\n" +
+        "     100% DE LA TVA par le preneur (TVA déductible).\n" +
+        "  5. SECTIONS OBLIGATOIRES (cas RS/international): (a) ASSIETTE DE LA RS = montant BRUT, TVA COMPRISE\n" +
+        "     [Sn] ; (b) FORMALISME TRANSFERT DE FONDS = certificat de retenue à la source (attestation de\n" +
+        "     régularisation, Art.112 CDPF [Sn], non exigée si la RS a été opérée) ; si l'Art.21 de la\n" +
+        "     circulaire BCT N°2016-9 figure parmi les sources [Sn], vise-le pour les justificatifs exigés.\n" +
+        "     Cite UNIQUEMENT les textes réellement fournis [Sn] — n'invente AUCUN numéro d'article ni de\n" +
+        "     circulaire absent des sources.\n" +
+        "  6. NE JAMAIS introduire de condition non étayée par les faits.\n" +
         "CONVENTION: Art.5=ES, Art.7=bénéfices, Art.10=dividendes, Art.11=intérêts,\n" +
         "  Art.12=redevances, Art.14=prof.indép., Art.15=salaires.\n" +
-        "NOTE COMMUNE N°2/2015: utiliser Annexe 1 pour taux par pays (sauf Allemagne).\n" +
+        "NOTE COMMUNE N°2/2015: l'utiliser pour interpréter les conventions (taux/qualification par pays, sauf Allemagne).\n" +
         "HIÉRARCHIE: International: Convention→Codes→LdF→Doctrine. Local: Codes→LdF→Doctrine.\n" +
         "ÉTENDUE: UNIQUEMENT ce que le client demande. ZÉRO ajout.\n" +
-        "VERDICTS: OUI/NON/X%/EXONÉRÉ/SOUMIS. NON DOCUMENTÉ si aucune source.\n" +
+        "VERDICTS: OUI / NON / le taux chiffré réel (lu dans [Sn]) / EXONÉRÉ / SOUMIS. " +
+        "N'écris JAMAIS le littéral « X% » : recopie le vrai pourcentage. NON DOCUMENTÉ si aucune source.\n" +
         "JSON PUR UNIQUEMENT.";
 
     // ── Timing table ──────────────────────────────────────────────────────────
@@ -84,29 +141,38 @@ public sealed class GenerateConsultationCommandHandler(
 
     private void LogTimingTable(List<TimingEntry> timings, string reference)
     {
-        const string sep = "╠══════════════════════════════╬═════════════════════════╬═══════════════════════════════╣";
-        const string top = "╔══════════════════════════════╦═════════════════════════╦═══════════════════════════════╗";
-        const string bot = "╚══════════════════════════════╩═════════════════════════╩═══════════════════════════════╝";
-        const string hdr = "║  Step                        ║  Duration               ║  Notes                        ║";
-        logger.LogInformation(top);
-        logger.LogInformation("║  TIMING — {Ref}", reference);
-        logger.LogInformation(sep); logger.LogInformation(hdr); logger.LogInformation(sep);
-        foreach (var t in timings.Where(x => x.Step != "TOTAL"))
-        {
-            var step  = t.Step.Length  > 28 ? t.Step[..28]  : t.Step.PadRight(28);
-            var notes = t.Notes.Length > 29 ? t.Notes[..29] : t.Notes.PadRight(29);
-            var dur   = $"{t.Ms:F0}ms / {t.Ms / 60000.0:F2}min".PadRight(23);
-            logger.LogInformation("║  {S}  ║  {D}  ║  {N}  ║", step, dur, notes);
-        }
-        var total = timings.FirstOrDefault(x => x.Step == "TOTAL");
+        // Built as ONE multi-line string and logged with a SINGLE call, so the console shows a
+        // contiguous box instead of wrapping every row in the logger's category/timestamp prefix.
+        const int wStep = 34, wDur = 10, wNote = 34;
+        string Bar(char l, char m, char r) => l + new string('─', wStep + 2) + m +
+            new string('─', wDur + 2) + m + new string('─', wNote + 2) + r;
+        string Row(string s, string d, string n) =>
+            "│ " + Clip(s, wStep).PadRight(wStep) + " │ " + d.PadLeft(wDur) + " │ " +
+            Clip(n, wNote).PadRight(wNote) + " │";
+        static string Clip(string s, int w) => (s ?? "").Length > w ? s![..(w - 1)] + "…" : (s ?? "");
+        static string Dur(double ms) => ms >= 1000 ? $"{ms / 1000.0:F1}s" : $"{ms:F0}ms";
+
+        // inner width so a merged title row equals the data-row total width (88):
+        //   data row = "│ "+34+" │ "+10+" │ "+34+" │"  → title pad = 34+10+34 + 6 = 84
+        const int inner = wStep + wDur + wNote + 6;
+        string TitleRow(string t) => "│ " + Clip(t, inner).PadRight(inner) + " │";
+
+        var sb = new StringBuilder("\n");
+        sb.AppendLine(Bar('┌', '┬', '┐').Replace('┬', '─'));
+        sb.AppendLine(TitleRow("CHRONOMÉTRAGE — consultation " + reference));
+        sb.AppendLine(Bar('├', '┬', '┤'));
+        sb.AppendLine(Row("Étape", "Durée", "Détail"));
+        sb.AppendLine(Bar('├', '┼', '┤'));
+        foreach (var t in timings.Where(x => !x.Step.StartsWith("TOTAL", StringComparison.Ordinal)))
+            sb.AppendLine(Row(t.Step, Dur(t.Ms), t.Notes));
+        var total = timings.FirstOrDefault(x => x.Step.StartsWith("TOTAL", StringComparison.Ordinal));
         if (total is not null)
         {
-            logger.LogInformation(sep);
-            var dur = $"{total.Ms:F0}ms / {total.Ms / 60000.0:F2}min".PadRight(23);
-            logger.LogInformation("║  {S}  ║  {D}  ║  {N}  ║",
-                "TOTAL".PadRight(28), dur, total.Notes.PadRight(29));
+            sb.AppendLine(Bar('├', '┼', '┤'));
+            sb.AppendLine(Row(total.Step, Dur(total.Ms), total.Notes));
         }
-        logger.LogInformation(bot);
+        sb.Append(Bar('└', '┴', '┘'));
+        logger.LogInformation("{Table}", sb.ToString());
     }
 
     public async Task<ConsultationGeneratedDto> Handle(
@@ -139,6 +205,11 @@ public sealed class GenerateConsultationCommandHandler(
         GenerateConsultationCommand cmd, CancellationToken ct,
         Stopwatch total, List<TimingEntry> timings)
     {
+        // ── Step 0: INPUT GUARDRAIL — block off-topic requests before any LLM spend ──
+        var (inputOk, inputReason) = guardrails.ValidateInput(cmd.Situation, cmd.FiscalQuestion);
+        if (!inputOk)
+            throw new ConsultationGenerationException("Guardrail d'entrée : " + inputReason);
+
         // ── Step 1: Non-LLM detection ─────────────────────────────────────────
         var sw1 = Stopwatch.StartNew();
         var branches            = branchDetector.Detect(cmd.Situation, cmd.FiscalQuestion);
@@ -157,11 +228,17 @@ public sealed class GenerateConsultationCommandHandler(
             cmd.Situation, cmd.FiscalQuestion, branches, countries, isIntl, ct);
         sw2.Stop();
 
-        // Update country/intl from planner's detection
-        if (!string.IsNullOrEmpty(plan.DetectedCountry) &&
-            !countries.Contains(plan.DetectedCountry))
+        // Update country/intl from planner's detection — but NEVER treat TUNISIA (the home country)
+        // as a foreign party. The planner routinely returns « tunisie » for a purely DOMESTIC case
+        // (e.g. ANF, two Tunisian residents); adding it here made Countries.Count > 0 and isIntl = true,
+        // which silently forced the case into the international/foreign-service branch and defeated the
+        // domestic-case routing (ANF stayed « Redevance » instead of the domestic RS flow).
+        var plannerCountry = (plan.DetectedCountry ?? "").Trim();
+        if (plannerCountry.Length > 0 &&
+            !plannerCountry.Contains("tunis", StringComparison.OrdinalIgnoreCase) &&
+            !countries.Contains(plannerCountry))
         {
-            countries.Add(plan.DetectedCountry);
+            countries.Add(plannerCountry);
             isIntl = true;
         }
 
@@ -238,6 +315,7 @@ public sealed class GenerateConsultationCommandHandler(
         var sources = MergeAllSources(
             ruleSources.Concat(plan.Sources).ToList(), filteredEmbed, neo4jSources, 30);
         CorrectArticleRefs(sources);
+        PinRateArticles(sources);
 
         if (sources.Count == 0)
             throw new NoSourcesFoundException(cmd.Situation);
@@ -317,105 +395,42 @@ public sealed class GenerateConsultationCommandHandler(
             }
         }
 
-        // ── Step 6: LLM Phase 2 (analyses), then Phase 3 (table derived from Phase 2) ──
-        // Phase 3 runs AFTER Phase 2 so the synthesis table is derived from the actual analysis,
-        // not generated independently from sources (which caused tables about the wrong case).
-        logger.LogInformation("┌─ [PHASE 2] analyses…");
+        // ── Step 6: THE ORCHESTRATOR — Microsoft Agent Framework state graph ──
+        // Qualify → CaseBrief → Fulfil ⇄ Completeness (bounded) → Writer ⇄ Judge (bounded,
+        // judge can also route back to retrieval) → ExpertVoice (hard guards) → Finalize (table).
+        // Phase-3 (documents/references) runs in PARALLEL with the graph, exactly as before.
+        var state = new Orchestration.ConsultationState
+        {
+            Command         = cmd,
+            EtendueItems    = etendueItems,
+            ContexteFaits   = contexteFaits,
+            Sommaire        = sommaire,
+            Countries       = countries.ToList(),
+            IsInternational = isIntl,
+            Branches        = branches,
+            Plan            = plan,
+            Sources         = sources,
+        };
+
+        logger.LogInformation("┌─ [GRAPH] MAF workflow…");
         var sw6 = Stopwatch.StartNew();
-        var raw2 = await llmAgent.CompleteAsync(SystemPrompt,
-            BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan),
-            "Phase2", 3800, ct);
+        state   = await consultationWorkflow.RunAsync(state, ct);
 
-        if (raw2 is null)
-        {
-            sw6.Stop();
-            timings.Add(new("6. LLM Phase 2", sw6.Elapsed.TotalMilliseconds, "PHASE 2 FAILED"));
-            throw new ConsultationGenerationException("LLM Phase 2 returned null");
-        }
+        sources = state.Sources;                      // graph may have augmented + re-indexed
+        var analysesRaw = state.Analyses;
+        var table       = state.Table;
+        if (string.IsNullOrWhiteSpace(analysesRaw))
+            throw new ConsultationGenerationException("Workflow returned empty analyses");
 
-        var p2       = ParseJsonDict(raw2) ?? new Dictionary<string, JsonElement>();
-        var analyses2 = GetStr(p2, "analyses");
         sw6.Stop();
-        timings.Add(new("6. LLM Phase 2", sw6.Elapsed.TotalMilliseconds, $"{analyses2.Length} chars"));
-        logger.LogInformation("└─ [PHASE 2] ✓ ({Ms:F0}ms / {Min:F2}min) | {C} chars",
-            sw6.Elapsed.TotalMilliseconds, sw6.Elapsed.TotalMinutes, analyses2.Length);
-
-        logger.LogInformation("┌─ [PHASE 3] synthesis table from analysis…");
-        var sw6c = Stopwatch.StartNew();
-        var raw3 = await llmAgent.CompleteAsync(SystemPrompt,
-            BuildPhase3Prompt(cmd, sources, etendueItems, analyses2),
-            "Phase3", 3500, ct);
-        var p3    = raw3 is not null ? ParseJsonDict(raw3) : null;
-        var table = ParseTable(p3);
-        if (raw3 is null) logger.LogWarning("│  [PHASE 3] returned null — table will be empty");
-        sw6c.Stop();
-        timings.Add(new("6. LLM Phase 3 (table)", sw6c.Elapsed.TotalMilliseconds,
-            $"table={table.Count}/{etendueItems.Count}"));
-        logger.LogInformation("└─ [PHASE 3] ✓ ({Ms:F0}ms) | table={T}/{N}",
-            sw6c.Elapsed.TotalMilliseconds, table.Count, etendueItems.Count);
-
-        // ── Step 6b: Acceptance agent (validate generation) + bounded self-correction ──
-        var analysesRaw = analyses2;
-        var sw6b = Stopwatch.StartNew();
-        var sourcesList = string.Join("\n", sources.Take(18)
-            .Select(s => $"[S{s.Index}] {s.DocType} {s.DocName} {s.ArticleRef}"));
-        var verdict = await acceptanceAgent.ReviewAsync(
-            new AcceptanceRequest(cmd.FiscalQuestion, BuildEtendue(etendueItems, ""),
-                analysesRaw, sourcesList), ct);
-
-        // Revise on ANY rejection (missing rate, hallucination, hedged verdict, draft tone,
-        // contradiction, generic analysis, skipped ES step…), not only missing rates.
-        if (!verdict.Accept)
-        {
-            var addedCount = 0;
-
-            // (a) Only re-retrieve when the fix genuinely needs sources we don't have.
-            if (verdict.NeedsMoreSources && verdict.MissingTopics.Any())
-            {
-                logger.LogInformation("► [STEP 6b] REVISE — targeted re-retrieval for: {T}",
-                    string.Join(", ", verdict.MissingTopics));
-                var extra = await ruleRetrieval.RetrieveAsync(
-                    new RuleContext(branches, isIntl, countries, cmd.FiscalQuestion, cmd.Situation,
-                        verdict.MissingTopics), ct);
-                var more = await retrievalAgent.FetchTargetedAsync(
-                    "", Array.Empty<string>(), verdict.MissingTopics.ToArray(), ct);
-
-                var existing = new HashSet<string>(sources.Select(s => s.ChunkId)
-                    .Where(id => !string.IsNullOrEmpty(id)));
-                var addable = extra.Concat(more)
-                    .Where(s => string.IsNullOrEmpty(s.ChunkId) || existing.Add(s.ChunkId))
-                    .ToList();
-                if (addable.Any())
-                {
-                    sources.InsertRange(0, addable);
-                    for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
-                    addedCount = addable.Count;
-                }
-            }
-
-            // (b) One bounded revision pass with the judge's concrete corrective guidance,
-            //     fixing tone/grounding/decision/coverage with whatever sources we now have.
-            var guidance = string.IsNullOrWhiteSpace(verdict.RevisionGuidance)
-                ? (verdict.Issues.Any() ? "Corrige: " + string.Join(" ; ", verdict.Issues)
-                                        : "Corrige les faiblesses de qualité.")
-                : verdict.RevisionGuidance;
-            logger.LogInformation("► [STEP 6b] REVISE — {N} issue(s); +{A} sources",
-                verdict.Issues.Count, addedCount);
-
-            var revisePrompt =
-                BuildPhase2Prompt(cmd, sources, etendueItems, sommaire, contexteFaits, isIntl, branches, plan) +
-                "\n\n═══ CORRECTIONS DEMANDÉES (relecture qualité) ═══\n" + guidance +
-                "\nCorrige ces points en conservant strictement le format et le niveau de détail demandé.";
-            var revisedRaw = await llmAgent.CompleteAsync(SystemPrompt, revisePrompt, "Phase2-Revise", 3800, ct);
-            var revised = revisedRaw is not null ? ParseJsonDict(revisedRaw) : null;
-            if (revised is not null && !string.IsNullOrWhiteSpace(GetStr(revised, "analyses")))
-                analysesRaw = GetStr(revised, "analyses");
-
-            logger.LogInformation("└─ [STEP 6b] revised");
-        }
-        sw6b.Stop();
-        timings.Add(new("6b. Acceptance + revise", sw6b.Elapsed.TotalMilliseconds,
-            verdict.Accept ? "accepted" : $"revised: {string.Join(",", verdict.MissingTopics)}"));
+        foreach (var (step, ms, note) in state.Timings)
+            timings.Add(new(step, ms, note));
+        timings.Add(new("6. MAF workflow (‖ P3)", sw6.Elapsed.TotalMilliseconds,
+            $"case={state.CaseType} rl={state.RetrievalLoops} wl={state.WriterLoops} expert={(state.ExpertApplied ? "y" : "n")}"));
+        logger.LogInformation(
+            "└─ [GRAPH] ✓ ({Ms:F0}ms) | case={C} | retrievalLoops={R} writerLoops={W} | judge={J} | expert={E} | table={T}",
+            sw6.Elapsed.TotalMilliseconds, state.CaseType, state.RetrievalLoops, state.WriterLoops,
+            state.JudgeAccepted ? "accepted" : "bounded", state.ExpertApplied, table.Count);
 
         // ── Step 7: Build output ──────────────────────────────────────────────
         string R(string t) => ResolveCitations(t, sources);
@@ -426,7 +441,11 @@ public sealed class GenerateConsultationCommandHandler(
             Abbreviations   = GetStr(p1, "abbreviations").Trim(),
             SommairExecutif = R(sommaire),
             Analyses        = R(analysesRaw),
-            Documents       = R(p3 is not null ? GetStr(p3, "documents") : ""),
+            // The references section is built DETERMINISTICALLY from the sources actually cited in
+            // the final analyses/table — an LLM used to write it in parallel with the workflow and
+            // its [Sn] numbering drifted when the graph re-indexed sources (garbled label↔target
+            // pairs, alien conventions). Code can't misalign.
+            Documents       = BuildReferences(analysesRaw, table, sources),
             AnalysisTable   = table.Select(r =>
                 new AnalysisRow(R(r.Sujet), R(r.Analyse), R(r.Conclusion))).ToList(),
             Sources         = sources,
@@ -477,17 +496,39 @@ public sealed class GenerateConsultationCommandHandler(
 
     // ── Prompt builders ───────────────────────────────────────────────────────
 
-    private static string SourcesBlock(List<LegalSourceDto> sources)
+    internal static string SourcesBlock(List<LegalSourceDto> sources)
     {
+        // Enough sources that EVERY branch (RS, TVA, régime, formalisme) reaches the prompt — cutting
+        // this too low dropped the CTVA articles and produced "TVA NON DOCUMENTÉ". SMART truncation:
+        // rate-bearing articles (rate tables) get their FULL text so the correct LINE is visible, other
+        // sources get a short preview. CIRPPIS Art.52 is a multi-rate menu ~8 200 chars: the honoraires
+        // line is ~char 1000, the non-résident b) 15% ~char 2 830, the DIVIDENDES c bis) ~char 4 450,
+        // the cession f) 2,5% ~char 7 660. A 3 300 cap hid the dividend line and the model guessed the
+        // wrong rate — the cap must cover the whole menu so the model reads the RIGHT paragraph.
+        // Sources are coalesced to ONE entry per article (parts merged upstream). 18 slots was too
+        // tight for an INTERNATIONAL case: the treaty carries many convention chunks (ES, redevance,
+        // bénéfices, dividende, intérêt…) which, added to the domestic checklist (ES 45/47 + RS 52 +
+        // TVA 3/7/19 + NC 3/2015 + CDPF 112 + BCT 21), pushed the LAST-pinned code articles (Art.19,
+        // 112, 21) past slot 18 — the writer then couldn't see their text and hedged « article non
+        // reproduit dans les sources » for articles that WERE fetched. 26 comfortably fits treaty +
+        // the full foreign-service checklist; gpt-4o's window absorbs the extra text easily.
+        // RateChars must cover the WHOLE CIRPPIS Art.52 multi-rate menu: on the 2026 edition the
+        // coalesced article is ~13 200 chars and the REDUCED lines sit near the end — « 3% … honoraires
+        // servis aux personnes morales soumises à l'IS » (~char 12 000) and « 1% … bénéfices soumis à
+        // l'IS au taux de 20% ». An 8 600 cap clipped both, so the writer only saw the GENERAL 10% /
+        // 1,5% lines and produced the wrong (higher) rate. 15 000 keeps the entire menu visible.
+        const int MaxSources = 26, RateChars = 15000, PlainChars = 2600;
         var sb = new StringBuilder("== SOURCES JURIDIQUES ==\n\n");
-        foreach (var s in sources.Take(25))
+        foreach (var s in sources.Take(MaxSources))
         {
-            var label   = s.IsExpert ? "COMMENTAIRE — Faiez Choyakh" : s.DocType;
-            var preview = s.Text.Length > 300 ? s.Text[..300] + "…" : s.Text;
+            var label   = s.IsExpert ? "COMMENTAIRE — Expert" : s.DocType;
+            var rateBearing = s.Text.Contains('%') || s.Text.Contains("taux", StringComparison.OrdinalIgnoreCase);
+            var cap     = rateBearing ? RateChars : PlainChars;
+            var preview = s.Text.Length > cap ? s.Text[..cap] + "…" : s.Text;
             sb.AppendLine($"[S{s.Index}] {label} | {s.DocName} | {s.Year} | {s.ArticleRef}");
             sb.AppendLine($"       {preview}\n");
         }
-        sb.AppendLine($"!! Cite UNIQUEMENT [S1]..[S{Math.Min(sources.Count, 25)}].");
+        sb.AppendLine($"!! Cite UNIQUEMENT [S1]..[S{Math.Min(sources.Count, MaxSources)}].");
         return sb.ToString();
     }
 
@@ -502,10 +543,12 @@ public sealed class GenerateConsultationCommandHandler(
               "\n(Si contrat fourni: extraire nature des services, montants, durée, lieu d'exécution.)"
             : "";
 
+        var hasConv = sources.Any(s => string.Equals(s.DocType, "Convention", StringComparison.OrdinalIgnoreCase));
         var plannerContext =
             $"[ANALYSE PRÉLIMINAIRE DU PLANNER]\n" +
             $"Type de revenu identifié: {plan.IncomeType}\n" +
             $"Risque ES: {(plan.EsRiskPossible ? "OUI — analyser obligatoirement" : "faible")}\n" +
+            $"Convention fiscale disponible: {(hasConv ? "OUI" : "NON — appliquer le DROIT COMMUN, n'invoque AUCUNE convention")}\n" +
             $"Note Commune N°2/2015: {(plan.NoteCommune2Used ? "fetchée — utiliser ses tables" : "non applicable")}\n";
 
         return
@@ -528,7 +571,9 @@ public sealed class GenerateConsultationCommandHandler(
             "- etendue: laisse \"\" — la section 1.2 est construite automatiquement (liste à puces) " +
             "à partir de etendue_items.\n" +
             "- abbreviations: SIGLE : Définition\n" +
-            "- sommaire_executif: verdicts concis, max 1 [Sn] par point, tout taux justifié.\n" +
+            "- sommaire_executif: verdicts concis, max 1 [Sn] par point, tout taux LU depuis [Sn]. " +
+            "N'INVOQUE JAMAIS une convention fiscale si 'Convention fiscale disponible: NON' — dans ce cas " +
+            "applique le droit commun. N'affirme pas de conclusion contraire à celle qui découlera de l'analyse.\n" +
             "- pays_non_resident: pays de résidence de la partie étrangère (ex: france, maroc). " +
             "Identifier même si non mentionné explicitement (nom de société, groupe, devise). " +
             "Vide si transaction purement tunisienne.\n\n" +
@@ -545,106 +590,212 @@ public sealed class GenerateConsultationCommandHandler(
                string.Join("\n", clean.Select(i => $"- {i}"));
     }
 
-    private static string BuildPhase2Prompt(GenerateConsultationCommand cmd,
+    internal static string BuildPhase2Prompt(GenerateConsultationCommand cmd,
         List<LegalSourceDto> sources, List<string> etendueItems, string sommaire,
-        string contexteFaits, bool isIntl, HashSet<string> branches, RetrievalPlan plan)
+        string contexteFaits, bool isIntl, HashSet<string> branches, RetrievalPlan plan,
+        ICollection<string>? detectedCountries = null)
     {
         var n  = etendueItems.Count;
         var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i+1}. {x}"));
         var concise = string.Equals(cmd.Mode, "concise", StringComparison.OrdinalIgnoreCase);
 
+        // Data-driven flags (no hardcoded country lists):
+        //  • hasConvention — did retrieval actually surface a convention for this case?
+        //  • groupLink     — do the facts mention a same-group capital link (société mère/filiale)?
+        var hay = ((cmd.Situation ?? "") + " " + (cmd.FiscalQuestion ?? "") + " " + (contexteFaits ?? "")).ToLowerInvariant();
+        bool hasConvention = sources.Any(s => string.Equals(s.DocType, "Convention", StringComparison.OrdinalIgnoreCase));
+        bool groupLink = new[]
+        {
+            "société mère", "societe mere", "maison mère", "maison mere", "filiale", "même groupe",
+            "meme groupe", "intra-groupe", "intragroupe", "lien capitalist", "capitalistique",
+            "actionnariat", "participation", "détention", "groupe"
+        }.Any(hay.Contains);
+
+        // DETERMINISTIC régime-privilégié detection (no hardcoded country list — reads the retrieved
+        // list itself): a source that IS the privileged-regime list AND names a country of the case.
+        // Métier rule: for a beneficiary in a privileged regime, ES is treated as superfétatoire.
+        // Candidate countries come from BOTH the planner AND the CountryDetector — the planner's
+        // DetectedCountry is empty when the embed server is down, so relying on it alone silently
+        // dropped the whole privileged-regime branch (Hong Kong analysed as an ordinary ES case).
+        //
+        // MUTUAL EXCLUSION WITH THE CONVENTION BRANCH: the privileged-regime analysis and the
+        // convention analysis are ALTERNATIVES that never coexist. The privileged regime is a
+        // DROIT-COMMUN notion; the moment a convention applies it prevails (« la convention prime »)
+        // and the privileged regime is neither examined nor mentioned. So gate the whole detection on
+        // !hasConvention — with a treaty in force we run the ES + convention-qualification path instead
+        // (and, symmetrically, when the privileged regime DOES fire we suppress the ES section below).
+        var candidateCountries = new List<string>();
+        if (!string.IsNullOrWhiteSpace(plan.DetectedCountry)) candidateCountries.Add(plan.DetectedCountry!);
+        if (detectedCountries is { Count: > 0 }) candidateCountries.AddRange(detectedCountries);
+        var country = candidateCountries.FirstOrDefault()?.Trim().ToLowerInvariant() ?? "";
+        bool privilegedRegime = !hasConvention && candidateCountries
+            .Select(c => c.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "")
+            .Where(key => key.Length >= 3 && key != "tunis" && key != "tunisie")
+            .Any(key => sources.Any(s =>
+            {
+                var t = (s.Text ?? "").ToLowerInvariant();
+                var doc = (s.DocName ?? "").ToLowerInvariant();
+                return t.Contains(key) &&
+                       (t.Contains("privilég") || doc.Contains("nc_2019_16") || doc.Contains("doctrine_colloque"));
+            }));
+
         var bg = new StringBuilder();
+        if (privilegedRegime)
+            bg.AppendLine($"  ⚠️ RÉGIME FISCAL PRIVILÉGIÉ DÉTECTÉ — le pays du bénéficiaire ({country}) figure " +
+                          "dans la liste des États/territoires à régime fiscal privilégié retrouvée [Sn].\n" +
+                          "  • ÉTABLISSEMENT STABLE — ne DÉVELOPPE PAS d'analyse d'ES (pas de section, pas de règle " +
+                          "des 6 mois, pas de verdict OUI/NON). Précise SEULEMENT, en une phrase, que le taux de la " +
+                          "retenue à la source de droit commun applicable aux rémunérations de services versées aux " +
+                          "non-résidents (Art.52 [Sn]) s'applique INDÉPENDAMMENT de l'existence d'un établissement " +
+                          "stable — le MÊME taux frappant les établissements stables non immatriculés — de sorte que " +
+                          "l'analyse de l'ES est SANS INCIDENCE PRATIQUE sur le taux (caractère superfétatoire).\n" +
+                          "  • MAJORATION À 25 % — ne l'applique QUE si les faits relèvent effectivement du taux d'IS " +
+                          "le plus élevé visé par l'arrêté ET si le taux de la majoration figure dans les sources [Sn]. " +
+                          "Pour de simples prestations de services relevant du taux de droit commun, la majoration ne " +
+                          "s'applique PAS : retiens le droit commun de l'Art.52 [Sn]. Puis TVA et formalisme du transfert.");
         if (isIntl || plan.EsRiskPossible)
         {
             bg.AppendLine("  CAS INTERNATIONAL — séquence d'analyse:");
-            bg.AppendLine("  1. ÉTABLISSEMENT STABLE — deux tests distincts, chacun tranché par un verdict:");
-            bg.AppendLine("     a) Présence directe du prestataire étranger en Tunisie (lieu fixe, personnel " +
-                          "propre, durée) → ES propre OUI/NON.");
-            bg.AppendLine("     b) Lien d'actionnariat/société mère : rappeler que le simple contrôle NE crée PAS " +
-                          "un ES (la filiale n'est pas un ES de sa mère), sauf locaux mis à disposition ou agent " +
-                          "dépendant concluant des contrats au nom de l'étranger → verdict OUI/NON.");
-            bg.AppendLine("  2. En l'absence d'ES : le service est-il une redevance ? " +
-                         $"(Art.12 convention — type: {plan.IncomeType}) → verdict.");
-            bg.AppendLine("  3. TVA : applicabilité → verdict.");
+            if (hasConvention)
+                bg.AppendLine("  ⚠️ CONVENTION EN VIGUEUR → applique le régime CONVENTIONNEL : ANALYSE " +
+                              "l'établissement stable (droit commun + Art.5) puis la qualification du revenu. " +
+                              "N'ÉVOQUE JAMAIS le « régime fiscal privilégié » ni la liste des États à régime " +
+                              "privilégié : c'est une notion de DROIT COMMUN, SANS OBJET dès qu'une convention " +
+                              "s'applique (la convention prime). Les deux régimes ne COEXISTENT jamais.");
+            if (!privilegedRegime)
+            {
+                // ES step is EMITTED only when the beneficiary is NOT in a privileged regime.
+                // When privileged (detected deterministically above), the ES sub-section is not even
+                // shown to the writer — the blunt directive at the top already routed straight to RS.
+                bg.AppendLine("  1. ÉTABLISSEMENT STABLE — trancher OUI/NON, d'abord selon le DROIT COMMUN " +
+                              "(Art.45/47 CIRPPIS + doctrine: interprétation extensive, règle des 6 mois même pour " +
+                              "une seule prestation), puis selon l'ART.5 de la convention si elle existe.");
+                bg.AppendLine("     a) Présence directe du prestataire étranger (lieu fixe, personnel propre, durée) → ES OUI/NON.");
+                if (groupLink)
+                    bg.AppendLine("     b) Lien capitalistique (sociétés du MÊME GROUPE) : le simple contrôle NE crée PAS " +
+                                  "un ES (la filiale n'est pas un ES de sa mère), sauf locaux mis à disposition ou agent " +
+                                  "dépendant concluant des contrats au nom de l'étranger → verdict OUI/NON.");
+                // (Pas de lien capitalistique → ne PAS évoquer la société mère / le groupe.)
+            }
+
+            if (hasConvention)
+            {
+                bg.AppendLine($"  2. EN L'ABSENCE D'ES — qualifier le revenu au regard de la convention (type indicatif: {plan.IncomeType}), DANS CET ORDRE, en LISANT les définitions dans le texte conventionnel fourni [Sn]:");
+                bg.AppendLine("     a) REDEVANCE — étape OBLIGATOIRE avant de conclure au bénéfice d'entreprise : examine l'article " +
+                              "« Redevances » de la convention [Sn] et confronte la prestation à sa DÉFINITION conventionnelle (usage/concession " +
+                              "d'un droit d'auteur, brevet, marque, dessin, plan, formule ou procédé secret, équipement industriel/commercial/" +
+                              "scientifique, ou « informations ayant trait à une expérience acquise » — savoir-faire). Une prestation de " +
+                              "SERVICES (supervision, installation, montage, assistance technique) ne constitue une redevance QUE si elle " +
+                              "répond à cette définition. Si OUI → imposable à la source au TAUX RÉDUIT « Redevances » [Sn]. Si NON → écarte " +
+                              "EXPRESSÉMENT la qualification redevance (en une phrase motivée) puis passe au b).");
+                bg.AppendLine("     b) BÉNÉFICE D'ENTREPRISE (Art.7) → à défaut de redevance ET en l'absence d'ES, imposable UNIQUEMENT " +
+                              "dans l'État de résidence → AUCUNE imposition tunisienne (ni RS).");
+                bg.AppendLine("     c) DIVIDENDE / INTÉRÊT (Art.10/11) → si le revenu en relève, imposable à la source au taux réduit " +
+                              "conventionnel [Sn], sous réserve des conditions de la convention.");
+                bg.AppendLine("     • La convention PRIME TOUT RÉGIME INTERNE DE RS — l'Art.52 CIRPPIS comme tout régime interne " +
+                              "SECTORIEL (travaux/montage/installation/surveillance/construction) ou note commune fixant un taux " +
+                              "interne : ces régimes ne valent qu'à DÉFAUT de convention.");
+            }
+            else
+            {
+                bg.AppendLine("  2. AUCUNE CONVENTION applicable → DROIT COMMUN:");
+                bg.AppendLine("     • Art.52 CIRPPIS → RS au taux de la LIGNE visant les revenus « servis aux non domiciliés ni " +
+                              "établis » / « aux non-résidents » (PAS la ligne des paiements aux résidents), lis-le dans le texte cité [Sn].");
+                bg.AppendLine("     • ES SUPERFÉTATOIRE si ce taux s'applique que l'ES existe ou non (le préciser).");
+                bg.AppendLine("     • RÉGIME FISCAL PRIVILÉGIÉ : LIRE la liste retrouvée [Sn] et vérifier si le pays y figure. " +
+                              "NE PAS affirmer qu'il n'y figure pas sans l'avoir vérifiée. S'il Y FIGURE, la majoration de RS ne " +
+                              "s'applique QUE si l'activité relève du taux d'IS le plus élevé ; sinon elle ne s'applique pas ; si " +
+                              "l'arrêté n'est pas actualisé, son application est incertaine → conclure prudemment au taux de droit commun [Sn].");
+            }
+            bg.AppendLine("  3. TAUX LE PLUS FAVORABLE : entre fondements concurrents, retenir le taux le plus bas (ou l'exonération) dont toutes les conditions sont remplies.");
+            bg.AppendLine("  4. TVA : champ Art.1, TERRITORIALITÉ Art.3, Art.5 → taux Art.7 [Sn] (ou taux réduit des tableaux " +
+                          "annexes A/B si l'opération y figure). Prestataire non établi = RETENUE À LA SOURCE DE 100% DE LA TVA par le " +
+                          "preneur (Art.19 CTVA [Sn]), TVA ensuite déductible. TERMINOLOGIE IMPOSÉE : emploie « retenue à la source de " +
+                          "100% de la TVA » (le libellé de l'Art.19 : « les clients sont tenus de retenir la TVA due ») — n'emploie JAMAIS " +
+                          "« autoliquidation », « auto-liquidation » ni « auto-facturation », qui ne sont pas les termes du CTVA tunisien.");
+            bg.AppendLine("  5. SECTIONS OBLIGATOIRES — ne jamais omettre : (a) ASSIETTE DE LA RS = montant brut TVA comprise " +
+                          "[Sn] ; (b) FORMALISME DU TRANSFERT DES FONDS = certificat de retenue à la source (attestation de " +
+                          "régularisation, Art.112 CDPF [Sn], non exigée si la RS a été opérée) ; si l'Art.21 de la circulaire " +
+                          "BCT N°2016-9 figure parmi les sources [Sn], vise-le pour les justificatifs exigés. Cite UNIQUEMENT " +
+                          "les textes réellement fournis [Sn] — n'invente AUCUN numéro d'article ni de circulaire absent des sources.");
+            bg.AppendLine("  6. Ne PAS introduire de condition non étayée par les faits.");
         }
         if (plan.NoteCommune2Used)
-            bg.AppendLine("  Note Commune N°2/2015 disponible → utiliser ses tableaux Annexe 1 pour les taux par pays.");
+            bg.AppendLine("  Note Commune N°2/2015 disponible → l'utiliser pour la doctrine de l'établissement " +
+                          "stable (prestataire étranger) et, s'il existe une convention, pour interpréter celle-ci " +
+                          "(qualification du revenu et taux par pays).");
         if (branches.Contains("IS"))     bg.AppendLine("  IS → CIRPPIS Art.45/47 (personnes morales, bénéfices).");
         if (branches.Contains("TVA"))    bg.AppendLine("  TVA → CTVA (opérations soumises en Tunisie).");
         if (branches.Contains("IRPP"))   bg.AppendLine("  IRPP → CIRPPIS (revenu, personne physique).");
         if (branches.Contains("Retenue"))bg.AppendLine("  Retenue → CIRPPIS Art.52 + convention si international.");
         if (branches.Contains("PrixTransfert")) bg.AppendLine("  Prix de transfert → Art.48 septies CIRPPIS + CDPF.");
 
-        // ── Routing guidance for international cases (articles to use, NOT rates) ────
-        if (isIntl)
-        {
-            bg.AppendLine();
-            bg.AppendLine("═══ CADRE D'ANALYSE — CAS INTERNATIONAL ═══");
-            bg.AppendLine("  RÈGLE FONDAMENTALE CONVENTION:");
-            bg.AppendLine("  Une CNDI s'applique UNIQUEMENT si une source [Sn] de type 'Convention' pour le");
-            bg.AppendLine("  pays EXACT du bénéficiaire figure dans les sources ci-dessus.");
-            bg.AppendLine("  → NE JAMAIS supposer ou inventer l'existence d'une convention non citée en [Sn].");
-            bg.AppendLine("  → NE PAS appliquer une convention d'un autre pays (ex: Liban, France) si le");
-            bg.AppendLine("    bénéficiaire est dans un pays différent.");
-            bg.AppendLine();
-            bg.AppendLine("  A. IMPÔT DIRECT — DEUX RÉGIMES:");
-            bg.AppendLine("     1. SANS CNDI (aucune source 'Convention' du pays bénéficiaire dans [S1]..[Sn]):");
-            bg.AppendLine("        → Appliquer EXCLUSIVEMENT le DROIT COMMUN: Art. 52 CIRPPIS.");
-            bg.AppendLine("          Le taux est dans le texte [Sn] — le citer. Si Art. 52 n'est pas dans les");
-            bg.AppendLine("          sources, indiquer: 'L'Art. 52 CIRPPIS prévoit une retenue libératoire sur");
-            bg.AppendLine("          les rémunérations des non-résidents — se référer au texte en vigueur.'");
-            bg.AppendLine("          NE PAS conclure NON DOCUMENTÉ pour la RS quand le droit commun s'applique.");
-            bg.AppendLine("        → NE PAS utiliser NC 3/2015 Annexe 1 pour non-résidents (régime distinct).");
-            bg.AppendLine("     2. AVEC CNDI (source 'Convention' du pays exact du bénéficiaire présente en [Sn]):");
-            bg.AppendLine("        → Vérifier si le revenu relève de la définition 'redevance' (Art. 12 CNDI).");
-            bg.AppendLine("          Si OUI (usage brevet, marque, procédé secret, équipement…) → taux réduit");
-            bg.AppendLine("          conventionnel [Sn]. Si NON (services techniques, assistance technique,");
-            bg.AppendLine("          supervision, installation…) → 'bénéfices d'entreprise' (Art. 7 CNDI)");
-            bg.AppendLine("          → imposable uniquement dans l'État de résidence si pas d'ES en Tunisie.");
-            bg.AppendLine("        → Citer les articles de la CNDI depuis les sources [Sn].");
-            bg.AppendLine("     3. PAYS À RÉGIME FISCAL PRIVILÉGIÉ: vérifier si le pays figure sur la liste");
-            bg.AppendLine("        de l'arrêté du Ministre des Finances du 26/09/2022 et analyser");
-            bg.AppendLine("        l'applicabilité de la majoration prévue — le taux et les seuils sont");
-            bg.AppendLine("        dans l'arrêté; noter que l'arrêté n'a pas été mis à jour depuis le");
-            bg.AppendLine("        relèvement des taux IS, ce qui affecte l'opérabilité de la comparaison.");
-            bg.AppendLine("  B. TVA — PRESTATAIRE ÉTRANGER:");
-            bg.AppendLine("     → Art. 1 + Art. 3 CTVA déterminent la territorialité (service 'fait en Tunisie'");
-            bg.AppendLine("       = utilisé/exploité en Tunisie). Le taux et le mécanisme sont dans le CTVA [Sn].");
-            bg.AppendLine("     → Préciser le taux cité depuis [Sn] et le mécanisme (retenue TVA 100% ou");
-            bg.AppendLine("       autoliquidation) conformément au texte récupéré.");
-            bg.AppendLine("  C. ASSIETTE RS (NC 3/2015 — Art. 52 et 53 CIRPPIS):");
-            bg.AppendLine("     → L'assiette de calcul de la retenue est définie dans NC 3/2015 [Sn].");
-            bg.AppendLine("       Si la source est disponible, citer la règle sur la base de calcul (TTC ou HT).");
-            bg.AppendLine("  D. FORMALISME TRANSFERT DE FONDS:");
-            bg.AppendLine("     → Si une RS libératoire s'applique, analyser Art. 112 CDPF [Sn] et la");
-            bg.AppendLine("       circulaire BCT n°9/2016 [Sn] sur l'attestation requise avant tout transfert.");
-            bg.AppendLine("       Si les sources ne sont pas disponibles, signaler l'obligation formellement.");
-        }
-
         var antiDraft =
-            "═══ TON — DOCUMENT FINAL, PAS UN BROUILLON ═══\n" +
-            "Rédige comme un mémo de cabinet REMIS au client. INTERDICTION d'exposer ton raisonnement " +
-            "ou un dialogue interne : jamais de \"Détermination\", \"le scénario applicable\", " +
-            "\"sur la base du fait établi\", ni de \"Si X alors Y\". Affirme directement la position " +
-            "retenue, avec UN SEUL verdict par point (aucun verdict conditionnel). " +
-            "NON DOCUMENTÉ uniquement pour un sous-point réellement indéterminé.\n";
+            "═══ STYLE RÉDACTIONNEL — CONSULTATION FINALE REMISE AU CLIENT ═══\n" +
+            "Rédige une consultation PROFESSIONNELLE et ABOUTIE, en PROSE juridique continue, comme un mémo\n" +
+            "EY effectivement remis au client — PAS un brouillon ni un exercice scolaire. INTERDIT: les\n" +
+            "étiquettes de raisonnement « Principe applicable : », « Application au cas : », « Détermination »,\n" +
+            "« le scénario applicable », « sur la base du fait établi », et toute formulation « Si X alors Y ».\n" +
+            "Rédige des PHRASES FLUIDES et liées (« Conformément à l'article … , … », « Il en résulte que … »,\n" +
+            "« En conséquence, … », « Dès lors, … »). Affirme directement la position, UN SEUL verdict par point.\n" +
+            "═══ INTERDICTION ABSOLUE — HÉDGING PROCÉDURAL ═══\n" +
+            "Tu DISPOSES du texte COMPLET des articles dans les SOURCES ci-dessous : LIS-LES et DONNE le\n" +
+            "RÉSULTAT. INTERDIT d'écrire des formules dilatoires comme « le taux doit être vérifié dans le\n" +
+            "texte », « il convient de consulter la liste », « le taux reste à déterminer », « sous réserve de\n" +
+            "vérification ». Donne le TAUX CHIFFRÉ EXACT lu dans la source (ex: le taux de l'Art.52 pour la\n" +
+            "catégorie « non domiciliés ni établis ») et le CONSTAT direct (le pays figure OU NON sur la liste).\n" +
+            "CITATIONS: utilise le NUMÉRO RÉEL de la source, p.ex. [S1], [S7] — JAMAIS le littéral « [Sn] » ni\n" +
+            "« [S…] ». NON DOCUMENTÉ est réservé au cas où l'information est réellement absente des sources —\n" +
+            "PAS quand tu n'as pas pris la peine de lire le texte fourni.\n" +
+            "═══ INTERDICTION ABSOLUE — « ARTICLE NON REPRODUIT DANS LES SOURCES » ═══\n" +
+            "N'écris JAMAIS « (article non reproduit dans les sources) », « non reproduit », « non fourni »,\n" +
+            "« texte non disponible » ni aucune variante. Si tu cites un article (Art.5/7/12 d'une convention,\n" +
+            "Art.19 CTVA, Art.112 CDPF, Art.21 circulaire BCT…), c'est que son texte figure dans les SOURCES\n" +
+            "ci-dessus sous un [Sn] : RETROUVE-le (les conventions sont sous DocType « Convention », la\n" +
+            "circulaire BCT sous « doctrine_circulaire_bct », le CDPF sous « code_droits_procedures ») et\n" +
+            "cite-le par son [Sn] réel. Si — et seulement si — l'article est réellement absent de toute source\n" +
+            "fournie, N'AVANCE PAS son numéro : appuie-toi sur les textes réellement présents. Il est INTERDIT\n" +
+            "d'énoncer un numéro d'article assorti d'un aveu qu'on ne dispose pas de son texte.\n";
+
+        // The démarche is enforced as TITLED sub-sections (like the EY gold memos), with flowing prose
+        // INSIDE each. This prevents the model from collapsing everything into one paragraph and
+        // skipping a step (e.g. concluding 'no ES → no tax' and forgetting the Art.52 RS entirely).
+        // MÉTIER: the privileged-regime step (A.3) exists ONLY when NO convention applies — with a
+        // treaty in force it is never examined nor mentioned.
+        var demarche =
+            "DÉMARCHE OBLIGATOIRE — développe CHAQUE sous-section titrée ci-dessous, sans en sauter AUCUNE:\n" +
+            "  A. IMPÔT DIRECT\n" +
+            "     A.1 Établissement stable — d'abord selon le droit commun (Art.45/47), puis selon l'Art.5\n" +
+            "         de la convention s'il en existe une → verdict OUI/NON. Bref et conclusif: 2 courts\n" +
+            "         paragraphes maximum, sans généralités doctrinales.\n" +
+            "     A.2 Imposition EN L'ABSENCE d'ES — c'est ICI qu'on tranche le TAUX: qualifier le revenu\n" +
+            "         et DONNER le taux chiffré: soit le taux de RS de l'Art.52 pour la catégorie non-\n" +
+            "         résident (pays SANS convention — l'absence d'ES N'exonère PAS, elle rend la RS\n" +
+            "         libératoire ; lis le chiffre dans le texte de l'Art.52 fourni et écris-le), soit le\n" +
+            "         traitement conventionnel (bénéfice d'entreprise = aucune RS ; redevance/dividende/\n" +
+            "         intérêt = taux réduit chiffré). NE JAMAIS conclure 'pas de RS' du seul fait de\n" +
+            "         l'absence d'ES pour un pays sans convention. NE cite QUE l'alinéa applicable de\n" +
+            "         l'Art.52 — pas les autres lignes.\n" +
+            (hasConvention
+                ? ""   // convention en vigueur → le régime privilégié n'est NI examiné NI mentionné
+                : "     A.3 Régime fiscal privilégié — DIS si le pays figure ou non sur la liste fournie, et\n" +
+                  "         conclus (majoration applicable uniquement pour les activités au taux d'IS le plus élevé).\n") +
+            "  B. TVA — territorialité (Art.3) et taux chiffré (Art.7).\n" +
+            "  C. AUTRES CONSIDÉRATIONS — C.1 Assiette de la RS (NC 3/2015) ; C.2 Formalisme du transfert\n" +
+            "     des fonds (certificat de retenue à la source) — cite UNIQUEMENT les textes fournis [Sn].\n";
 
         var styleAndFormat = concise
-            ? "═══ STYLE — VERSION CONCISE ═══\n" +
-              "Mémo TRÈS court, droit au but. Pas d'introduction, pas de rappel des faits ni de la question.\n" +
-              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue):\n" +
-              "  4.X [Titre court]\n" +
-              "  [VERDICT direct en 1 à 3 phrases maximum, justifié par [Sn].]\n" +
-              "Tu peux ajouter de très courtes sous-sections (ES, TVA, obligations) si indispensables, " +
-              "même hors étendue.\n"
-            : "═══ STYLE — VERSION DÉTAILLÉE ═══\n" +
-              $"FORMAT — {n} blocs « 4.1 » à « 4.{n} » (un par point d'étendue):\n" +
-              "  4.X [Titre]\n" +
-              "  Principe applicable : [Sn] : \"citation exacte du texte\".\n" +
-              "  Application au cas : analyse appliquée aux faits du client, en prose professionnelle (sans \"si\").\n" +
-              "  Conclusion : VERDICT unique, taux cité depuis [Sn].\n" +
-              "Ajoute les sous-analyses juridiques nécessaires (ES, redevance, TVA, obligations) comme " +
-              "sous-sections, même si elles ne figurent pas dans l'étendue.\n";
+            ? "═══ FORMAT — VERSION CONCISE ═══\n" + demarche +
+              "MÊME démarche et MÊMES conclusions que la version détaillée (mêmes verdicts, mêmes taux, mêmes\n" +
+              "sous-sections) — simplement PLUS CONDENSÉE: chaque sous-section en 1 à 2 phrases, sans reproduire\n" +
+              "les longues citations. N'OMETS AUCUNE sous-section, AUCUN verdict, AUCUN taux. Pas de rappel des faits.\n" +
+              $"Organise en blocs « 4.1 » à « 4.{n} » (un par point d'étendue) intégrant les sous-sections ci-dessus.\n"
+            : "═══ FORMAT — VERSION DÉTAILLÉE ═══\n" + demarche +
+              $"Organise en blocs « 4.1 » à « 4.{n} » (un par point d'étendue), avec des SOUS-SECTIONS TITRÉES " +
+              "suivant la démarche ci-dessus, et une PROSE professionnelle continue DANS chaque sous-section " +
+              "(paragraphes liés, PAS d'étiquettes « Principe/Application/Conclusion »). Chaque sous-section " +
+              "énonce la règle avec sa source (numéro réel, p.ex. [S1]), l'applique aux faits, et se termine " +
+              "par une position claire (taux chiffré cité depuis sa source).\n";
 
         return
             $"PHASE 2 — JSON avec 1 clé: analyses.\n\n" +
@@ -655,40 +806,123 @@ public sealed class GenerateConsultationCommandHandler(
             $"\nORDRE: {(isIntl ? "Convention → Codes → LdF → Doctrine" : "Codes → LdF → Doctrine")}\n" +
             bg + "\n" +
             antiDraft + "\n" +
+            EyStyle.Card + "\n" +
             styleAndFormat + "\n" +
             "[Sn] OBLIGATOIRE par bloc. Tout taux doit citer sa source [Sn].\n\n" +
             "{\"analyses\":\"4. ANALYSES\\n\\n[blocs]\"}";
     }
 
-    private static string BuildPhase3Prompt(GenerateConsultationCommand cmd,
-        List<LegalSourceDto> sources, List<string> etendueItems, string analyses)
+    // References built DETERMINISTICALLY from the sources actually cited in the final analyses and
+    // table — code cannot misalign the label with the target, and never lists an uncited document.
+    internal static string BuildReferences(
+        string analyses, List<AnalysisRow> table, List<LegalSourceDto> sources)
     {
-        var lst = string.Join("\n", sources.Take(25)
-            .Select(s => $"  [S{s.Index}] {s.DocType} | {s.DocName} ({s.Year}) — {s.ArticleRef}"));
+        var citedText = analyses + " " + string.Join(" ",
+            table.Select(r => r.Sujet + " " + r.Analyse + " " + r.Conclusion));
+        var indexes = Regex.Matches(citedText, @"\[S(\d+)\]")
+            .Select(m => int.TryParse(m.Groups[1].Value, out var i) ? i : -1)
+            .Where(i => i > 0).Distinct().OrderBy(i => i).ToList();
 
-        // Pass the étendue items numbered so the table maps 1-to-1
-        var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i+1}. {x}"));
+        var lines = indexes
+            .Select(i => sources.FirstOrDefault(s => s.Index == i))
+            .Where(s => s is not null)
+            .Select(s => $"{s!.Citation} — {s.DocType} | {s.DocName}" +
+                         (string.IsNullOrWhiteSpace(s.Year) ? "" : $" ({s.Year})") +
+                         (string.IsNullOrWhiteSpace(s.ArticleRef) ? "" : $" — {s.ArticleRef}"))
+            .Distinct().ToList();
 
-        // Truncate analyses to ~2000 chars for the table prompt (enough to extract verdicts)
-        var analysesSnippet = analyses.Length > 2000 ? analyses[..2000] + "…" : analyses;
+        return lines.Count == 0 ? "5. RÉFÉRENCES\n\n(aucune source citée)"
+                                : "5. RÉFÉRENCES\n\n" + string.Join("\n", lines);
+    }
 
+    // Synthesis table derived STRICTLY from the finalized analyses (never from raw sources),
+    // so it always matches the body — no "NON DOCUMENTÉ" while the analysis states a rate.
+    internal static string BuildTablePrompt(List<string> etendueItems, string finalAnalyses)
+    {
+        var n  = etendueItems.Count;
+        var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
         return
-            $"PHASE 3 — JSON: documents + analysis_table.\n\n" +
-            $"Client: {cmd.ClientName}\n" +
-            $"Question: {cmd.FiscalQuestion}\n\n" +
-            $"ÉTENDUE ({etendueItems.Count} points demandés):\n{et}\n\n" +
-            $"ANALYSE (extraits) — UTILISE CES VERDICTS pour la table:\n{analysesSnippet}\n\n" +
-            $"SOURCES CITÉES:\n{lst}\n\n" +
-            "RÈGLES TABLE:\n" +
-            "- Génère EXACTEMENT {etendueItems.Count} lignes, une par point d'étendue.\n".Replace("{etendueItems.Count}", etendueItems.Count.ToString()) +
-            "- sujet: le point d'étendue exact.\n" +
-            "- analyse: la base légale retenue dans l'analyse ci-dessus ([Sn] + article).\n" +
-            "- conclusion: verdict UNIQUE (OUI/NON/15%/SOUMIS/EXONÉRÉ/etc.) — EXTRAIT de l'analyse, jamais inventé.\n" +
-            "{\"documents\":\"5. RÉFÉRENCES\\n\\n[liste des sources citées dans l'analyse]\"," +
-            "\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"\"}]}";
+            $"TABLEAU DE SYNTHÈSE — JSON: analysis_table ({n} objets, un par point d'étendue, même ordre).\n\n" +
+            $"POINTS D'ÉTENDUE:\n{et}\n\n" +
+            $"ANALYSES FINALES (SEULE source de vérité — n'invente rien hors de ce texte):\n{finalAnalyses}\n\n" +
+            "RÈGLES STRICTES (le tableau doit être LISIBLE et SYNTHÉTIQUE) :\n" +
+            "- sujet : le point d'étendue, en 1 ligne courte (pas de recopie intégrale).\n" +
+            "- analyse : 2 à 3 phrases MAXIMUM résumant la position retenue, avec les mêmes [Sn].\n" +
+            "- conclusion : LE verdict chiffré essentiel, TRÈS COURT (ex. « RS 15% ; TVA 19% » ou " +
+            "« EXONÉRÉ »). Si le point porte plusieurs sous-verdicts, mets-en UN par ligne (séparés par " +
+            "un retour à la ligne « \\n »), format « Établissement stable : NON », « Retenue à la source : " +
+            "15% », etc. — JAMAIS un paragraphe. Recopie fidèlement les taux/verdicts des analyses ; " +
+            "INTERDIT d'écrire « NON DOCUMENTÉ » si les analyses tranchent le point. Le tableau NE DOIT " +
+            "JAMAIS contredire les analyses.\n\n" +
+            "{\"analysis_table\":[{\"sujet\":\"\",\"analyse\":\"Selon [Sn]: \",\"conclusion\":\"\"}]}";
     }
 
     // ── Source merging ────────────────────────────────────────────────────────
+    // (Qualification, senior review and the judge/revision loop moved into the MAF workflow —
+    //  see Orchestration/ConsultationWorkflow.cs.)
+
+    // The rate-driving domestic articles (CIRPPIS Art.52/53 for the withholding rate, CTVA Art.7 for
+    // the VAT rate) MUST be inside the model's visible source window — otherwise the model truthfully
+    // reports "taux NON DOCUMENTÉ". Version-bloat (2026/2023/2022 copies of every article) plus the
+    // embed server returning a slightly different neighbour set on another machine can push these past
+    // the cutoff even when they were fetched. This pins the rate-bearing copy to the front (after any
+    // Convention chunks, which keep priority for international cases). Deterministic — no scores, no env.
+    internal static void PinRateArticles(List<LegalSourceDto> sources)
+    {
+        // Require an actual numeric rate ('%') — not merely the word "taux" — so a rate-less stub
+        // copy of the article never jumps ahead of the version that carries the figure to read.
+        static bool HasRate(LegalSourceDto s) => (s.Text ?? "").Contains('%');
+
+        static bool IsRs(LegalSourceDto s) =>
+            (s.DocName ?? "").Contains("code_irpp_is", StringComparison.OrdinalIgnoreCase) &&
+            (Digits(s.ArticleRef) == "52" || Digits(s.ArticleRef) == "53");
+
+        static bool IsTva(LegalSourceDto s) =>
+            (s.DocName ?? "").Contains("code_tva", StringComparison.OrdinalIgnoreCase) &&
+            Digits(s.ArticleRef) == "7";
+
+        bool Pin(LegalSourceDto s) => HasRate(s) && (IsRs(s) || IsTva(s));
+
+        // Newest-year copy of a pinned article wins (2026 before 2020) — the LF revises rates yearly,
+        // so a stale year gives the wrong figure even when the article number is right.
+        static int Year(LegalSourceDto s)
+        {
+            var m = Regex.Match((s.DocName ?? "") + " " + (s.Year ?? ""), @"(19|20)\d{2}");
+            return m.Success ? int.Parse(m.Value) : 0;
+        }
+
+        // Stable partition: Conventions first (int'l priority), then pinned rate articles (newest year
+        // first), then the rest.
+        var convs  = sources.Where(s => s.DocType == "Convention").ToList();
+        var pinned = sources.Where(s => s.DocType != "Convention" && Pin(s))
+                            .OrderByDescending(Year).ToList();
+        var rest   = sources.Where(s => s.DocType != "Convention" && !Pin(s)).ToList();
+
+        sources.Clear();
+        sources.AddRange(convs);
+        sources.AddRange(pinned);
+        sources.AddRange(rest);
+        for (int i = 0; i < sources.Count; i++) sources[i].Index = i + 1;
+    }
+
+    // The FIRST contiguous digit run, not every digit in the string concatenated — see the matching
+    // fix + rationale in CaseBrief.cs's RequiredSource.Digits (same bug, same fix, kept in sync).
+    // This one is load-bearing for DropOlderEditions (edition dedup) and PinCaseSources (Art.52/53,
+    // Art.7 pinning) — both silently no-opped for every multi-part article on taxmindvf, since
+    // "ARTICLE 52 (Part 1/37)" concatenated to "52137", never equal to "52".
+    internal static string Digits(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var start = -1;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (char.IsDigit(s[i])) { start = i; break; }
+        }
+        if (start < 0) return "";
+        var end = start;
+        while (end < s.Length && char.IsDigit(s[end])) end++;
+        return s[start..end];
+    }
 
     private static List<LegalSourceDto> MergeAllSources(
         List<LegalSourceDto> plannerSources,
@@ -716,15 +950,19 @@ public sealed class GenerateConsultationCommandHandler(
         foreach (var s in neo4jSources)
             if (seen.Add(Key(s))) result.Add(s);
 
-        // Diversity: limit Commentaire to 4, Doctrine to 3
+        // Diversity caps. Convention is capped too: a treaty analysis needs a HANDFUL of articles
+        // (ES, redevance, bénéfices, dividende, intérêt), but the planner returns ~19 near-duplicate
+        // convention fragments that used to occupy 19/30 pre-graph slots and starve the Code articles.
+        // Keep the 10 best-scored; the deterministic treaty-by-subject fetchers add the exact articles.
+        var conv  = result.Where(r => r.DocType == "Convention").OrderByDescending(r => r.Score).Take(10).ToList();
         var com   = result.Where(r => r.DocType == "Commentaire").OrderByDescending(r => r.Score).Take(4).ToList();
         var doc   = result.Where(r => r.DocType == "Doctrine").OrderByDescending(r => r.Score).Take(3).ToList();
-        var other = result.Where(r => r.DocType != "Commentaire" && r.DocType != "Doctrine")
-                          .OrderBy(r => r.DocType == "Convention" ? 0 : r.DocType == "Code" ? 1 : 2)
-                          .ThenByDescending(r => r.Score).ToList();
+        var code  = result.Where(r => r.DocType != "Convention" && r.DocType != "Commentaire" && r.DocType != "Doctrine")
+                          .OrderByDescending(r => r.Score).ToList();
 
-        var merged = other.Take(maxTotal - com.Count - doc.Count)
-                          .Concat(com).Concat(doc).Take(maxTotal).ToList();
+        // Code first so the operative articles are never crowded out, then the capped treaty, then doctrine.
+        var merged = code.Concat(conv).Take(maxTotal - com.Count - doc.Count)
+                         .Concat(com).Concat(doc).Take(maxTotal).ToList();
         for (int i = 0; i < merged.Count; i++) merged[i].Index = i + 1;
         return merged;
     }
@@ -792,16 +1030,22 @@ public sealed class GenerateConsultationCommandHandler(
 
     // ── Citation resolver ─────────────────────────────────────────────────────
 
-    private static string ResolveCitations(string text, List<LegalSourceDto> sources) =>
-        Regex.Replace(text, @"\[S(\d+)\]", m =>
+    private static string ResolveCitations(string text, List<LegalSourceDto> sources)
+    {
+        // Safety net: the model must never emit the literal placeholder tokens from the prompt
+        // ([Sn], [S…], [S...], [S ]). Strip them (and any adjacent orphan separators) before
+        // resolving real [S1]..[Sn] citations to their source labels.
+        text = Regex.Replace(text, @"\s*\[S\s*(?:n|…|\.\.\.| )\s*\]", "", RegexOptions.IgnoreCase);
+        return Regex.Replace(text, @"\[S(\d+)\]", m =>
         {
             if (!int.TryParse(m.Groups[1].Value, out var idx)) return m.Value;
             return sources.FirstOrDefault(s => s.Index == idx)?.Citation ?? m.Value;
         });
+    }
 
     // ── JSON helpers ──────────────────────────────────────────────────────────
 
-    private static Dictionary<string, JsonElement>? ParseJsonDict(string raw)
+    internal static Dictionary<string, JsonElement>? ParseJsonDict(string raw)
     {
         raw = Regex.Replace(raw.Trim(), @"^```(json)?\s*", "", RegexOptions.Multiline);
         raw = Regex.Replace(raw.Trim(), @"\s*```$",          "", RegexOptions.Multiline);
@@ -815,7 +1059,7 @@ public sealed class GenerateConsultationCommandHandler(
         catch { return null; }
     }
 
-    private static string GetStr(Dictionary<string, JsonElement>? d, string key) =>
+    internal static string GetStr(Dictionary<string, JsonElement>? d, string key) =>
         d is not null && d.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String
         ? v.GetString() ?? "" : "";
 
@@ -827,17 +1071,4 @@ public sealed class GenerateConsultationCommandHandler(
            .Where(s => !string.IsNullOrEmpty(s)).ToList()
         : new();
 
-    private static List<(string Sujet, string Analyse, string Conclusion)> ParseTable(
-        Dictionary<string, JsonElement>? p3)
-    {
-        if (p3 is null || !p3.TryGetValue("analysis_table", out var tbl)
-            || tbl.ValueKind != JsonValueKind.Array) return new();
-        return tbl.EnumerateArray()
-            .Select(r => (GetElStr(r,"sujet"), GetElStr(r,"analyse"), GetElStr(r,"conclusion")))
-            .ToList();
-    }
-
-    private static string GetElStr(JsonElement el, string key) =>
-        el.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
-        ? v.GetString() ?? "" : "";
 }

@@ -1,0 +1,105 @@
+using FiscalPlatform.Application.Common.DTOs;
+
+namespace FiscalPlatform.Application.Consultation.Orchestration;
+
+/// <summary>
+/// The CASE BRIEF — what a case agent hands the rest of the pipeline. It is the contract between
+/// the case agent (domain controller: WHAT this case needs) and the downstream workers (retrieval
+/// fulfilment, writer, judge). It carries the required-sources CHECKLIST, the démarche, the
+/// forbidden steps, the qualification guidance, the structure skeleton and the judge criteria.
+/// Golden métier rule: a brief NEVER contains a numeric rate or a verdict — every figure is read
+/// by the model from the retrieved sources.
+/// </summary>
+public sealed record CaseBrief(
+    string   Label,
+    string   SystemPrompt,
+    bool     UsesOwnPrompt,          // false → legacy proven service prompt (Generic / RS-service)
+    string   Demarche,
+    string   ForbiddenSteps,
+    string   QualificationGuidance,
+    string   RedactedSkeleton,
+    string   JudgeCriteria,
+    string[] Topics,
+    IReadOnlyList<RequiredSource> RequiredSources);
+
+/// <summary>
+/// One item of the case's required-sources checklist. Deterministically MATCHABLE (predicates) and
+/// deterministically FULFILLABLE (fetch hints) — no LLM involved in verifying completeness, which
+/// keeps the retrieval loop reproducible and free.
+/// All non-null predicates must hold for a source to satisfy the item.
+/// </summary>
+public sealed record RequiredSource(
+    string  Key,
+    string  Description,
+    bool    Critical,
+    // ── match predicates ──
+    string?   DocFragment       = null,  // source DocName contains (case-insensitive)
+    string?   ArticleNumber     = null,  // digits of ArticleRef equal
+    string?   TextContains      = null,  // source text contains (case-insensitive)
+    bool      RequirePercent    = false, // source text must contain '%' (a real rate, not a stub)
+    string[]? ConventionSubject = null,  // DocType=Convention + head contains ANY variant + country match
+    // ── fulfilment hints (how to fetch it when missing) ──
+    string?   FetchDocFragment  = null,
+    string[]? FetchKeywords     = null,
+    // The document may legitimately NOT EXIST (e.g. no treaty with that country). After the
+    // retrieval loop has genuinely tried, the item stops blocking completeness — its absence is a
+    // legal FACT (pas de convention → droit commun), not a retrieval failure to retry forever.
+    bool      ExistenceConditional = false)
+{
+    /// <summary>Deterministic: does this source satisfy the item?</summary>
+    public bool IsSatisfiedBy(LegalSourceDto s, ICollection<string> countries)
+    {
+        var text = s.Text ?? "";
+        var name = s.DocName ?? "";
+
+        if (ConventionSubject is { Length: > 0 })
+        {
+            if (!string.Equals(s.DocType, "Convention", StringComparison.OrdinalIgnoreCase)) return false;
+            var head = text[..Math.Min(text.Length, 80)];
+            if (!ConventionSubject.Any(v => head.Contains(v, StringComparison.OrdinalIgnoreCase))) return false;
+            if (countries.Count > 0 &&
+                !countries.Any(c => name.Contains(c, StringComparison.OrdinalIgnoreCase))) return false;
+        }
+
+        if (DocFragment is not null &&
+            !name.Contains(DocFragment, StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (ArticleNumber is not null &&
+            Digits(s.ArticleRef) != ArticleNumber) return false;
+
+        if (TextContains is not null &&
+            !text.Contains(TextContains, StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (RequirePercent && !text.Contains('%')) return false;
+
+        return true;
+    }
+
+    // The FIRST contiguous digit run, not every digit in the string concatenated: ArticleRef is
+    // populated from article_display when present, which on taxmindvf carries a pagination suffix
+    // ("ARTICLE 52 (Part 1/37)"). Concatenating all digits produced "52137" for part 1 — never
+    // equal to a clean ArticleNumber like "52" — so this predicate silently failed for every
+    // multi-part article on every consultation; matching only the leading run fixes it uniformly.
+    private static string Digits(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var start = -1;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (char.IsDigit(s[i])) { start = i; break; }
+        }
+        if (start < 0) return "";
+        var end = start;
+        while (end < s.Length && char.IsDigit(s[end])) end++;
+        return s[start..end];
+    }
+}
+
+/// <summary>Result of the deterministic completeness check.</summary>
+public sealed record CompletenessReport(
+    IReadOnlyList<RequiredSource> Missing,
+    IReadOnlyList<RequiredSource> MissingCritical,
+    int TotalRequired)
+{
+    public bool CriticallyComplete => MissingCritical.Count == 0;
+}

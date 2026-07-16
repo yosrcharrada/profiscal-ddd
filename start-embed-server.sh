@@ -12,12 +12,7 @@ if [ ! -d "venv" ]; then
 fi
 
 # Load .env if present (NEO4J_* vars)
-if [ -f .env ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . ./.env
-  set +a
-fi
+[ -f .env ] && export $(grep -v '^#' .env | xargs)
 
 echo "→ Starting embed server on :8081 (Ctrl+C to stop)…"
 ./venv/bin/python embed_server.py

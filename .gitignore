@@ -40,3 +40,9 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# Local notes
+todo.txt
+# migration backup dumps (large, machine-local)
+taxmindvf_cdpf_backup.json
+cdpf_bct_export.json

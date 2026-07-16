@@ -24,6 +24,10 @@ public sealed class LegalSourceDto
 {
     public int    Index        { get; set; }
     public string ChunkId      { get; set; } = "";
+    // Stable provision identifier from the graph enrichment — groups the parts of ONE real
+    // provision, so coalescing can never re-merge distinct same-numbered provisions (the CTVA
+    // Art.7 collision). Empty on the old whole-article graph → callers fall back to article number.
+    public string ProvisionUid { get; set; } = "";
     public string DocName      { get; set; } = "";
     public string DocType      { get; set; } = "";
     public string ArticleRef   { get; set; } = "";

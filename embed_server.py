@@ -77,10 +77,15 @@ except ImportError:
 
 NEO4J_URI  = os.getenv("NEO4J_URI",      "neo4j://127.0.0.1:7687")
 NEO4J_USER = os.getenv("NEO4J_USERNAME", os.getenv("NEO4J_USER", "neo4j"))
-NEO4J_PASS = os.getenv("NEO4J_PASSWORD", "Kenndyj256*")
-NEO4J_DB   = os.getenv("NEO4J_DATABASE", "tunisian-fiscal")
+NEO4J_PASS = os.getenv("NEO4J_PASSWORD", "neo4j")
+NEO4J_DB   = os.getenv("NEO4J_DATABASE", "taxmind")
 
-EMBED_MODEL    = "paraphrase-multilingual-mpnet-base-v2"   # MUST match graph build model
+# taxmind's chunk_embeddings index is 384-dim. The query model MUST be the SAME model that
+# built the index, otherwise similarity scores are meaningless. Default to the 384-dim
+# multilingual MiniLM (same family as the old 768-dim mpnet). Override via EMBED_MODEL in .env
+# if the graph was built with a different 384-dim model (e.g. intfloat/multilingual-e5-small).
+EMBED_MODEL    = os.getenv("EMBED_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+EXPECTED_DIM   = int(os.getenv("EMBED_DIM", "384"))         # taxmind chunk_embeddings dimension
 MODEL_CACHE    = "./model_cache"                            # cached model folder
 PORT           = 8081
 MIN_SCORE      = 0.30       # lowered from 0.45 — legal text vs descriptive query needs lower threshold
@@ -117,10 +122,11 @@ def load_model() -> SentenceTransformer:
     # If model is not cached, falls back to download with SSL bypass.
     # Try loading from the manually-downloaded local folder first
     # (files downloaded with verify=False directly into model_cache subfolder)
+    _leaf = EMBED_MODEL.split("/")[-1]
     local_paths = [
-        pathlib.Path(MODEL_CACHE) / "sentence-transformers_paraphrase-multilingual-mpnet-base-v2",
-        pathlib.Path(MODEL_CACHE) / "paraphrase-multilingual-mpnet-base-v2",
-        pathlib.Path("./paraphrase-multilingual-mpnet-base-v2"),
+        pathlib.Path(MODEL_CACHE) / f"sentence-transformers_{_leaf}",
+        pathlib.Path(MODEL_CACHE) / _leaf,
+        pathlib.Path(f"./{_leaf}"),
     ]
     local_path = next((p for p in local_paths if (p / "config.json").exists()), None)
 
@@ -140,7 +146,12 @@ def load_model() -> SentenceTransformer:
             ssl._create_default_https_context = ssl._create_unverified_context
             log.warning("Downloading model with SSL verification disabled")
             _model = SentenceTransformer(EMBED_MODEL, cache_folder=MODEL_CACHE)
-    log.info(f"Model loaded in {time.time()-t0:.1f}s — dim={_model.get_sentence_embedding_dimension()}")
+    dim = _model.get_sentence_embedding_dimension()
+    log.info(f"Model loaded in {time.time()-t0:.1f}s — dim={dim}")
+    if dim != EXPECTED_DIM:
+        log.error(f"⚠️  MODEL DIM MISMATCH: model '{EMBED_MODEL}' is {dim}-dim but taxmind "
+                  f"chunk_embeddings is {EXPECTED_DIM}-dim. Vector search WILL FAIL or return "
+                  f"garbage. Set EMBED_MODEL in .env to the exact model that built the graph.")
     return _model
 
 
@@ -182,43 +193,40 @@ def vector_search(query_emb: List[float], top_k: int,
 
     with driver.session(database=NEO4J_DB) as session:
         try:
-            if doc_filter:
-                cypher = """
-                    CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $emb)
-                    YIELD node AS c, score
-                    WHERE c.chunk_type = 'text' AND score >= $min_score
-                      AND toLower(c.doc_name) CONTAINS $filter
+            # DUAL-SCHEMA: taxmind (doc_id/corpus) and taxmindvf (document_id/folder, paragraph
+            # parts). coalesce() lets ONE query serve both graphs — switch via NEO4J_DATABASE.
+            proj = """
                     RETURN
-                        c.chunk_id      AS chunk_id,
-                        c.text          AS text,
-                        c.doc_name      AS doc_name,
-                        c.doc_type      AS doc_type,
-                        c.article_ref   AS article_ref,
-                        c.section_title AS section_title,
-                        c.annee         AS annee,
+                        c.chunk_id AS chunk_id,
+                        c.content  AS text,
+                        coalesce(c.doc_id, c.document_id) AS doc_name,
+                        CASE coalesce(c.corpus, c.folder)
+                                      WHEN 'Conventions' THEN 'Convention'
+                                      WHEN 'Lois_des_Finances' THEN 'LoiFinances'
+                                      WHEN 'Notes_Communes' THEN 'Doctrine'
+                                      WHEN 'Faiez' THEN 'Commentaire' WHEN 'Expert' THEN 'Commentaire'
+                                      ELSE 'Code' END AS doc_type,
+                        coalesce(c.article_display, c.article_number, '') AS article_ref,
+                        c.title    AS section_title,
+                        coalesce(toString(c.year), '') AS annee,
                         score
                     ORDER BY score DESC
                     LIMIT $topK
-                """
-                res = session.run(cypher, topK=fetch_k, emb=query_emb,
+            """
+            if doc_filter:
+                res = session.run("""
+                    CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $emb)
+                    YIELD node AS c, score
+                    WHERE c.content <> '' AND score >= $min_score
+                      AND toLower(coalesce(c.doc_id, c.document_id)) CONTAINS $filter
+                """ + proj, topK=fetch_k, emb=query_emb,
                                   min_score=MIN_SCORE, filter=doc_filter)
             else:
                 res = session.run("""
                     CALL db.index.vector.queryNodes('chunk_embeddings', $topK, $emb)
                     YIELD node AS c, score
-                    WHERE c.chunk_type = 'text' AND score >= $min_score
-                    RETURN
-                        c.chunk_id      AS chunk_id,
-                        c.text          AS text,
-                        c.doc_name      AS doc_name,
-                        c.doc_type      AS doc_type,
-                        c.article_ref   AS article_ref,
-                        c.section_title AS section_title,
-                        c.annee         AS annee,
-                        score
-                    ORDER BY score DESC
-                    LIMIT $topK
-                """, topK=top_k, emb=query_emb, min_score=MIN_SCORE)
+                    WHERE c.content <> '' AND score >= $min_score
+                """ + proj, topK=top_k, emb=query_emb, min_score=MIN_SCORE)
 
             for r in res:
                 results.append({
@@ -242,28 +250,17 @@ def vector_search(query_emb: List[float], top_k: int,
 
 @app.route("/health", methods=["GET"])
 def health():
-    """Health check called by the C# aggregate health endpoint every ~20s.
-    Returns 200 as soon as the embedding model is loaded, even if Neo4j isn't
-    reachable yet (Neo4j routing errors are transient at startup and do not
-    prevent embed_search from working once the driver retries)."""
+    """Quick health check. C# EmbedSearchService does NOT call this — just for debugging."""
     try:
-        model = load_model()
-        neo4j_ok = False
-        neo4j_err = ""
-        try:
-            driver = get_driver()
-            driver.verify_connectivity()
-            neo4j_ok = True
-        except Exception as e:
-            neo4j_err = str(e)
+        driver = get_driver()
+        driver.verify_connectivity()
+        model  = load_model()
         return jsonify({
             "status":    "ok",
-            "neo4j":     neo4j_ok,
-            "neo4j_uri": NEO4J_URI,
+            "neo4j":     NEO4J_URI,
             "database":  NEO4J_DB,
             "model":     EMBED_MODEL,
-            "dim":       model.get_embedding_dimension(),
-            **({"neo4j_error": neo4j_err[:120]} if neo4j_err else {}),
+            "dim":       model.get_sentence_embedding_dimension(),
         })
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 503
