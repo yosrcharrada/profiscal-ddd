@@ -48,9 +48,15 @@ public sealed class ElasticsearchSearchAgent(
         if (req.DocType   != "all") filters.Add(new { term = new { document_type = req.DocType } });
         if (req.ChunkType != "all") filters.Add(new { term = new { chunk_type = req.ChunkType } });
 
+        // Filter-only search: with no query text, match everything and let the filters do the
+        // narrowing (e.g. "show me all Conventions"). Otherwise run the fuzzy multi_match.
+        object must = string.IsNullOrWhiteSpace(req.Query)
+            ? new object[] { new { match_all = new { } } }
+            : MultiMatch(req.Query);
+
         object query = filters.Any()
-            ? (object)new { @bool = new { must = MultiMatch(req.Query), filter = filters } }
-            :          new { @bool = new { must = MultiMatch(req.Query) } };
+            ? (object)new { @bool = new { must, filter = filters } }
+            :          new { @bool = new { must } };
 
         // Same trick as the old app: highlight only against the meaningful terms of
         // the query (stop-words stripped) so highlighting stays clean even though the

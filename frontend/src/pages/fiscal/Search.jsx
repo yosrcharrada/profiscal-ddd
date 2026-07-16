@@ -459,7 +459,17 @@ export default function Search() {
     ymax = yearMax,
   } = {}) => {
     const text = q.trim();
-    if (!text || loading) return;
+    if (loading) return;
+    // Filter-only search: allow an empty query as long as at least one filter is set, so the
+    // user can just pick filters (a doc type, a period, a client…) and browse the data.
+    const lawActive = dt !== "all" || ymin !== YEARS.min || ymax !== YEARS.max;
+    const consActive =
+      clientSearch !== "" ||
+      dateFrom !== "" ||
+      dateTo !== "" ||
+      country !== "" ||
+      keywords.length > 0;
+    if (!text && !(m === "law" ? lawActive : consActive)) return;
     setLoading(true);
     setError("");
     setSearched(true);
@@ -476,10 +486,37 @@ export default function Search() {
         });
         setLawRes(data.data);
       } else {
-        const { data } = await fiscalService.list(text);
-        setConsRes(data.data);
+        // Date range is filtered server-side; client / country / keyword are applied here on
+        // the returned list (the consultation record has no dedicated country column, so we
+        // match the country name against its text).
+        const { data } = await fiscalService.list(
+          text,
+          false,
+          dateFrom || undefined,
+          dateTo || undefined,
+        );
+        let list = data.data || [];
+        if (clientSearch) {
+          const q2 = clientSearch.toLowerCase();
+          list = list.filter((c) => (c.clientName || "").toLowerCase().includes(q2));
+        }
+        if (country) {
+          const q2 = country.toLowerCase();
+          list = list.filter(
+            (c) =>
+              (c.fiscalQuestion || "").toLowerCase().includes(q2) ||
+              (c.clientName || "").toLowerCase().includes(q2),
+          );
+        }
+        if (keywords.length) {
+          list = list.filter((c) => {
+            const hay = `${c.fiscalQuestion || ""} ${c.reference || ""}`.toLowerCase();
+            return keywords.some((kw) => hay.includes(kw.toLowerCase()));
+          });
+        }
+        setConsRes(list);
       }
-      remember(text, m);
+      if (text) remember(text, m);
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -505,13 +542,13 @@ export default function Search() {
   const pickDocType = (dt) => {
     setDocType(dt);
     setMobileFilters(false);
-    if (searched && query.trim()) run({ dt });
+    if (searched) run({ dt });
   };
 
   const pickYears = (ymin, ymax) => {
     setYearMin(ymin);
     setYearMax(ymax);
-    if (searched && query.trim()) run({ ymin, ymax });
+    if (searched) run({ ymin, ymax });
   };
 
   const resetFilters = () => {
@@ -521,6 +558,10 @@ export default function Search() {
       setYearMax(YEARS.max);
       if (searched && query.trim())
         run({ dt: "all", ymin: YEARS.min, ymax: YEARS.max });
+      else if (searched) {
+        setLawRes(null);
+        setSearched(false);
+      }
     } else {
       setClientSearch("");
       setDateFrom("");
@@ -750,7 +791,7 @@ export default function Search() {
               </div>
               <button
                 type="submit"
-                disabled={loading || !query.trim()}
+                disabled={loading || (!query.trim() && !filtersActive)}
                 className="ml-2 bg-gradient-to-r from-brand to-[#F59E0B] text-dark text-[12px] font-bold rounded-lg px-4 py-2 hover:shadow-md hover:shadow-brand/30 active:scale-95 disabled:opacity-30 transition-all shrink-0"
               >
                 {loading ? (

@@ -44,8 +44,14 @@ public sealed class FiscalController(
     [HttpPost("search")]
     public async Task<IActionResult> Search([FromBody] SearchRequestDto req, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(req.Query))
-            return BadRequest(ApiResponse<object>.Fail("Query required."));
+        // Allow a filter-only search (no query text) as long as at least one filter narrows it —
+        // e.g. "show all Conventions". Reject only when there is neither a query nor any filter.
+        var hasFilter = !string.Equals(req.DocType, "all", StringComparison.OrdinalIgnoreCase)
+                     || !string.Equals(req.ChunkType, "all", StringComparison.OrdinalIgnoreCase)
+                     || !string.Equals(req.Corpus, "all", StringComparison.OrdinalIgnoreCase)
+                     || req.Year > 0 || req.Number.Length > 0 || req.DateText.Length > 0;
+        if (string.IsNullOrWhiteSpace(req.Query) && !hasFilter)
+            return BadRequest(ApiResponse<object>.Fail("Enter a search term or select a filter."));
         var result = await mediator.Send(new SearchLegalDocumentsQuery(req), ct);
         return Ok(ApiResponse<SearchResultDto>.Ok(result));
     }
