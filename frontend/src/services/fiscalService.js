@@ -22,6 +22,12 @@ const fiscalService = {
   getDocument: (documentId) =>
     api.get(`/fiscal/search/document/${encodeURIComponent(documentId)}`),
 
+  // Original source PDF (blob — the endpoint requires auth, so a plain <a href> can't be
+  // used; fetch as a blob through axios, then open an object URL). May 404 on environments
+  // where the raw PDF corpus (Documents:Root) isn't mounted.
+  getDocumentPdf: (documentId) =>
+    api.get(`/fiscal/search/document/${encodeURIComponent(documentId)}/pdf`, { responseType: 'blob' }),
+
   // Legal chatbot
   chat: (question, history = []) => api.post('/fiscal/chat', { question, history }),
 
@@ -103,5 +109,23 @@ const fiscalService = {
   refine: (body) => api.post('/fiscal/refine/message', body),
   endSession: (sessionId) => api.post('/fiscal/refine/session/end', { sessionId }),
 };
+
+/**
+ * Fetches the original source PDF for a search result and opens it in a new tab, jumping to
+ * `page` when known (browser-native PDF viewer fragment, 1-indexed). Most article/section
+ * chunks don't carry a page number (only table extractions do, upstream) — when `page` is
+ * omitted the PDF still opens correctly, just without a jump target, and the user can use the
+ * viewer's own search (Ctrl+F). Throws on failure (404 when the corpus isn't mounted on this
+ * environment, or the document/file can't be resolved) — callers should catch and toast.
+ */
+export async function openDocumentPdf(documentId, page) {
+  const { data: blob } = await fiscalService.getDocumentPdf(documentId);
+  const url = URL.createObjectURL(blob) + (page ? `#page=${page}` : '');
+  const win = window.open(url, '_blank', 'noopener');
+  if (!win) throw new Error('popup-blocked');
+  // Release the blob URL once the new tab has had time to load it — revoking immediately
+  // would race the tab's own fetch of the object URL.
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
 
 export default fiscalService;

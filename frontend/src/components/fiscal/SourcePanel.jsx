@@ -19,6 +19,7 @@ const TYPE_STYLES = {
 export function normalizeSource(s = {}, index) {
   return {
     index: index ?? s.index,
+    documentId: s.documentId || s.docId || "",
     docName: (s.docName || s.filename || "Document").replace(/[-_]/g, " "),
     docType: s.docType || s.documentType || s.category || "",
     articleRef: s.articleRef || s.articleNumber || "",
@@ -36,6 +37,8 @@ export default function SourcePanel({
   onClose,
   sources = [],
   onNavigate,
+  onOpenPdf,
+  pdfLoading = false,
 }) {
   useEffect(() => {
     const fn = (e) => {
@@ -98,26 +101,55 @@ export default function SourcePanel({
             {s.page != null && <span>· page {s.page}</span>}
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="shrink-0 w-9 h-9 rounded-xl border border-border text-muted hover:text-dark hover:border-dark/30 flex items-center justify-center transition-colors"
-          aria-label="Fermer"
-          title="Fermer (Échap)"
-        >
-          <svg
-            className="w-[18px] h-[18px]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
+        <div className="flex items-center gap-2 shrink-0">
+          {onOpenPdf && (
+            <button
+              onClick={onOpenPdf}
+              disabled={pdfLoading}
+              className="h-9 rounded-xl border border-border text-body hover:text-dark hover:border-dark/30 hover:bg-light/60 flex items-center gap-1.5 px-3 text-[12px] font-semibold transition-colors disabled:opacity-40"
+              title={s.page != null ? `Ouvrir le PDF à la page ${s.page}` : "Ouvrir le PDF"}
+            >
+              {pdfLoading ? (
+                <span className="w-3.5 h-3.5 border-2 border-muted/40 border-t-dark rounded-full animate-spin" />
+              ) : (
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                  />
+                </svg>
+              )}
+              <span className="hidden sm:inline">Voir le PDF</span>
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="shrink-0 w-9 h-9 rounded-xl border border-border text-muted hover:text-dark hover:border-dark/30 flex items-center justify-center transition-colors"
+            aria-label="Fermer"
+            title="Fermer (Échap)"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
+            <svg
+              className="w-[18px] h-[18px]"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* document page */}

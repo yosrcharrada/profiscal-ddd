@@ -1,12 +1,44 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "../../context/LanguageContext";
-import fiscalService from "../../services/fiscalService";
+import fiscalService, { openDocumentPdf } from "../../services/fiscalService";
+import { useToast } from "../../components/common/Toast";
 import SourcePanel, {
   normalizeSource,
 } from "../../components/fiscal/SourcePanel";
 
 const EASE = "ease-[cubic-bezier(.16,1,.3,1)]";
+
+// Mirrors the backend's highlight stop-word list (ElasticsearchSearchAgent.FrenchStop) —
+// the ES highlight_query already excludes these as SEARCH terms, but the highlighter can
+// still sweep a filler word into the SAME <em> span as a real match when they sit next to
+// each other in the fragment (e.g. "de la retenue" -> one continuous highlighted run). This
+// trims stop-words off the EDGES of each rendered <mark> span client-side, so only the actual
+// matched term(s) stay highlighted.
+const FR_STOP = new Set([
+  "le", "la", "les", "l", "de", "du", "des", "d", "un", "une", "au", "aux",
+  "en", "et", "est", "à", "a", "par", "pour", "sur", "dans", "avec", "que",
+  "qui", "qu", "se", "sa", "son", "ses", "ce", "cette", "ces", "il", "ils",
+  "elle", "elles", "je", "tu", "nous", "vous", "on", "y", "ne", "pas", "plus",
+  "ou", "si", "car", "mais", "donc", "ni", "dont", "où", "lors", "dès", "tout",
+  "tous", "toute", "toutes", "leur", "leurs", "même", "entre", "sous", "sans",
+  "avant", "après", "pendant", "depuis", "sont", "sera", "été", "ainsi", "soit",
+  "tel", "tels", "telle", "selon", "afin", "notamment", "également", "lorsque",
+]);
+const isStopWord = (tok) =>
+  FR_STOP.has(tok.toLowerCase().replace(/^[^\wà-ÿ]+|[^\wà-ÿ]+$/gi, ""));
+
+const trimMarkEdges = (html) =>
+  html.replace(/<mark class="([^"]*)">([\s\S]*?)<\/mark>/g, (full, cls, inner) => {
+    const words = inner.split(/( +)/); // keeps spaces as their own array items for exact rejoin
+    let lo = 0;
+    let hi = words.length - 1;
+    while (lo <= hi && (/^\s+$/.test(words[lo]) || isStopWord(words[lo]))) lo++;
+    while (hi >= lo && (/^\s+$/.test(words[hi]) || isStopWord(words[hi]))) hi--;
+    const core = words.slice(lo, hi + 1).join("");
+    if (!core.trim()) return full; // never destroy a match that's entirely stop-words
+    return `${words.slice(0, lo).join("")}<mark class="${cls}">${core}</mark>${words.slice(hi + 1).join("")}`;
+  });
 
 const DOC_TYPES = [
   { key: "all", tKey: "search.all", dot: "bg-gradient-to-r from-brand to-[#FFB800]" },
@@ -18,26 +50,25 @@ const DOC_TYPES = [
 ];
 
 const TYPE_BADGE = {
-  Code: { bg: "bg-dark/10", text: "text-dark", border: "border-dark/20" },
+  Code: {
+    bg: "bg-dark/10", text: "text-dark", border: "border-dark/20", accent: "bg-dark",
+    icon: "M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25",
+  },
   Convention: {
-    bg: "bg-brand/20",
-    text: "text-dark",
-    border: "border-brand/40",
+    bg: "bg-brand/20", text: "text-dark", border: "border-brand/40", accent: "bg-brand",
+    icon: "M12 21a9 9 0 100-18 9 9 0 000 18zm0-18v18m-9-9h18M12 3a15.3 15.3 0 013 9 15.3 15.3 0 01-3 9 15.3 15.3 0 01-3-9 15.3 15.3 0 013-9z",
   },
   LoiFinances: {
-    bg: "bg-[#EDE9FE]",
-    text: "text-[#5B21B6]",
-    border: "border-[#C4B5FD]",
+    bg: "bg-[#EDE9FE]", text: "text-[#5B21B6]", border: "border-[#C4B5FD]", accent: "bg-[#8B5CF6]",
+    icon: "M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
   },
   Doctrine: {
-    bg: "bg-[#DBEAFE]",
-    text: "text-[#1D4ED8]",
-    border: "border-[#93C5FD]",
+    bg: "bg-[#DBEAFE]", text: "text-[#1D4ED8]", border: "border-[#93C5FD]", accent: "bg-[#3B82F6]",
+    icon: "M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z",
   },
   Commentaire: {
-    bg: "bg-[#FFEDD5]",
-    text: "text-[#C2410C]",
-    border: "border-[#FDBA74]",
+    bg: "bg-[#FFEDD5]", text: "text-[#C2410C]", border: "border-[#FDBA74]", accent: "bg-[#F97316]",
+    icon: "M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z",
   },
 };
 
@@ -84,10 +115,12 @@ const loadRecent = () => {
 };
 
 const highlightHtml = (h) =>
-  (h.highlight || h.content || "")
-    .replace(/</g, "&lt;")
-    .replace(/&lt;em>/g, '<mark class="bg-brand/40 rounded-sm px-0.5">')
-    .replace(/&lt;\/em>/g, "</mark>");
+  trimMarkEdges(
+    (h.highlight || h.content || "")
+      .replace(/</g, "&lt;")
+      .replace(/&lt;em>/g, '<mark class="bg-brand/40 rounded-sm px-0.5 font-semibold text-dark">')
+      .replace(/&lt;\/em>/g, "</mark>"),
+  );
 
 function FilterSection({ title, defaultOpen = true, count, children }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -390,6 +423,8 @@ function FiltersPanel({
 export default function Search() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const { toast } = useToast();
+  const [pdfLoadingId, setPdfLoadingId] = useState(null);
   const [mode, setMode] = useState("law");
   const [query, setQuery] = useState("");
   const [docType, setDocType] = useState("all");
@@ -599,6 +634,23 @@ export default function Search() {
       setViewList((l) => l.map((s, j) => (j === i ? merge(s) : s)));
     } catch {
       /* keep the passage view if the full-document fetch fails */
+    }
+  };
+
+  const openPdf = async (documentId, page) => {
+    if (!documentId || pdfLoadingId) return;
+    setPdfLoadingId(documentId);
+    try {
+      await openDocumentPdf(documentId, page);
+    } catch (err) {
+      toast(
+        err?.message === "popup-blocked"
+          ? t("search.pdfPopupBlocked")
+          : t("search.pdfUnavailable"),
+        "error",
+      );
+    } finally {
+      setPdfLoadingId(null);
     }
   };
 
@@ -926,30 +978,45 @@ export default function Search() {
                         </p>
                       </div>
                     )}
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {hits.map((h, i) => {
                         const open = viewing && viewing.index === i + 1;
                         const badge = TYPE_BADGE[h.documentType] || {
                           bg: "bg-light",
                           text: "text-body",
                           border: "border-border",
+                          accent: "bg-border",
+                          icon: null,
                         };
+                        const pdfBusy = pdfLoadingId === h.documentId;
                         return (
-                          <button
+                          <div
                             key={h.id || i}
+                            role="button"
+                            tabIndex={0}
                             onClick={() => openHit(hits, i)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                openHit(hits, i);
+                              }
+                            }}
                             style={{
                               animationDelay: `${Math.min(i, 8) * 40}ms`,
                             }}
-                            className={`w-full text-left bg-white border rounded-xl px-4 py-3 transition-all duration-200 group animate-pop opacity-0 ${
+                            className={`relative w-full text-left bg-white border rounded-xl pl-4 pr-3 py-3.5 transition-all duration-200 group animate-pop opacity-0 cursor-pointer overflow-hidden ${
                               open
                                 ? "border-brand ring-1 ring-brand/40 shadow-md"
                                 : "border-border hover:border-dark/20 hover:shadow-sm"
                             }`}
                           >
-                            <div className="flex items-start gap-2.5">
+                            {/* Left accent strip — instant color cue for the document family. */}
+                            <span
+                              className={`absolute left-0 top-0 bottom-0 w-[3px] ${badge.accent}`}
+                            />
+                            <div className="flex items-start gap-3">
                               <span
-                                className={`shrink-0 mt-0.5 w-6 h-6 rounded-md text-[10px] font-bold flex items-center justify-center transition-colors ${
+                                className={`shrink-0 mt-0.5 w-7 h-7 rounded-lg text-[11px] font-bold flex items-center justify-center transition-colors ${
                                   open
                                     ? "bg-brand text-dark"
                                     : "bg-light text-muted group-hover:bg-brand/30 group-hover:text-dark"
@@ -959,7 +1026,29 @@ export default function Search() {
                               </span>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-[13px] font-semibold text-dark capitalize truncate">
+                                  {h.documentType && (
+                                    <span
+                                      className={`inline-flex items-center gap-1 text-[9.5px] font-bold rounded-full pl-1.5 pr-2 py-0.5 border shrink-0 ${badge.bg} ${badge.text} ${badge.border}`}
+                                    >
+                                      {badge.icon && (
+                                        <svg
+                                          className="w-2.5 h-2.5"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                          strokeWidth={2.2}
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d={badge.icon}
+                                          />
+                                        </svg>
+                                      )}
+                                      {h.documentType}
+                                    </span>
+                                  )}
+                                  <p className="text-[13.5px] font-bold text-dark capitalize truncate">
                                     {(h.filename || "Document").replace(
                                       /[-_]/g,
                                       " ",
@@ -968,51 +1057,72 @@ export default function Search() {
                                       ? ` · ${h.articleNumber}`
                                       : ""}
                                   </p>
-                                  {h.documentType && (
-                                    <span
-                                      className={`text-[9px] font-bold rounded-full px-2 py-0.5 border ${badge.bg} ${badge.text} ${badge.border}`}
-                                    >
-                                      {h.documentType}
-                                    </span>
-                                  )}
                                   {h.matchCount > 1 && (
-                                    <span className="text-[9px] font-bold rounded-full px-2 py-0.5 bg-brand/15 text-dark border border-brand/30">
+                                    <span className="text-[9px] font-bold rounded-full px-2 py-0.5 bg-brand/15 text-dark border border-brand/30 shrink-0">
                                       {h.matchCount} passages
                                     </span>
                                   )}
-                                  {h.pageNumber != null && (
-                                    <span className="text-[9px] text-muted">
-                                      p.{h.pageNumber}
-                                    </span>
-                                  )}
                                 </div>
-                                {h.sectionTitle && (
-                                  <p className="text-[11px] text-muted mt-0.5 truncate">
+                                {(h.sectionTitle || h.pageNumber != null) && (
+                                  <p className="text-[11px] text-muted mt-1 truncate">
                                     {h.sectionTitle}
+                                    {h.sectionTitle && h.pageNumber != null ? " · " : ""}
+                                    {h.pageNumber != null ? `p. ${h.pageNumber}` : ""}
                                   </p>
                                 )}
                                 <p
-                                  className="mt-1.5 text-[12.5px] text-body leading-relaxed line-clamp-2"
+                                  className="mt-2 text-[13px] text-body leading-[1.6] line-clamp-3"
                                   dangerouslySetInnerHTML={{
                                     __html: highlightHtml(h),
                                   }}
                                 />
                               </div>
-                              <svg
-                                className={`w-4 h-4 shrink-0 mt-1 transition-all ${open ? "text-brand" : "text-border group-hover:text-muted"}`}
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2}
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                                />
-                              </svg>
+                              <div className="flex flex-col items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openPdf(h.documentId, h.pageNumber);
+                                  }}
+                                  disabled={pdfBusy}
+                                  title={t("search.viewPdf")}
+                                  aria-label={t("search.viewPdf")}
+                                  className="w-7 h-7 rounded-lg border border-border text-muted hover:text-dark hover:border-dark/30 hover:bg-light/70 flex items-center justify-center transition-colors disabled:opacity-40"
+                                >
+                                  {pdfBusy ? (
+                                    <span className="w-3.5 h-3.5 border-2 border-muted/40 border-t-dark rounded-full animate-spin" />
+                                  ) : (
+                                    <svg
+                                      className="w-3.5 h-3.5"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                      strokeWidth={1.8}
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                                      />
+                                    </svg>
+                                  )}
+                                </button>
+                                <svg
+                                  className={`w-4 h-4 transition-all ${open ? "text-brand" : "text-border group-hover:text-muted"}`}
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                                  />
+                                </svg>
+                              </div>
                             </div>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -1121,6 +1231,12 @@ export default function Search() {
                 sources={viewList}
                 onNavigate={setViewing}
                 onClose={() => setViewing(null)}
+                onOpenPdf={
+                  viewing.documentId
+                    ? () => openPdf(viewing.documentId, viewing.page)
+                    : undefined
+                }
+                pdfLoading={pdfLoadingId === viewing.documentId}
               />
             </div>
           )}
@@ -1143,6 +1259,12 @@ export default function Search() {
                 sources={viewList}
                 onNavigate={setViewing}
                 onClose={() => setViewing(null)}
+                onOpenPdf={
+                  viewing.documentId
+                    ? () => openPdf(viewing.documentId, viewing.page)
+                    : undefined
+                }
+                pdfLoading={pdfLoadingId === viewing.documentId}
               />
             </div>
           </div>

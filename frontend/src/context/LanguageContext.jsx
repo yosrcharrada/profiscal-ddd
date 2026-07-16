@@ -152,6 +152,9 @@ const STRINGS = {
     "search.doctrine": "Doctrine",
     "search.commentaires": "Commentaires",
     "search.searchFailed": "La recherche a échoué — vérifiez la connexion du moteur.",
+    "search.viewPdf": "Voir le PDF",
+    "search.pdfUnavailable": "PDF source indisponible sur cet environnement.",
+    "search.pdfPopupBlocked": "Fenêtre bloquée — autorisez les pop-ups pour ouvrir le PDF.",
 
     // Consultations page
     "cons.newConsultation": "Nouvelle consultation",
@@ -702,6 +705,9 @@ const STRINGS = {
     "search.doctrine": "Doctrine",
     "search.commentaires": "Comments",
     "search.searchFailed": "Search failed — check the engine connection.",
+    "search.viewPdf": "View PDF",
+    "search.pdfUnavailable": "Source PDF unavailable on this environment.",
+    "search.pdfPopupBlocked": "Pop-up blocked — allow pop-ups to open the PDF.",
 
     // Consultations page
     "cons.newConsultation": "New consultation",
