@@ -24,18 +24,27 @@ export const PRIORITY_TONES = {
 function AssignTaskPanel({ consultant, onClose, onCreated, t }) {
   const [form, setForm] = useState({ title: '', description: '', clientName: '', priority: 'Medium', dueDate: '' });
   const [emails, setEmails] = useState([]);
-  const [emailInput, setEmailInput] = useState('');
+  const [team, setTeam] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const addEmail = () => {
-    const v = emailInput.trim().toLowerCase();
-    if (!v) return;
-    if (!/\S+@\S+\.\S+/.test(v)) { setError(t('manager.assign.invalidEmail')); return; }
-    if (!emails.includes(v)) setEmails((e) => [...e, v]);
-    setEmailInput('');
-    setError('');
+  // Collaborators are picked from the manager's real consultants (not free-typed) so the
+  // invite always resolves to an account — otherwise the backend silently skips an unknown
+  // email and the collaborator never sees the task.
+  useEffect(() => {
+    taskService.consultants()
+      .then(({ data }) => setTeam(data.data || []))
+      .catch(() => setTeam([]));
+  }, []);
+
+  const available = team.filter((c) => c.id !== consultant.id && !emails.includes(c.email));
+  const nameFor = (email) => {
+    const c = team.find((x) => x.email === email);
+    return c ? (`${c.firstName} ${c.lastName}`.trim() || email) : email;
+  };
+  const addCollaborator = (email) => {
+    if (email && !emails.includes(email)) setEmails((e) => [...e, email]);
   };
 
   const submit = async (e) => {
@@ -117,18 +126,21 @@ function AssignTaskPanel({ consultant, onClose, onCreated, t }) {
               </div>
               <div className="col-span-2 sm:col-span-1">
                 <label className="block text-[11px] font-semibold text-muted uppercase tracking-[0.08em] mb-1.5">{t('manager.assign.collaborators')}</label>
-                <div className="flex gap-2">
-                  <input
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
-                    placeholder="collegue@tn.ey.com"
-                    className={inputCls}
-                  />
-                  <button type="button" onClick={addEmail} className="px-3 py-2 bg-dark text-white text-[12px] font-semibold rounded-lg hover:bg-black transition-colors shrink-0">
-                    {t('manager.assign.add')}
-                  </button>
-                </div>
+                <select
+                  value=""
+                  onChange={(e) => { addCollaborator(e.target.value); e.target.value = ''; }}
+                  disabled={available.length === 0}
+                  className={`${inputCls} disabled:opacity-60`}
+                >
+                  <option value="" disabled>
+                    {available.length === 0 ? t('manager.assign.noCollaborators') : t('manager.assign.pickCollaborator')}
+                  </option>
+                  {available.map((c) => (
+                    <option key={c.id} value={c.email}>
+                      {`${c.firstName} ${c.lastName}`.trim()} — {c.email}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -136,7 +148,7 @@ function AssignTaskPanel({ consultant, onClose, onCreated, t }) {
               <div className="flex flex-wrap gap-1.5">
                 {emails.map((e) => (
                   <span key={e} className="inline-flex items-center gap-1 text-[11px] font-medium text-dark bg-brand/15 border border-brand/40 rounded-full pl-2.5 pr-1 py-0.5">
-                    {e}
+                    {nameFor(e)}
                     <button type="button" onClick={() => setEmails((l) => l.filter((x) => x !== e))} className="w-4 h-4 rounded-full hover:bg-brand/40 flex items-center justify-center">
                       <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
