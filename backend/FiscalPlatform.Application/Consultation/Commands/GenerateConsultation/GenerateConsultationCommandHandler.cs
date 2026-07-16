@@ -848,7 +848,8 @@ public sealed class GenerateConsultationCommandHandler(
         var n  = etendueItems.Count;
         var et = string.Join("\n", etendueItems.Select((x, i) => $"  {i + 1}. {x}"));
         return
-            $"SOMMAIRE EXÉCUTIF — JSON: sommaire_executif (une entrée par point d'étendue, {n} au total, même ordre).\n\n" +
+            $"SOMMAIRE EXÉCUTIF — JSON: sommaire_executif = TABLEAU de {n} chaîne(s), " +
+            "une par point d'étendue, dans le même ordre.\n\n" +
             $"POINTS D'ÉTENDUE:\n{et}\n\n" +
             $"ANALYSES FINALES (SEULE source de vérité — n'invente rien hors de ce texte):\n{finalAnalyses}\n\n" +
             "RÈGLES STRICTES — c'est un RÉSUMÉ DÉCISIONNEL, PAS un résumé de l'analyse :\n" +
@@ -863,8 +864,65 @@ public sealed class GenerateConsultationCommandHandler(
             "- Recopie FIDÈLEMENT les taux et verdicts des analyses ; INTERDIT d'écrire « NON DOCUMENTÉ » " +
             "si les analyses tranchent le point. Le sommaire NE DOIT JAMAIS contredire les analyses.\n" +
             "- Au plus UNE citation [Sn] par entrée, et uniquement un [Sn] déjà présent dans les analyses.\n" +
-            "- Entrées séparées par un saut de ligne. Aucun titre, aucune introduction, aucune conclusion.\n\n" +
-            "{\"sommaire_executif\":\"\"}";
+            "- Aucun titre, aucune introduction, aucune conclusion : uniquement les entrées.\n\n" +
+            "{\"sommaire_executif\":[\"…\"]}";
+    }
+
+    /// <summary>
+    /// Reads sommaire_executif out of the model's JSON, whatever shape it chose.
+    ///
+    /// The prompt asks for ONE ENTRY PER POINT D'ÉTENDUE, so the model answers with a JSON array
+    /// as naturally as with a single string — and it flips between the two depending on how many
+    /// points there are. An earlier version accepted `JsonValueKind.String` only and dropped
+    /// everything else on the floor, which meant EVERY multi-point consultation silently lost its
+    /// sommaire: the model returned it, the parse rejected it, the catch swallowed it, and the
+    /// .docx rendered a "Sommaire exécutif" heading with nothing underneath. Single-point cases
+    /// worked, so it looked fine on the simplest test.
+    ///
+    /// Accepting every shape the model actually produces is the fix; the entries are joined with a
+    /// blank line, which is what the docx/markdown renderer wants anyway.
+    /// </summary>
+    internal static string ExtractSommaire(Dictionary<string, JsonElement>? d)
+    {
+        if (d is null || !d.TryGetValue("sommaire_executif", out var v)) return "";
+        var text = v.ValueKind switch
+        {
+            JsonValueKind.String => v.GetString() ?? "",
+            JsonValueKind.Array  => string.Join("\n\n", v.EnumerateArray()
+                                        .Select(SommaireEntry)
+                                        .Where(s => s.Length > 0)),
+            JsonValueKind.Object => SommaireEntry(v),
+            _                    => "",
+        };
+        return text.Trim();
+    }
+
+    /// One entry: a plain string, or an object like {"sujet":"…","verdict":"…"} if the model
+    /// reverts to the shape the old synthesis table used. Unknown object shapes fall back to
+    /// concatenating their string values rather than returning nothing.
+    private static string SommaireEntry(JsonElement e)
+    {
+        if (e.ValueKind == JsonValueKind.String) return (e.GetString() ?? "").Trim();
+        if (e.ValueKind != JsonValueKind.Object) return "";
+
+        string P(string k) => e.TryGetProperty(k, out var x) && x.ValueKind == JsonValueKind.String
+            ? (x.GetString() ?? "").Trim() : "";
+
+        var sujet   = P("sujet");
+        var corps   = P("texte") is { Length: > 0 } t ? t : (P("analyse") is { Length: > 0 } a ? a : P("entree"));
+        var verdict = P("verdict") is { Length: > 0 } v2 ? v2 : P("conclusion");
+
+        var parts = new List<string>();
+        if (sujet.Length   > 0) parts.Add($"**{sujet}**");
+        if (corps.Length   > 0) parts.Add(corps);
+        if (verdict.Length > 0) parts.Add($"Verdict : {verdict}");
+        if (parts.Count > 0) return string.Join(" : ", parts.Take(1).Concat(parts.Skip(1)));
+
+        // Unrecognised object shape — keep whatever text it holds rather than losing the entry.
+        return string.Join(" ", e.EnumerateObject()
+            .Where(p => p.Value.ValueKind == JsonValueKind.String)
+            .Select(p => (p.Value.GetString() ?? "").Trim())
+            .Where(s => s.Length > 0)).Trim();
     }
 
     // ── Source merging ────────────────────────────────────────────────────────

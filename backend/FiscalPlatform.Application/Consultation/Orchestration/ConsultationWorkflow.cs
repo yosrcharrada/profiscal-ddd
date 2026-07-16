@@ -737,26 +737,30 @@ public sealed class ConsultationWorkflow(
         return (true, "");
     }
 
-    // ── [8] Finalize: synthesis table derived STRICTLY from the final analyses; yield output ──
+    // ── [8] Finalize: the sommaire exécutif, derived STRICTLY from the final analyses ──
     private async ValueTask FinalizeAsync(
         ConsultationState state, IWorkflowContext ctx, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
-        try
+        // The sommaire is the memo's only synthesis section, so an empty one is never acceptable:
+        // it leaves a heading with nothing under it in the delivered .docx. Derive, then retry ONCE
+        // if the model returned nothing usable, and shout if even that fails — this used to fail
+        // silently on every multi-point case (see H.ExtractSommaire).
+        var prompt = H.BuildSommairePrompt(state.EtendueItems, state.Analyses);
+        var text   = await DeriveSommaireAsync(prompt, ct);
+
+        if (text.Length == 0)
         {
-            var raw    = await llm.CompleteAsync(H.SystemPrompt,
-                H.BuildSommairePrompt(state.EtendueItems, state.Analyses), "Sommaire", 1800, ct);
-            var parsed = raw is not null ? H.ParseJsonDict(raw) : null;
-            if (parsed is not null && parsed.TryGetValue("sommaire_executif", out var v) &&
-                v.ValueKind == JsonValueKind.String)
-            {
-                var text = (v.GetString() ?? "").Trim();
-                // Keep the Phase-1 draft only if the derivation genuinely produced nothing: a
-                // sommaire built from the FINAL analyses is always the better of the two.
-                if (text.Length > 0) state.Sommaire = text;
-            }
+            logger.LogWarning("[GRAPH:Finalize] sommaire empty — retrying once with an explicit shape");
+            text = await DeriveSommaireAsync(
+                prompt + "\n\nATTENTION: réponds UNIQUEMENT avec le JSON demandé, où " +
+                         "sommaire_executif est un TABLEAU de chaînes non vide. Aucun autre texte.", ct);
         }
-        catch (Exception ex) { logger.LogWarning(ex, "[GRAPH:Finalize] sommaire derivation failed"); }
+
+        if (text.Length > 0) state.Sommaire = text;
+        else
+            logger.LogError("[GRAPH:Finalize] SOMMAIRE EMPTY after retry — the memo will ship " +
+                            "without its synthesis section (analyses={Len} chars)", state.Analyses.Length);
         sw.Stop();
         state.Timings.Add(("W8. Finalize (sommaire)", sw.Elapsed.TotalMilliseconds,
             $"{state.Sommaire.Length} chars"));
@@ -766,6 +770,24 @@ public sealed class ConsultationWorkflow(
         // result. Finalize is terminal (sends no message), so the workflow goes idle and the handler
         // reads the mutated `state` reference directly. Yielding here threw
         // "Cannot output object of type ConsultationState. Expecting one of []" on every run.
+    }
+
+    /// One sommaire derivation attempt. Returns "" on anything that isn't usable text — a null
+    /// completion, unparseable JSON, or a shape H.ExtractSommaire can make nothing of — so the
+    /// caller can decide whether to retry. A thrown LLM/transport error is caught here for the
+    /// same reason: it is one failed attempt, not a failed consultation.
+    private async Task<string> DeriveSommaireAsync(string prompt, CancellationToken ct)
+    {
+        try
+        {
+            var raw = await llm.CompleteAsync(H.SystemPrompt, prompt, "Sommaire", 1800, ct);
+            return raw is null ? "" : H.ExtractSommaire(H.ParseJsonDict(raw));
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[GRAPH:Finalize] sommaire derivation attempt failed");
+            return "";
+        }
     }
 
     private ICaseAgent Agent(CaseType type) =>
