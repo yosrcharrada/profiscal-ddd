@@ -53,17 +53,19 @@ export default function SourcePanel({
   const pos = sources.length > 1 ? sources.findIndex((x) => x === s) : -1;
   const typeCls =
     TYPE_STYLES[s.docType] || "bg-light text-body border border-border";
+  // Every caller passes a 0..1 relevance: consultation/chat sources are similarity scores
+  // already, and Search normalises Elasticsearch's raw BM25 _score against the result set's
+  // maxScore before handing it over. Anything outside 0..1 is a score whose scale we do not
+  // know, so we show NO badge rather than invent a number.
+  //
+  // This previously read `s.score <= 1 ? s.score*100 : (Math.min(s.score,30)/30)*100` — i.e.
+  // it treated an unbounded BM25 score as "out of 30", so every score >= 30 rendered as 100%.
+  // Real queries clear 30 easily ("retenue a la source honoraires personnes morales" scored
+  // 43.5/41.3/41.2/40.3/39.3), so the panel claimed a perfect match on every result of every
+  // realistic search; only single-word queries stayed under the cap and appeared to vary.
   const relevance =
-    s.score != null
-      ? Math.max(
-          0,
-          Math.min(
-            100,
-            Math.round(
-              s.score <= 1 ? s.score * 100 : (Math.min(s.score, 30) / 30) * 100,
-            ),
-          ),
-        )
+    typeof s.score === "number" && s.score >= 0 && s.score <= 1
+      ? Math.round(s.score * 100)
       : null;
 
   return (

@@ -702,7 +702,20 @@ export default function Search() {
   };
 
   const openHit = async (hits, i) => {
-    const list = hits.map((x, j) => normalizeSource(x, j + 1));
+    // Elasticsearch's _score is an UNBOUNDED BM25 score, not a fraction: it depends on term
+    // rarity, field length and how many terms matched, so it is not comparable across queries
+    // and "40" means nothing on its own. Normalise it against this result set's own max — the
+    // API already returns maxScore — so the panel shows relevance RELATIVE to the best hit
+    // (top = 100%, the rest proportional), which is the only honest reading of a BM25 score
+    // and the only comparison a reader actually makes: these results, against each other.
+    // Consultation/chat sources already arrive as 0..1 similarity scores and pass through.
+    const max = lawRes?.maxScore || 0;
+    const list = hits.map((x, j) =>
+      normalizeSource(
+        max > 0 && typeof x.score === "number" ? { ...x, score: x.score / max } : x,
+        j + 1,
+      ),
+    );
     setViewList(list);
     setViewing(list[i]);
     // Google model: clicking a result opens the WHOLE document (all passages, in order).
