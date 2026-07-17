@@ -160,10 +160,18 @@ public sealed class RetrievalAgent : IRetrievalAgent, IDisposable
         try
         {
             await using var s = _driver.AsyncSession(o => o.WithDatabase(_db));
-            // taxmindvf has no (:Topic) nodes — topics are Chunk properties now, so "entities"
-            // is the count of distinct topic labels carried on chunks.
+            // "Entities" = every node in the graph, which is what the dashboard tile says it is
+            // ("Entités du graphe — connectées dans Neo4j"): on taxmindvf that is 51 668 —
+            // Chunk 45 239 + Section 5 107 + Document 796 + Chapter 372 + Part 54 + Title 45 +
+            // FiscalYear 30 + DocumentType 20 + Category 5.
+            //
+            // This used to read count(DISTINCT c.topic_label), a leftover from the schema that
+            // had real (:Topic) nodes (there are now 0 — topics became a Chunk property). It
+            // returned 50 — the treaty-article topic vocabulary, not entities — so the tile
+            // announced "50 graph entities" for a 45k-chunk corpus and read as broken.
             var r = await s.RunAsync(@"
-                MATCH (c:Chunk) WITH count(c) AS chunks, count(DISTINCT c.topic_label) AS ents
+                MATCH (c:Chunk) WITH count(c) AS chunks
+                MATCH (n)       WITH chunks, count(n) AS ents
                 MATCH ()-[rel]->() RETURN chunks, ents, count(rel) AS rels");
             var rec = await r.SingleAsync();
             stats.TotalChunks    = rec["chunks"].As<long>();

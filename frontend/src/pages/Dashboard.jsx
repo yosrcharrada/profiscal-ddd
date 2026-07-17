@@ -688,13 +688,6 @@ export default function Dashboard() {
             />
           }
         />
-        {/* `totalEntities` is a legacy field NAME: the API computes it as
-            count(DISTINCT c.topic_label), i.e. the treaty-article topic vocabulary
-            ("Établissement stable", "Dividendes", "Redevances"…), not a node count.
-            The graph itself holds 45 239 chunks / 165 958 relationships. It read
-            "Entités du graphe — connectées dans Neo4j", so the tile announced 50
-            entities for a 45k-chunk corpus and looked broken. Label it for what it
-            counts; don't "fix" it back. */}
         <Stat
           label={t("dashboard.kpi.entities")}
           value={
