@@ -86,6 +86,11 @@ builder.Services.AddScoped<
 builder.Services.AddSingleton<ISearchAgent, FiscalPlatform.Infrastructure.Search.ElasticsearchSearchAgent>();
 // builder.Services.AddSingleton<ISearchAgent, Profiscal.API.Fiscal.Neo4jSearchAgent>();
 
+// Optional: on a local/demo machine, auto-start Elasticsearch (and index it if empty) so the
+// operator doesn't run elasticsearch.bat + the --force indexer by hand. OFF by default; it only
+// does anything when Elasticsearch:AutoStart:Enabled=true and never blocks startup on failure.
+builder.Services.AddHostedService<Profiscal.API.Fiscal.ElasticsearchAutoStartService>();
+
 // EF replacements for consultations/ratings persistence.
 builder.Services.AddScoped<IConsultationRepository, EfConsultationRepository>();
 builder.Services.AddScoped<IFeedbackAgent, EfFeedbackAgent>();
