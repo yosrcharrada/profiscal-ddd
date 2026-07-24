@@ -1,11 +1,11 @@
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Domain.Exceptions;
-using FiscalPlatform.Domain.Repositories;
+﻿using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Domain.Exceptions;
+using Profiscal.Domain.Repositories;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Application.Consultation.Commands.RateConsultation;
+namespace Profiscal.Application.Consultation.Commands.RateConsultation;
 
 public sealed record RateConsultationCommand(
     Guid ConsultationId, string Reference, int Stars, string? Comment)

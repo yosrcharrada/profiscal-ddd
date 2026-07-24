@@ -1,23 +1,23 @@
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Application.Common.Interfaces.Services;
-using FiscalPlatform.Infrastructure.Agents;
-using FiscalPlatform.Infrastructure.DomainServices;
-using FiscalPlatform.Infrastructure.Guardrails;
-using FiscalPlatform.Infrastructure.Kernel;
-using FiscalPlatform.Infrastructure.Memory;
+﻿using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Domain.Abstractions.Services;
+using Profiscal.Infrastructure.Agents;
+using Profiscal.Infrastructure.DomainServices;
+using Profiscal.Infrastructure.Guardrails;
+using Profiscal.Infrastructure.Kernel;
+using Profiscal.Infrastructure.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 
-namespace FiscalPlatform.Infrastructure;
+namespace Profiscal.Infrastructure;
 
 /// <summary>
 /// Composition root for the fiscal engine.
 /// NOTE: Elasticsearch-backed services (IConsultationRepository, ISearchAgent,
 /// IFeedbackAgent) are intentionally NOT registered here — the host project
-/// (Profiscal.API) provides EF/Neo4j-backed replacements so the platform runs
+/// (Profiscal.Application) provides EF/Neo4j-backed replacements so the platform runs
 /// with only Neo4j + an LLM.
 /// </summary>
-public static class DependencyInjection
+public static class FiscalEngineServiceCollectionExtensions
 {
     public static IServiceCollection AddFiscalEngine(this IServiceCollection services)
     {
@@ -37,7 +37,7 @@ public static class DependencyInjection
 
         // ── Rule-based retrieval policy (config-driven routing, not hardcoded answers) ──
         services.AddSingleton<IRuleBasedRetrieval,
-            FiscalPlatform.Infrastructure.Retrieval.FiscalRetrievalPolicy>();
+            Profiscal.Infrastructure.Retrieval.FiscalRetrievalPolicy>();
 
         // ── Domain services (pure logic, no AI) ───────────────────────────────
         services.AddSingleton<IBranchDetector,   BranchDetector>();

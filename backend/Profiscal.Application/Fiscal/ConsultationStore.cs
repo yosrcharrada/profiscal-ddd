@@ -1,10 +1,10 @@
-using System.Text.Json;
-using FiscalPlatform.Application.Common.DTOs;
+﻿using System.Text.Json;
+using Profiscal.Domain.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Profiscal.Domain.Entities;
 using Profiscal.Infrastructure.Persistence;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 /// <summary>
 /// Owns the rich persistence of consultations (sections + full ConsultationOutput JSON

@@ -1,4 +1,4 @@
-namespace Profiscal.Contracts.Responses;
+﻿namespace Profiscal.Domain.Contracts.Responses;
 
 public record AuditLogResponse(
     string Event,

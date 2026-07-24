@@ -1,8 +1,8 @@
-using System.Text.RegularExpressions;
-using FiscalPlatform.Application.Common.DTOs;
+﻿using System.Text.RegularExpressions;
+using Profiscal.Domain.Dtos;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Guardrails;
+namespace Profiscal.Infrastructure.Guardrails;
 
 /// <summary>
 /// Fiscal Guardrails — input + output validation.
@@ -19,7 +19,7 @@ namespace FiscalPlatform.Infrastructure.Guardrails;
 ///   5. All percentages cite their [Sn] source
 ///   6. Art.92 CIRPPIS flagged as LF reference warning
 /// </summary>
-public sealed class FiscalGuardrails : FiscalPlatform.Application.Common.Interfaces.Services.IFiscalGuardrails
+public sealed class FiscalGuardrails : Profiscal.Domain.Abstractions.Services.IFiscalGuardrails
 {
     private readonly ILogger<FiscalGuardrails> _logger;
 

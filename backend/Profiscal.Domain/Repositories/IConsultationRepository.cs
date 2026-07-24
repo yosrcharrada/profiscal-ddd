@@ -1,6 +1,6 @@
-using FiscalPlatform.Domain.Aggregates.Consultation;
+﻿using Profiscal.Domain.Aggregates.Consultation;
 
-namespace FiscalPlatform.Domain.Repositories;
+namespace Profiscal.Domain.Repositories;
 
 /// <summary>Repository interface — defined in Domain, implemented in Infrastructure.</summary>
 public interface IConsultationRepository

@@ -1,10 +1,10 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 /// <summary>One text (loi / décret / arrêté / avis) of the latest JORT issue, in French.</summary>
 public record ScrapedActivity(

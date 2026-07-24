@@ -1,6 +1,6 @@
-using Profiscal.Application.Common.Interfaces;
+﻿using Profiscal.Domain.Abstractions;
 
-namespace Profiscal.API.Services;
+namespace Profiscal.Application.Services;
 
 public class HttpRequestContext(IHttpContextAccessor accessor) : IRequestContext
 {

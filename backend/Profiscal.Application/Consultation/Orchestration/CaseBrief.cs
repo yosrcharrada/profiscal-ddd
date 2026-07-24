@@ -1,6 +1,6 @@
-using FiscalPlatform.Application.Common.DTOs;
+﻿using Profiscal.Domain.Dtos;
 
-namespace FiscalPlatform.Application.Consultation.Orchestration;
+namespace Profiscal.Application.Consultation.Orchestration;
 
 /// <summary>
 /// The CASE BRIEF — what a case agent hands the rest of the pipeline. It is the contract between

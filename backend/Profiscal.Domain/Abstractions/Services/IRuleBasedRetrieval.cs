@@ -1,6 +1,6 @@
-using FiscalPlatform.Application.Common.DTOs;
+﻿using Profiscal.Domain.Dtos;
 
-namespace FiscalPlatform.Application.Common.Interfaces.Services;
+namespace Profiscal.Domain.Abstractions.Services;
 
 /// <summary>Inputs the routing policy reasons over (case classification).</summary>
 public sealed record RuleContext(

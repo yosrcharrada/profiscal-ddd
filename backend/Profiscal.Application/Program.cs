@@ -1,22 +1,22 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Profiscal.API.Extensions;
-using Profiscal.API.Middleware;
-using Profiscal.API.Services;
+using Profiscal.Application.Extensions;
+using Profiscal.Application.Middleware;
+using Profiscal.Application.Services;
 using Profiscal.Application;
-using Profiscal.Application.Common.Interfaces;
+using Profiscal.Domain.Abstractions;
 using Profiscal.Domain.Entities;
 using Profiscal.Infrastructure;
-using FiscalPlatform.Infrastructure;
-using FiscalPlatform.Application.Common.Behaviours;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Domain.Repositories;
+using Profiscal.Infrastructure;
+using Profiscal.Application.Common.Behaviours;
+using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Domain.Repositories;
 using FluentValidation;
 using MediatR;
-using Profiscal.API.Fiscal;
+using Profiscal.Application.Fiscal;
 
 // Load .env before the host is built so env vars are visible to the config system.
 // Search upward from the current directory so a single .env at the repo root works
@@ -46,7 +46,7 @@ else
 // The assembly write time changes on every rebuild; if this timestamp predates your last git pull,
 // you are not running the code you think you are.
 var asmPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-Console.WriteLine($"[build] Profiscal.API compiled {File.GetLastWriteTime(asmPath):yyyy-MM-dd HH:mm:ss} | " +
+Console.WriteLine($"[build] Profiscal.Application compiled {File.GetLastWriteTime(asmPath):yyyy-MM-dd HH:mm:ss} | " +
                   $"NEO4J_DATABASE(.env)='{Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "(unset)"}'");
 
 var builder = WebApplication.CreateBuilder(args);
@@ -66,28 +66,28 @@ builder.Services.AddFiscalEngine();
 // workflow orchestrator live in the Application layer alongside the handlers/playbooks they
 // drive, so they are composed here rather than in Infrastructure (which only registers its
 // own implementations of Domain contracts).
-builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.GenericAgent>();
-builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.RsServiceForeignAgent>();
-builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.RsServiceLocalAgent>();
-builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.DividendeAgent>();
-builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.InteretAgent>();
-builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.RedevanceAgent>();
-builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Orchestration.ConsultationWorkflow>();
+builder.Services.AddSingleton<Profiscal.Application.Consultation.Agents.ICaseAgent, Profiscal.Application.Consultation.Agents.GenericAgent>();
+builder.Services.AddSingleton<Profiscal.Application.Consultation.Agents.ICaseAgent, Profiscal.Application.Consultation.Agents.RsServiceForeignAgent>();
+builder.Services.AddSingleton<Profiscal.Application.Consultation.Agents.ICaseAgent, Profiscal.Application.Consultation.Agents.RsServiceLocalAgent>();
+builder.Services.AddSingleton<Profiscal.Application.Consultation.Agents.ICaseAgent, Profiscal.Application.Consultation.Agents.DividendeAgent>();
+builder.Services.AddSingleton<Profiscal.Application.Consultation.Agents.ICaseAgent, Profiscal.Application.Consultation.Agents.InteretAgent>();
+builder.Services.AddSingleton<Profiscal.Application.Consultation.Agents.ICaseAgent, Profiscal.Application.Consultation.Agents.RedevanceAgent>();
+builder.Services.AddSingleton<Profiscal.Application.Consultation.Orchestration.ConsultationWorkflow>();
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssemblyContaining<
-        FiscalPlatform.Application.Consultation.Commands
+        Profiscal.Application.Consultation.Commands
         .GenerateConsultation.GenerateConsultationCommand>();
     cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehaviour<,>));
     cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehaviour<,>));
 });
 builder.Services.AddValidatorsFromAssemblyContaining<
-    FiscalPlatform.Application.Consultation.Commands
+    Profiscal.Application.Consultation.Commands
     .GenerateConsultation.GenerateConsultationCommandValidator>();
 
 // Chat agent resolved directly (for the SSE streaming endpoint, alongside MediatR).
 builder.Services.AddScoped<
-    FiscalPlatform.Application.Chat.Queries.Chat.ChatQueryHandler>();
+    Profiscal.Application.Chat.Queries.Chat.ChatQueryHandler>();
 
 // Legal search engine: the dedicated /api/fiscal/search endpoint is backed by
 // Elasticsearch (fuzziness AUTO multi_match over the `tunisian_legal` index — the
@@ -95,13 +95,13 @@ builder.Services.AddScoped<
 // native `chunk_content` full-text index, no ES required) is kept below as the
 // fallback: it has NO fuzzy/edit-distance matching, only exact-term OR, so only use
 // it if no Elasticsearch instance is available for this build.
-builder.Services.AddSingleton<ISearchAgent, FiscalPlatform.Infrastructure.Search.ElasticsearchSearchAgent>();
-// builder.Services.AddSingleton<ISearchAgent, Profiscal.API.Fiscal.Neo4jSearchAgent>();
+builder.Services.AddSingleton<ISearchAgent, Profiscal.Infrastructure.Search.ElasticsearchSearchAgent>();
+// builder.Services.AddSingleton<ISearchAgent, Profiscal.Application.Fiscal.Neo4jSearchAgent>();
 
 // Optional: on a local/demo machine, auto-start Elasticsearch (and index it if empty) so the
 // operator doesn't run elasticsearch.bat + the --force indexer by hand. OFF by default; it only
 // does anything when Elasticsearch:AutoStart:Enabled=true and never blocks startup on failure.
-builder.Services.AddHostedService<Profiscal.API.Fiscal.ElasticsearchAutoStartService>();
+builder.Services.AddHostedService<Profiscal.Application.Fiscal.ElasticsearchAutoStartService>();
 
 // EF replacements for consultations/ratings persistence.
 builder.Services.AddScoped<IConsultationRepository, EfConsultationRepository>();

@@ -1,6 +1,6 @@
-using FiscalPlatform.Application.Common.DTOs;
+﻿using Profiscal.Domain.Dtos;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 public sealed class GenerateConsultationApiRequest
 {

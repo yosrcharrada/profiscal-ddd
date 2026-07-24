@@ -1,9 +1,9 @@
-using FiscalPlatform.Domain.Aggregates.Consultation;
-using FiscalPlatform.Domain.Repositories;
+﻿using ConsultationAggregate = Profiscal.Domain.Aggregates.Consultation.Consultation;
+using Profiscal.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Profiscal.Infrastructure.Persistence;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 /// <summary>
 /// EF-backed replacement for the original project's Elasticsearch consultation repository.
@@ -13,7 +13,7 @@ namespace Profiscal.API.Fiscal;
 /// </summary>
 public sealed class EfConsultationRepository(AppDbContext db) : IConsultationRepository
 {
-    public Task SaveAsync(Consultation consultation, CancellationToken ct = default) =>
+    public Task SaveAsync(ConsultationAggregate consultation, CancellationToken ct = default) =>
         Task.CompletedTask; // controller persists the full record (see ConsultationStore)
 
     public async Task<IReadOnlyList<ConsultationSummary>> SearchByClientAsync(
@@ -34,8 +34,8 @@ public sealed class EfConsultationRepository(AppDbContext db) : IConsultationRep
             c.IsInternational)).ToList();
     }
 
-    public Task<Consultation?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
-        Task.FromResult<Consultation?>(null); // aggregate rehydration not needed for our flows
+    public Task<ConsultationAggregate?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult<ConsultationAggregate?>(null); // aggregate rehydration not needed for our flows
 
     public async Task UpdateRatingAsync(Guid id, int stars, string? comment, CancellationToken ct = default)
     {

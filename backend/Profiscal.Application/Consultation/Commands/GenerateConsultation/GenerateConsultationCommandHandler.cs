@@ -1,18 +1,18 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Application.Common.Interfaces.Services;
-using FiscalPlatform.Application.Consultation.Agents;
-using FiscalPlatform.Application.Consultation.Playbooks;
-using FiscalPlatform.Domain.Exceptions;
-using FiscalPlatform.Domain.Repositories;
+using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Domain.Abstractions.Services;
+using Profiscal.Application.Consultation.Agents;
+using Profiscal.Application.Consultation.Playbooks;
+using Profiscal.Domain.Exceptions;
+using Profiscal.Domain.Repositories;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Application.Consultation.Commands.GenerateConsultation;
+namespace Profiscal.Application.Consultation.Commands.GenerateConsultation;
 
 /// <summary>
 /// Orchestrates the full consultation generation pipeline.
@@ -467,9 +467,9 @@ public sealed class GenerateConsultationCommandHandler(
         timings.Add(new("7. Document generation", sw8.Elapsed.TotalMilliseconds, "Word .docx"));
 
         // ── Step 9: Persist (fire-and-forget) ─────────────────────────────────
-        var aggregate = FiscalPlatform.Domain.Aggregates.Consultation.Consultation.Create(
+        var aggregate = Profiscal.Domain.Aggregates.Consultation.Consultation.Create(
             cmd.Reference, cmd.ClientName, cmd.Situation, cmd.FiscalQuestion, cmd.Documents,
-            branches.Select(b => FiscalPlatform.Domain.ValueObjects.LegalBranch.TryFrom(b))
+            branches.Select(b => Profiscal.Domain.ValueObjects.LegalBranch.TryFrom(b))
                     .Where(b => b is not null).Select(b => b!),
             countries, isIntl,
             output.ContexteFaits, output.Etendue, output.Abbreviations,

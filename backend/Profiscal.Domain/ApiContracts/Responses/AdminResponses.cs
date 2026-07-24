@@ -1,4 +1,4 @@
-namespace Profiscal.Contracts.Responses;
+﻿namespace Profiscal.Domain.Contracts.Responses;
 
 /// <summary>A manager entry for assignment dropdowns and the admin directory.</summary>
 public record ManagerResponse(

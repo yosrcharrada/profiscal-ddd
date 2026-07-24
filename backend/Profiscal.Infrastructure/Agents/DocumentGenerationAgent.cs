@@ -2,12 +2,12 @@
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Agents;
+namespace Profiscal.Infrastructure.Agents;
 
 /// <summary>
 /// Document Generation Agent — fills template_fr.docx with consultation output.

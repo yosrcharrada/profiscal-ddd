@@ -1,12 +1,12 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Profiscal.Application.Common.Interfaces;
-using Profiscal.Contracts.Common;
-using Profiscal.Contracts.Requests;
-using Profiscal.Contracts.Responses;
+using Profiscal.Domain.Abstractions;
+using Profiscal.Domain.Contracts.Common;
+using Profiscal.Domain.Contracts.Requests;
+using Profiscal.Domain.Contracts.Responses;
 
-namespace Profiscal.API.Controllers;
+namespace Profiscal.Application.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]

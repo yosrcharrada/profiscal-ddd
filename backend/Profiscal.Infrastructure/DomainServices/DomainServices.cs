@@ -1,8 +1,8 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
-using FiscalPlatform.Application.Common.Interfaces.Services;
+using Profiscal.Domain.Abstractions.Services;
 
-namespace FiscalPlatform.Infrastructure.DomainServices;
+namespace Profiscal.Infrastructure.DomainServices;
 
 public sealed class BranchDetector : IBranchDetector
 {

@@ -1,8 +1,8 @@
-using Profiscal.Contracts.Common;
-using Profiscal.Contracts.Requests;
-using Profiscal.Contracts.Responses;
+﻿using Profiscal.Domain.Contracts.Common;
+using Profiscal.Domain.Contracts.Requests;
+using Profiscal.Domain.Contracts.Responses;
 
-namespace Profiscal.Application.Common.Interfaces;
+namespace Profiscal.Domain.Abstractions;
 
 /// <summary>Admin-only user management. Actor = the admin performing the action.</summary>
 public interface IUserAdminService

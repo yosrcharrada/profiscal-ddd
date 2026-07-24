@@ -1,16 +1,16 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Application.Consultation.Agents;
-using FiscalPlatform.Application.Consultation.Playbooks;
+using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Application.Consultation.Agents;
+using Profiscal.Application.Consultation.Playbooks;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Logging;
-using H = FiscalPlatform.Application.Consultation.Commands.GenerateConsultation.GenerateConsultationCommandHandler;
+using H = Profiscal.Application.Consultation.Commands.GenerateConsultation.GenerateConsultationCommandHandler;
 
-namespace FiscalPlatform.Application.Consultation.Orchestration;
+namespace Profiscal.Application.Consultation.Orchestration;
 
 /// <summary>
 /// The consultation ORCHESTRATOR — a Microsoft Agent Framework state graph that owns the whole

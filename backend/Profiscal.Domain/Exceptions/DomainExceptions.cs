@@ -1,4 +1,4 @@
-namespace FiscalPlatform.Domain.Exceptions;
+﻿namespace Profiscal.Domain.Exceptions;
 
 public sealed class ConsultationGenerationException(string message, Exception? inner = null)
     : Exception(message, inner);

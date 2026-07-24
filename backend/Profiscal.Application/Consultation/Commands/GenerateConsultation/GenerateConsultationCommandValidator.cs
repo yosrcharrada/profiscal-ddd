@@ -1,6 +1,6 @@
-using FluentValidation;
+﻿using FluentValidation;
 
-namespace FiscalPlatform.Application.Consultation.Commands.GenerateConsultation;
+namespace Profiscal.Application.Consultation.Commands.GenerateConsultation;
 
 public sealed class GenerateConsultationCommandValidator
     : AbstractValidator<GenerateConsultationCommand>

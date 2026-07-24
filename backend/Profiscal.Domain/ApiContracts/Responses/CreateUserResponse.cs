@@ -1,4 +1,4 @@
-namespace Profiscal.Contracts.Responses;
+﻿namespace Profiscal.Domain.Contracts.Responses;
 
 /// <summary>
 /// Result of admin provisioning. When SMTP isn't configured the credentials

@@ -1,4 +1,4 @@
-namespace Profiscal.Contracts.Common;
+﻿namespace Profiscal.Domain.Contracts.Common;
 
 public record PagedResponse<T>(
     IEnumerable<T> Items,

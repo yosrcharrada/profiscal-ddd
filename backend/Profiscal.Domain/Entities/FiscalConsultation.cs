@@ -2,7 +2,7 @@ namespace Profiscal.Domain.Entities;
 
 /// <summary>
 /// Flattened persistence record for a generated fiscal consultation.
-/// This is the storage projection of the FiscalPlatform Consultation aggregate —
+/// This is the storage projection of the Consultation domain aggregate —
 /// it replaces the original project's Elasticsearch index so the platform runs
 /// on our existing SQLite database. Sections are stored so a consultation can be
 /// reopened, edited, re-rated, and exported later.

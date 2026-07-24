@@ -1,8 +1,8 @@
-using FiscalPlatform.Domain.Events;
-using FiscalPlatform.Domain.Exceptions;
-using FiscalPlatform.Domain.ValueObjects;
+﻿using Profiscal.Domain.Events;
+using Profiscal.Domain.Exceptions;
+using Profiscal.Domain.ValueObjects;
 
-namespace FiscalPlatform.Domain.Aggregates.Consultation;
+namespace Profiscal.Domain.Aggregates.Consultation;
 
 /// <summary>
 /// Consultation aggregate root.

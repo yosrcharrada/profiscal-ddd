@@ -1,4 +1,4 @@
-namespace FiscalPlatform.Domain.Events;
+﻿namespace Profiscal.Domain.Events;
 
 public interface IDomainEvent
 {

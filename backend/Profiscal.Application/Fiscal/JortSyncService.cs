@@ -1,8 +1,8 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Profiscal.Domain.Entities;
 using Profiscal.Infrastructure.Persistence;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 public interface IJortSync
 {

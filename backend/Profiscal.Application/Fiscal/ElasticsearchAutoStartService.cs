@@ -1,6 +1,6 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 /// <summary>
 /// Optional convenience for local/demo machines: on API startup, make sure Elasticsearch is

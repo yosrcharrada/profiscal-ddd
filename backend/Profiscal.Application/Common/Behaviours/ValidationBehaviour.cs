@@ -1,7 +1,7 @@
-using FluentValidation;
+﻿using FluentValidation;
 using MediatR;
 
-namespace FiscalPlatform.Application.Common.Behaviours;
+namespace Profiscal.Application.Common.Behaviours;
 
 public sealed class ValidationBehaviour<TRequest, TResponse>(
     IEnumerable<IValidator<TRequest>> validators)

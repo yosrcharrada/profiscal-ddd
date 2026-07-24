@@ -1,4 +1,4 @@
-namespace FiscalPlatform.Application.Common;
+﻿namespace Profiscal.Application.Common;
 
 /// <summary>
 /// The MÉTIER CORE — the tax team's non-negotiable rules, shared by EVERY LLM surface of the

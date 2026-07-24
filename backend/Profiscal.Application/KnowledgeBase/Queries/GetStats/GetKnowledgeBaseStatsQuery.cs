@@ -1,7 +1,7 @@
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+﻿using Profiscal.Domain.Abstractions.Agents;
 using MediatR;
 
-namespace FiscalPlatform.Application.KnowledgeBase.Queries.GetStats;
+namespace Profiscal.Application.KnowledgeBase.Queries.GetStats;
 
 public sealed record GetKnowledgeBaseStatsQuery() : IRequest<KnowledgeBaseStatsDto>;
 

@@ -1,10 +1,10 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Agents;
+namespace Profiscal.Infrastructure.Agents;
 
 public sealed class EmbedSearchAgent(IHttpClientFactory factory, ILogger<EmbedSearchAgent> logger) : IEmbedSearchAgent
 {

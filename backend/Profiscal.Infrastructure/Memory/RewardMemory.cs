@@ -1,10 +1,10 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
-using FiscalPlatform.Application.Common.DTOs;
+using Profiscal.Domain.Dtos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Memory;
+namespace Profiscal.Infrastructure.Memory;
 
 /// <summary>
 /// Reward Memory — reads past consultation ratings from Elasticsearch

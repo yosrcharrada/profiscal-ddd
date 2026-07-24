@@ -1,8 +1,8 @@
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+﻿using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.EntityFrameworkCore;
 using Profiscal.Infrastructure.Persistence;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 /// <summary>EF-backed replacement for the original Elasticsearch FeedbackAgent (ratings).</summary>
 public sealed class EfFeedbackAgent(AppDbContext db) : IFeedbackAgent

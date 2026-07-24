@@ -1,9 +1,9 @@
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Consultation.Orchestration;
-using FiscalPlatform.Application.Consultation.Playbooks;
-using H = FiscalPlatform.Application.Consultation.Commands.GenerateConsultation.GenerateConsultationCommandHandler;
+﻿using Profiscal.Domain.Dtos;
+using Profiscal.Application.Consultation.Orchestration;
+using Profiscal.Application.Consultation.Playbooks;
+using H = Profiscal.Application.Consultation.Commands.GenerateConsultation.GenerateConsultationCommandHandler;
 
-namespace FiscalPlatform.Application.Consultation.Agents;
+namespace Profiscal.Application.Consultation.Agents;
 
 /// <summary>
 /// Shared mechanics for the case agents: assembling the CaseBrief from the per-case content hooks,

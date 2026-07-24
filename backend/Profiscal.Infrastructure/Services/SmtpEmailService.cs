@@ -1,8 +1,8 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Mail;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Profiscal.Application.Common.Interfaces;
+using Profiscal.Domain.Abstractions;
 
 namespace Profiscal.Infrastructure.Services;
 

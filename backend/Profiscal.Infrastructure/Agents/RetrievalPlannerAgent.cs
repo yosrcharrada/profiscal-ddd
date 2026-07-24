@@ -1,12 +1,12 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Agents;
+namespace Profiscal.Infrastructure.Agents;
 
 /// <summary>
 /// TRUE ReAct Retrieval Agent — bounded 2-round loop with parallel tool dispatch.

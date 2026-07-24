@@ -1,7 +1,7 @@
-using MediatR;
+﻿using MediatR;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Application.Common.Behaviours;
+namespace Profiscal.Application.Common.Behaviours;
 
 public sealed class LoggingBehaviour<TRequest, TResponse>(
     ILogger<LoggingBehaviour<TRequest, TResponse>> logger)

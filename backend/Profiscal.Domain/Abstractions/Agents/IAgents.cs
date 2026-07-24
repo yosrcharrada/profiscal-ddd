@@ -1,6 +1,6 @@
-using FiscalPlatform.Application.Common.DTOs;
+﻿using Profiscal.Domain.Dtos;
 
-namespace FiscalPlatform.Application.Common.Interfaces.Agents;
+namespace Profiscal.Domain.Abstractions.Agents;
 
 // ─── RETRIEVAL AGENT ─────────────────────────────────────────────────────────
 public interface IRetrievalAgent

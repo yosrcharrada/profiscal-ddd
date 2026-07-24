@@ -1,4 +1,4 @@
-namespace Profiscal.Application.Common.Interfaces;
+﻿namespace Profiscal.Domain.Abstractions;
 
 public interface IApplicationDbContext
 {

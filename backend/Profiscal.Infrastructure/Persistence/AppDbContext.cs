@@ -1,7 +1,7 @@
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Profiscal.Application.Common.Interfaces;
+using Profiscal.Domain.Abstractions;
 using Profiscal.Domain.Entities;
 
 namespace Profiscal.Infrastructure.Persistence;

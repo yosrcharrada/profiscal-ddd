@@ -1,6 +1,6 @@
-using FiscalPlatform.Application.Common.DTOs;
+﻿using Profiscal.Domain.Dtos;
 
-namespace FiscalPlatform.Application.Common.Interfaces.Agents;
+namespace Profiscal.Domain.Abstractions.Agents;
 
 /// <summary>
 /// True ReAct agent that plans and executes legal source retrieval.

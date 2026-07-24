@@ -1,4 +1,4 @@
-namespace FiscalPlatform.Application.Common.DTOs;
+﻿namespace Profiscal.Domain.Dtos;
 
 public sealed record ConsultationGeneratedDto(
     byte[] DocBytes, string Filename, ConsultationOutput Output,

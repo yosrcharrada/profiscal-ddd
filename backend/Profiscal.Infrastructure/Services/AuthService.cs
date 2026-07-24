@@ -1,12 +1,12 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Profiscal.Application.Common.Interfaces;
-using Profiscal.Contracts.Requests;
-using Profiscal.Contracts.Responses;
+using Profiscal.Domain.Abstractions;
+using Profiscal.Domain.Contracts.Requests;
+using Profiscal.Domain.Contracts.Responses;
 using Profiscal.Domain.Entities;
 using Profiscal.Domain.Enums;
 using Profiscal.Domain.Exceptions;

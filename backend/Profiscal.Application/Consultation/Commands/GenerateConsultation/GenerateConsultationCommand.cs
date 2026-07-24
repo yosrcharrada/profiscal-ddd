@@ -1,7 +1,7 @@
-using FiscalPlatform.Application.Common.DTOs;
+﻿using Profiscal.Domain.Dtos;
 using MediatR;
 
-namespace FiscalPlatform.Application.Consultation.Commands.GenerateConsultation;
+namespace Profiscal.Application.Consultation.Commands.GenerateConsultation;
 
 public sealed record GenerateConsultationCommand(
     string        Reference,

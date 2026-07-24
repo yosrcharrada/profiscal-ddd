@@ -1,6 +1,6 @@
-using System.Text;
+﻿using System.Text;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 /// <summary>
 /// Extracts plain text from uploaded client documents (.txt, .docx, .pdf).

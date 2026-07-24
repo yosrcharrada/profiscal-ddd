@@ -1,11 +1,11 @@
-using System.Text.RegularExpressions;
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+﻿using System.Text.RegularExpressions;
+using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 
-namespace FiscalPlatform.Infrastructure.Agents;
+namespace Profiscal.Infrastructure.Agents;
 
 /// <summary>
 /// Retrieval Agent — Neo4j graph queries for the current "taxmindvf" knowledge graph.

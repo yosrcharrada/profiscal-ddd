@@ -1,8 +1,8 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Profiscal.API.Fiscal;
+using Profiscal.Application.Fiscal;
 
-namespace Profiscal.API.Controllers;
+namespace Profiscal.Application.Controllers;
 
 /// <summary>
 /// Handles client document uploads — extracts text so the frontend can pass it

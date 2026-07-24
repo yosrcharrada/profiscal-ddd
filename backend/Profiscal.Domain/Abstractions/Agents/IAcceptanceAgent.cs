@@ -1,4 +1,4 @@
-namespace FiscalPlatform.Application.Common.Interfaces.Agents;
+﻿namespace Profiscal.Domain.Abstractions.Agents;
 
 /// <summary>What the acceptance agent reviews.</summary>
 public sealed record AcceptanceRequest(

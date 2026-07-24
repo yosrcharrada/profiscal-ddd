@@ -1,11 +1,11 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Search;
+namespace Profiscal.Infrastructure.Search;
 
 public sealed class ElasticsearchSearchAgent(
     IConfiguration config, IHttpClientFactory factory,

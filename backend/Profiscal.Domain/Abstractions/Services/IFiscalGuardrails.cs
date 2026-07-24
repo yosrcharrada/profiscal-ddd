@@ -1,6 +1,6 @@
-using FiscalPlatform.Application.Common.DTOs;
+﻿using Profiscal.Domain.Dtos;
 
-namespace FiscalPlatform.Application.Common.Interfaces.Services;
+namespace Profiscal.Domain.Abstractions.Services;
 
 /// <summary>
 /// Guardrails contract, exposed to the Application layer so ALL entry points (consultation

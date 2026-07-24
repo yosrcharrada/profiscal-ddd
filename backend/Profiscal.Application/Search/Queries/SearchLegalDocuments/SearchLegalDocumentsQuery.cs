@@ -1,8 +1,8 @@
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+﻿using Profiscal.Domain.Abstractions.Agents;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Application.Search.Queries.SearchLegalDocuments;
+namespace Profiscal.Application.Search.Queries.SearchLegalDocuments;
 
 public sealed record SearchLegalDocumentsQuery(SearchRequestDto Request) : IRequest<SearchResultDto>;
 

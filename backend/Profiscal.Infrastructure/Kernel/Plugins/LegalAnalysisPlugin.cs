@@ -1,8 +1,8 @@
-using System.ComponentModel;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+﻿using System.ComponentModel;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.SemanticKernel;
 
-namespace FiscalPlatform.Infrastructure.Kernel.Plugins;
+namespace Profiscal.Infrastructure.Kernel.Plugins;
 
 /// <summary>
 /// SK Plugin — wraps LLM-powered legal analysis as kernel functions.

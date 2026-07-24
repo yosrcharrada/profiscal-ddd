@@ -1,8 +1,8 @@
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Profiscal.Application.Common.Interfaces;
+using Profiscal.Domain.Abstractions;
 using Profiscal.Domain.Entities;
 using Profiscal.Infrastructure.Persistence;
 using Profiscal.Infrastructure.Services;

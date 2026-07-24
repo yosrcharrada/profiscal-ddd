@@ -1,9 +1,9 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.RegularExpressions;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Agents;
+namespace Profiscal.Infrastructure.Agents;
 
 /// <summary>
 /// Acceptance agent (LLM-as-judge). One focused, token-cheap GPT-4o call that scores a draft

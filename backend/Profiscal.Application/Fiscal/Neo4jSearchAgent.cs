@@ -1,7 +1,7 @@
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+﻿using Profiscal.Domain.Abstractions.Agents;
 using Neo4j.Driver;
 
-namespace Profiscal.API.Fiscal;
+namespace Profiscal.Application.Fiscal;
 
 /// <summary>
 /// Neo4j-backed legal search agent for the taxmind graph. Uses Neo4j's native

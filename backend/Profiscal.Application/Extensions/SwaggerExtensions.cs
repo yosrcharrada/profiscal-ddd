@@ -1,6 +1,6 @@
-using Microsoft.OpenApi.Models;
+﻿using Microsoft.OpenApi.Models;
 
-namespace Profiscal.API.Extensions;
+namespace Profiscal.Application.Extensions;
 
 public static class SwaggerExtensions
 {

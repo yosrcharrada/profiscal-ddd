@@ -1,11 +1,11 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Profiscal.API.Fiscal;
-using Profiscal.Contracts.Common;
+using Profiscal.Application.Fiscal;
+using Profiscal.Domain.Contracts.Common;
 using Profiscal.Infrastructure.Persistence;
 
-namespace Profiscal.API.Controllers;
+namespace Profiscal.Application.Controllers;
 
 /// <summary>
 /// Live JORT feed scraped from iort.gov.tn. Any signed-in user can read the

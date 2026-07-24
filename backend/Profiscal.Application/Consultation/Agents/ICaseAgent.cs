@@ -1,8 +1,8 @@
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Consultation.Orchestration;
-using FiscalPlatform.Application.Consultation.Playbooks;
+﻿using Profiscal.Domain.Dtos;
+using Profiscal.Application.Consultation.Orchestration;
+using Profiscal.Application.Consultation.Playbooks;
 
-namespace FiscalPlatform.Application.Consultation.Agents;
+namespace Profiscal.Application.Consultation.Agents;
 
 /// <summary>
 /// A case agent is the DOMAIN CONTROLLER for one income qualification (RS-service, dividende,

@@ -1,13 +1,13 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Application.Common.Interfaces.Services;
+using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Domain.Abstractions.Services;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Application.Chat.Queries.Chat;
+namespace Profiscal.Application.Chat.Queries.Chat;
 
 public sealed record ChatQuery(string Question, List<string> History) : IRequest<ChatResponseDto>;
 public sealed record ChatResponseDto(string Answer, List<SourceChunkDto> Sources, double ElapsedMs);

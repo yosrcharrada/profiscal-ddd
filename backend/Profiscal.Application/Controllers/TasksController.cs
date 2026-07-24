@@ -1,16 +1,16 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Profiscal.Application.Common.Interfaces;
-using Profiscal.Contracts.Common;
-using Profiscal.Contracts.Requests;
+using Profiscal.Domain.Abstractions;
+using Profiscal.Domain.Contracts.Common;
+using Profiscal.Domain.Contracts.Requests;
 using Profiscal.Domain.Entities;
 using Profiscal.Domain.Enums;
 using Profiscal.Infrastructure.Persistence;
 
-namespace Profiscal.API.Controllers;
+namespace Profiscal.Application.Controllers;
 
 /// <summary>
 /// Manager ↔ consultant task workflow: a manager assigns a consultation task,

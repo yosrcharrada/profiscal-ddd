@@ -1,7 +1,7 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Profiscal.Domain.Entities;
 
-namespace Profiscal.Application.Common.Interfaces;
+namespace Profiscal.Domain.Abstractions;
 
 public interface IJwtTokenService
 {

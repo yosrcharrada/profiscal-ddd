@@ -1,7 +1,7 @@
-using Profiscal.Contracts.Requests;
-using Profiscal.Contracts.Responses;
+﻿using Profiscal.Domain.Contracts.Requests;
+using Profiscal.Domain.Contracts.Responses;
 
-namespace Profiscal.Application.Common.Interfaces;
+namespace Profiscal.Domain.Abstractions;
 
 public interface IAuthService
 {

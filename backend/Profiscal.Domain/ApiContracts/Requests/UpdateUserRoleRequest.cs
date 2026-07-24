@@ -1,3 +1,3 @@
-namespace Profiscal.Contracts.Requests;
+﻿namespace Profiscal.Domain.Contracts.Requests;
 
 public record UpdateUserRoleRequest(string Role);

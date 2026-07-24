@@ -1,4 +1,4 @@
-namespace FiscalPlatform.Domain.ValueObjects;
+﻿namespace Profiscal.Domain.ValueObjects;
 
 public sealed record LegalBranch
 {

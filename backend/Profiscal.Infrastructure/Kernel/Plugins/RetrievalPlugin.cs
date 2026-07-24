@@ -1,12 +1,12 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Text;
 using System.Text.Json;
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Infrastructure.Memory;
+using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Infrastructure.Memory;
 using Microsoft.SemanticKernel;
 
-namespace FiscalPlatform.Infrastructure.Kernel.Plugins;
+namespace Profiscal.Infrastructure.Kernel.Plugins;
 
 /// <summary>
 /// SK Plugin — wraps legal source retrieval as kernel functions.

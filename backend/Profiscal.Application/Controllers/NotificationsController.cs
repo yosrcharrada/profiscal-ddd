@@ -1,11 +1,11 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Profiscal.Contracts.Common;
+using Profiscal.Domain.Contracts.Common;
 using Profiscal.Infrastructure.Persistence;
 
-namespace Profiscal.API.Controllers;
+namespace Profiscal.Application.Controllers;
 
 /// <summary>
 /// In-app notifications for the current user. The navbar bell polls

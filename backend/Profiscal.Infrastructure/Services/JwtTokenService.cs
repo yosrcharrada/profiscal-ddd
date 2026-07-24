@@ -1,9 +1,9 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
-using Profiscal.Application.Common.Interfaces;
+using Profiscal.Domain.Abstractions;
 using Profiscal.Domain.Entities;
 
 namespace Profiscal.Infrastructure.Services;

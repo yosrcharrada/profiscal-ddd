@@ -1,4 +1,4 @@
-namespace Profiscal.Application.Common.Interfaces;
+﻿namespace Profiscal.Domain.Abstractions;
 
 /// <summary>Outbound email (SMTP). Used to deliver generated credentials to provisioned users.</summary>
 public interface IEmailService

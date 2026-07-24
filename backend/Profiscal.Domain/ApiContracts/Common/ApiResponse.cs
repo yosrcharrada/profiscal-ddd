@@ -1,4 +1,4 @@
-namespace Profiscal.Contracts.Common;
+﻿namespace Profiscal.Domain.Contracts.Common;
 
 public record ApiResponse<T>(bool Success, T? Data, string? Message = null, IEnumerable<string>? Errors = null)
 {

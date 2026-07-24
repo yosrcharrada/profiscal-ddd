@@ -1,4 +1,4 @@
-namespace Profiscal.Contracts.Requests;
+﻿namespace Profiscal.Domain.Contracts.Requests;
 
 public record CreateWorkTaskRequest(
     string Title,

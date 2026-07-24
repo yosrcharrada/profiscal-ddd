@@ -1,4 +1,4 @@
-namespace FiscalPlatform.Application.Consultation.Playbooks;
+﻿namespace Profiscal.Application.Consultation.Playbooks;
 
 /// <summary>
 /// The income qualification of a consultation point. A real EY tax memo is driven, first and

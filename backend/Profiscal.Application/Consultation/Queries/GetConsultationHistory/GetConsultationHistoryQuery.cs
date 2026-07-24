@@ -1,8 +1,8 @@
-using FiscalPlatform.Domain.Repositories;
+﻿using Profiscal.Domain.Repositories;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Application.Consultation.Queries.GetConsultationHistory;
+namespace Profiscal.Application.Consultation.Queries.GetConsultationHistory;
 
 public sealed record GetConsultationHistoryQuery(string ClientName)
     : IRequest<IReadOnlyList<ConsultationSummary>>;

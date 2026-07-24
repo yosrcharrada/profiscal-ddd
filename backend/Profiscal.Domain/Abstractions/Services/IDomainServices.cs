@@ -1,4 +1,4 @@
-namespace FiscalPlatform.Application.Common.Interfaces.Services;
+﻿namespace Profiscal.Domain.Abstractions.Services;
 
 public interface IBranchDetector   { HashSet<string> Detect(string situation, string question); }
 public interface ICountryDetector  { (List<string> Countries, bool IsInternational) Detect(string text); }

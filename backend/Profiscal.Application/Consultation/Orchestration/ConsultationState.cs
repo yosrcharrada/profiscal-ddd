@@ -1,9 +1,9 @@
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Application.Consultation.Commands.GenerateConsultation;
-using FiscalPlatform.Application.Consultation.Playbooks;
+﻿using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Application.Consultation.Commands.GenerateConsultation;
+using Profiscal.Application.Consultation.Playbooks;
 
-namespace FiscalPlatform.Application.Consultation.Orchestration;
+namespace Profiscal.Application.Consultation.Orchestration;
 
 /// <summary>
 /// The single shared state that flows through every node of the consultation workflow — the graph's

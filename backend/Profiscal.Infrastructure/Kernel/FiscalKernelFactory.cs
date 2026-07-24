@@ -1,12 +1,12 @@
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Application.Common.Interfaces.Services;
-using FiscalPlatform.Infrastructure.Kernel.Plugins;
-using FiscalPlatform.Infrastructure.Memory;
+﻿using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Domain.Abstractions.Services;
+using Profiscal.Infrastructure.Kernel.Plugins;
+using Profiscal.Infrastructure.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 
-namespace FiscalPlatform.Infrastructure.Kernel;
+namespace Profiscal.Infrastructure.Kernel;
 
 /// <summary>
 /// Factory that builds a fully configured Semantic Kernel instance.

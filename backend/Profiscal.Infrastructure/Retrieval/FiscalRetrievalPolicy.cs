@@ -1,9 +1,9 @@
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Application.Common.Interfaces.Services;
+﻿using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Domain.Abstractions.Services;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Retrieval;
+namespace Profiscal.Infrastructure.Retrieval;
 
 /// <summary>
 /// Rule-based retrieval policy — the "fiscal routing map".

@@ -1,20 +1,20 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text.Json;
-using FiscalPlatform.Application.Chat.Queries.Chat;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
-using FiscalPlatform.Application.Consultation.Commands.GenerateConsultation;
-using FiscalPlatform.Application.Consultation.Commands.RateConsultation;
-using FiscalPlatform.Application.Consultation.Commands.RefineConsultation;
-using FiscalPlatform.Application.KnowledgeBase.Queries.GetStats;
-using FiscalPlatform.Application.Search.Queries.SearchLegalDocuments;
+using Profiscal.Application.Chat.Queries.Chat;
+using Profiscal.Domain.Abstractions.Agents;
+using Profiscal.Application.Consultation.Commands.GenerateConsultation;
+using Profiscal.Application.Consultation.Commands.RateConsultation;
+using Profiscal.Application.Consultation.Commands.RefineConsultation;
+using Profiscal.Application.KnowledgeBase.Queries.GetStats;
+using Profiscal.Application.Search.Queries.SearchLegalDocuments;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Profiscal.API.Fiscal;
-using Profiscal.Contracts.Common;
+using Profiscal.Application.Fiscal;
+using Profiscal.Domain.Contracts.Common;
 
-namespace Profiscal.API.Controllers;
+namespace Profiscal.Application.Controllers;
 
 /// <summary>
 /// Fiscal engine — semantic search, legal chatbot, and consultation generation/refinement.
@@ -312,7 +312,7 @@ public sealed class FiscalController(
     {
         var result = await mediator.Send(new RefineConsultationCommand(
             req.SessionId, req.UserMessage,
-            req.CurrentOutput ?? new FiscalPlatform.Application.Common.DTOs.ConsultationOutput(),
+            req.CurrentOutput ?? new Profiscal.Domain.Dtos.ConsultationOutput(),
             req.Sources ?? new(), req.TargetSection), ct);
 
         return Ok(ApiResponse<object>.Ok(new
@@ -333,7 +333,7 @@ public sealed class FiscalController(
 
     /// <summary>Persist the edited output back to a saved consultation.</summary>
     [HttpPut("consultations/{id:guid}/output")]
-    public async Task<IActionResult> SaveOutput(Guid id, [FromBody] FiscalPlatform.Application.Common.DTOs.ConsultationOutput output, CancellationToken ct)
+    public async Task<IActionResult> SaveOutput(Guid id, [FromBody] Profiscal.Domain.Dtos.ConsultationOutput output, CancellationToken ct)
     {
         await store.UpdateOutputAsync(id, output, ct);
         return Ok(ApiResponse<object>.Ok(new { message = "Saved." }));

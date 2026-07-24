@@ -1,4 +1,4 @@
-namespace Profiscal.Contracts.Requests;
+﻿namespace Profiscal.Domain.Contracts.Requests;
 
 /// <summary>Admin provisioning: creates the account with a generated password emailed to the user.</summary>
 public record CreateUserRequest(

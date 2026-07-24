@@ -1,5 +1,5 @@
-using FiscalPlatform.Application.Common.DTOs;
-using FiscalPlatform.Application.Common.Interfaces.Services;
+﻿using Profiscal.Domain.Dtos;
+using Profiscal.Domain.Abstractions.Services;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -7,7 +7,7 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Agents;
 using Microsoft.SemanticKernel.ChatCompletion;
 
-namespace FiscalPlatform.Application.Consultation.Commands.RefineConsultation;
+namespace Profiscal.Application.Consultation.Commands.RefineConsultation;
 
 // ── COMMAND ───────────────────────────────────────────────────────────────────
 public sealed record RefineConsultationCommand(
@@ -55,7 +55,7 @@ public sealed class RefineConsultationCommandHandler
 {
     private readonly Microsoft.SemanticKernel.Kernel _kernel;
     private readonly ISessionStore                   _sessionStore;
-    private readonly Common.Interfaces.Services.IFiscalGuardrails _guardrails;
+    private readonly Profiscal.Domain.Abstractions.Services.IFiscalGuardrails _guardrails;
     private readonly ILogger<RefineConsultationCommandHandler> _logger;
 
     // The agent's system prompt — defines its identity, knowledge, and constraints
@@ -77,13 +77,13 @@ public sealed class RefineConsultationCommandHandler
         "  5. Verdicts clairs: OUI / NON / le taux chiffré réel lu dans [Sn] / EXONÉRÉ / SOUMIS — " +
         "jamais le littéral « X% »\n" +
         "  6. Style professionnel EY — formel, précis, fondé sur les sources\n\n" +
-        FiscalPlatform.Application.Common.FiscalPrompts.MetierCore + "\n" +
-        FiscalPlatform.Application.Consultation.Playbooks.EyStyle.Card;
+        Profiscal.Application.Common.FiscalPrompts.MetierCore + "\n" +
+        Profiscal.Application.Consultation.Playbooks.EyStyle.Card;
 
     public RefineConsultationCommandHandler(
         Microsoft.SemanticKernel.Kernel kernel,
         ISessionStore                   sessionStore,
-        Common.Interfaces.Services.IFiscalGuardrails guardrails,
+        Profiscal.Domain.Abstractions.Services.IFiscalGuardrails guardrails,
         ILogger<RefineConsultationCommandHandler> logger)
     {
         _kernel       = kernel;

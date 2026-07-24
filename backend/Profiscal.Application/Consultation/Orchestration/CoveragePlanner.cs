@@ -1,10 +1,10 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.Extensions.Logging;
-using H = FiscalPlatform.Application.Consultation.Commands.GenerateConsultation.GenerateConsultationCommandHandler;
+using H = Profiscal.Application.Consultation.Commands.GenerateConsultation.GenerateConsultationCommandHandler;
 
-namespace FiscalPlatform.Application.Consultation.Orchestration;
+namespace Profiscal.Application.Consultation.Orchestration;
 
 /// <summary>
 /// The COVERAGE PLANNER — the "thinking" step between the case brief and retrieval fulfilment.

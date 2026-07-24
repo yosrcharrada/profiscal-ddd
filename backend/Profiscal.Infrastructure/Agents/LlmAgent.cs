@@ -1,12 +1,12 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using FiscalPlatform.Application.Common.Interfaces.Agents;
+using Profiscal.Domain.Abstractions.Agents;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace FiscalPlatform.Infrastructure.Agents;
+namespace Profiscal.Infrastructure.Agents;
 
 /// <summary>
 /// HTTP wrapper around OpenAI or Azure OpenAI.

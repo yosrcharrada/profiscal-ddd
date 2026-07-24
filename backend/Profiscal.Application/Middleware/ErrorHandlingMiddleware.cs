@@ -1,9 +1,9 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Profiscal.Application.Exceptions;
 using Profiscal.Domain.Exceptions;
 
-namespace Profiscal.API.Middleware;
+namespace Profiscal.Application.Middleware;
 
 public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandlingMiddleware> logger)
 {
@@ -25,18 +25,18 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
         {
             await WriteResponse(context, HttpStatusCode.BadRequest, ex.Message);
         }
-        catch (FiscalPlatform.Domain.Exceptions.NoSourcesFoundException)
+        catch (Profiscal.Domain.Exceptions.NoSourcesFoundException)
         {
             await WriteResponse(context, HttpStatusCode.BadGateway,
                 "The knowledge base returned no sources. Check that Neo4j is connected (engine status) and try a more specific question.");
         }
-        catch (FiscalPlatform.Domain.Exceptions.ConsultationGenerationException ex)
+        catch (Profiscal.Domain.Exceptions.ConsultationGenerationException ex)
         {
             logger.LogWarning(ex, "Consultation generation failed");
             await WriteResponse(context, HttpStatusCode.BadGateway,
                 "Generation failed — the AI model did not return a usable result. Check that the LLM key is valid (engine status).");
         }
-        catch (Exception ex) when (ex.GetType().Namespace == "FiscalPlatform.Domain.Exceptions")
+        catch (Exception ex) when (ex.GetType().Namespace == "Profiscal.Domain.Exceptions")
         {
             await WriteResponse(context, HttpStatusCode.BadRequest, ex.Message);
         }
