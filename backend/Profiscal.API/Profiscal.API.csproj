@@ -26,7 +26,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Profiscal.Application\Profiscal.Application.csproj" />
     <ProjectReference Include="..\Profiscal.Infrastructure\Profiscal.Infrastructure.csproj" />
-    <ProjectReference Include="..\Profiscal.Contracts\Profiscal.Contracts.csproj" />
     <ProjectReference Include="..\FiscalPlatform.Application\FiscalPlatform.Application.csproj" />
     <ProjectReference Include="..\Profiscal.Domain\Profiscal.Domain.csproj" />
   </ItemGroup>

@@ -2,8 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Profiscal.Domain\Profiscal.Domain.csproj" />
-    <ProjectReference Include="..\Profiscal.Application\Profiscal.Application.csproj" />
-    <ProjectReference Include="..\FiscalPlatform.Application\FiscalPlatform.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

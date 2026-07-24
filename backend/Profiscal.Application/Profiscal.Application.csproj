@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Profiscal.Domain\Profiscal.Domain.csproj" />
-    <ProjectReference Include="..\Profiscal.Contracts\Profiscal.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

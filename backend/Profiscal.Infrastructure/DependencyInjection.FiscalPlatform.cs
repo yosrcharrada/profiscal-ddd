@@ -1,6 +1,5 @@
 using FiscalPlatform.Application.Common.Interfaces.Agents;
 using FiscalPlatform.Application.Common.Interfaces.Services;
-using FiscalPlatform.Application.Consultation.Agents;
 using FiscalPlatform.Infrastructure.Agents;
 using FiscalPlatform.Infrastructure.DomainServices;
 using FiscalPlatform.Infrastructure.Guardrails;
@@ -30,16 +29,11 @@ public static class DependencyInjection
         services.AddSingleton<IRetrievalPlannerAgent,   RetrievalPlannerAgent>();
         services.AddSingleton<IAcceptanceAgent,         AcceptanceAgent>();
 
-        // ── Case agents (one per income qualification) + the MAF workflow orchestrator that
-        //    dispatches to them (Qualify → Brief → Fulfil ⇄ Completeness → Writer ⇄ Judge →
-        //    ExpertVoice → Finalize, all loops bounded) ──
-        services.AddSingleton<ICaseAgent, GenericAgent>();
-        services.AddSingleton<ICaseAgent, RsServiceForeignAgent>();
-        services.AddSingleton<ICaseAgent, RsServiceLocalAgent>();
-        services.AddSingleton<ICaseAgent, DividendeAgent>();
-        services.AddSingleton<ICaseAgent, InteretAgent>();
-        services.AddSingleton<ICaseAgent, RedevanceAgent>();
-        services.AddSingleton<FiscalPlatform.Application.Consultation.Orchestration.ConsultationWorkflow>();
+        // NOTE: the case agents (ICaseAgent implementations) and the ConsultationWorkflow
+        // orchestrator are APPLICATION-layer types (they live in the Application project with the
+        // command handler / orchestration / playbooks they drive), so per the DDD layering they
+        // are registered on the Application side (Program.cs), not here. Infrastructure registers
+        // only its own implementations of Domain contracts.
 
         // ── Rule-based retrieval policy (config-driven routing, not hardcoded answers) ──
         services.AddSingleton<IRuleBasedRetrieval,

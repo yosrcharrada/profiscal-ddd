@@ -61,6 +61,18 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // ── Fiscal engine (colleague's GraphRAG pipeline) ─────────────────────────────
 builder.Services.AddHttpClient();
 builder.Services.AddFiscalEngine();
+
+// Application-layer registrations: the case agents (ICaseAgent strategies) and the MAF
+// workflow orchestrator live in the Application layer alongside the handlers/playbooks they
+// drive, so they are composed here rather than in Infrastructure (which only registers its
+// own implementations of Domain contracts).
+builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.GenericAgent>();
+builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.RsServiceForeignAgent>();
+builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.RsServiceLocalAgent>();
+builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.DividendeAgent>();
+builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.InteretAgent>();
+builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Agents.ICaseAgent, FiscalPlatform.Application.Consultation.Agents.RedevanceAgent>();
+builder.Services.AddSingleton<FiscalPlatform.Application.Consultation.Orchestration.ConsultationWorkflow>();
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssemblyContaining<

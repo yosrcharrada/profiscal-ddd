@@ -11,8 +11,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Infrastructure", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.API", "Profiscal.API\Profiscal.API.csproj", "{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Contracts", "Profiscal.Contracts\Profiscal.Contracts.csproj", "{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiscalPlatform.Application", "FiscalPlatform.Application\FiscalPlatform.Application.csproj", "{9F936AEC-2CB9-4261-9D59-D41E286C1D17}"
 EndProject
 Global
@@ -40,10 +38,6 @@ Global
 		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Release|Any CPU.ActiveCfg = Release|Any CPU
