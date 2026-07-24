@@ -12,6 +12,10 @@ frontend/node_modules/
 # .NET user-secrets (local-only, never commit)
 secrets.json
 appsettings.*.local.json
+# Production config lives ONLY on the server (holds the real OpenAI key, Jwt:Key, Neo4j
+# password, seed admin password). Ignored so it can never be pushed. Deploy it by hand.
+appsettings.Production.json
+**/appsettings.Production.json
 
 # Dependencies
 node_modules/

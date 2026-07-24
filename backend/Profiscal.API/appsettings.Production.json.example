@@ -1,0 +1,77 @@
+// ============================================================================
+// TEMPLATE — copy to  appsettings.Production.json  ON THE SERVER ONLY.
+//
+//   copy appsettings.Production.json.example  appsettings.Production.json
+//
+// The real appsettings.Production.json is GITIGNORED — it never goes to git, so the
+// OpenAI key / Jwt key / passwords below stay on the server. This .example file has NO
+// secrets and is safe to commit.
+//
+// WHY THIS FILE EXISTS: IIS runs the app in the "Production" environment, which does NOT
+// load appsettings.Development.json. Without this file, Production boots with an empty
+// Jwt:Key (auth breaks) and no Seed admin (nobody can log in). This restores them, plus
+// the Elasticsearch / Documents settings that only lived in the Development file.
+//
+// .NET loads config in this order (last wins):
+//   appsettings.json  ->  appsettings.Production.json  ->  environment variables
+// so anything here overrides the base file, and a real ENV VAR overrides even this —
+// if you'd rather keep secrets out of any file, set them as environment variables on the
+// IIS app instead (names use the double-underscore form: OpenAI__ApiKey, Jwt__Key, …).
+//
+// NOTE: strip these // comments when you create the real file — appsettings JSON does not
+// allow comments. (This .example keeps them only for guidance.)
+// ============================================================================
+{
+  "Neo4j": {
+    "Uri": "neo4j://127.0.0.1:7687",
+    "Username": "neo4j",
+    "Password": "<<< the server's Neo4j password >>>",
+    "Database": "taxmindvf"
+  },
+
+  "OpenAI": {
+    "ChatModel": "gpt-4o",
+    "ApiKey": "<<< the EY Azure key (or sk-... key) >>>",
+    "Endpoint": "https://eyq-incubator.europe.fabric.ey.com/eyq/eu/api",
+    "ApiVersion": "2024-02-15-preview"
+  },
+
+  "Elasticsearch": {
+    "Host": "http://localhost:9200",
+    "Index": "tunisian_legal"
+  },
+
+  "Documents": {
+    "Root": "C:\\taxmind_corpus\\documents"
+  },
+
+  // Jwt:Key is EMPTY in base appsettings.json — set a long random secret here or auth fails.
+  // Generate one, e.g.:  [Convert]::ToBase64String((1..48 | % {Get-Random -Max 256}))
+  "Jwt": {
+    "Key": "<<< a long random secret, 40+ chars >>>"
+  },
+
+  // Seed is ABSENT in base appsettings.json — without it no admin is created and you can't log in.
+  "Seed": {
+    "AdminEmail": "yosr.charrada@esprit.tn",
+    "AdminPassword": "<<< the admin password >>>",
+    "AdminFirstName": "Yosr",
+    "AdminLastName": "Charrada"
+  },
+
+  "Registration": {
+    "AllowedDomains": "esprit.tn,tn.ey.com,gmail.com"
+  },
+
+  // The real front-end URL served by IIS — CORS blocks every API call otherwise.
+  "AllowedOrigins": "https://<your-frontend-host>",
+
+  // Relative "profiscal.db" resolves against the app folder; the IIS AppPool identity must
+  // have WRITE permission there. An absolute path on a writable folder is safer.
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=C:\\taxmind_data\\profiscal.db"
+  }
+
+  // NB: leave Elasticsearch:AutoStart OFF under IIS. Run Elasticsearch as a Windows service
+  // instead — an IIS AppPool identity cannot reliably launch elasticsearch.bat.
+}
