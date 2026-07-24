@@ -15,8 +15,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Contracts", "Prof
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiscalPlatform.Application", "FiscalPlatform.Application\FiscalPlatform.Application.csproj", "{9F936AEC-2CB9-4261-9D59-D41E286C1D17}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiscalPlatform.Infrastructure", "FiscalPlatform.Infrastructure\FiscalPlatform.Infrastructure.csproj", "{667D5915-6B0F-4566-BD8B-4ACE566516F0}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -50,9 +48,5 @@ Global
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Release|Any CPU.Build.0 = Release|Any CPU
-		{667D5915-6B0F-4566-BD8B-4ACE566516F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{667D5915-6B0F-4566-BD8B-4ACE566516F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{667D5915-6B0F-4566-BD8B-4ACE566516F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{667D5915-6B0F-4566-BD8B-4ACE566516F0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
