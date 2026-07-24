@@ -9,11 +9,16 @@
 
   <ItemGroup>
     <PackageReference Include="DotNetEnv" Version="3.1.1" />
+    <PackageReference Include="FluentValidation" Version="11.9.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.13.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Abstractions" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.SemanticKernel" Version="1.45.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Agents.Core" Version="1.45.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="MediatR" Version="12.2.0" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.9.0" />
@@ -24,9 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Profiscal.Application\Profiscal.Application.csproj" />
     <ProjectReference Include="..\Profiscal.Infrastructure\Profiscal.Infrastructure.csproj" />
-    <ProjectReference Include="..\FiscalPlatform.Application\FiscalPlatform.Application.csproj" />
     <ProjectReference Include="..\Profiscal.Domain\Profiscal.Domain.csproj" />
   </ItemGroup>
 

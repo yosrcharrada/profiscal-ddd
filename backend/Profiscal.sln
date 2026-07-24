@@ -5,13 +5,9 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Domain", "Profiscal.Domain\Profiscal.Domain.csproj", "{5E089BE4-E289-4CAA-9780-0178FE6C6975}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Application", "Profiscal.Application\Profiscal.Application.csproj", "{B052FBF0-F4D0-4663-9EA1-77CDD56401D3}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Infrastructure", "Profiscal.Infrastructure\Profiscal.Infrastructure.csproj", "{9CFB122F-FAEB-47A9-9616-127E69678F29}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.API", "Profiscal.API\Profiscal.API.csproj", "{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiscalPlatform.Application", "FiscalPlatform.Application\FiscalPlatform.Application.csproj", "{9F936AEC-2CB9-4261-9D59-D41E286C1D17}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -26,10 +22,6 @@ Global
 		{5E089BE4-E289-4CAA-9780-0178FE6C6975}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5E089BE4-E289-4CAA-9780-0178FE6C6975}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5E089BE4-E289-4CAA-9780-0178FE6C6975}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B052FBF0-F4D0-4663-9EA1-77CDD56401D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B052FBF0-F4D0-4663-9EA1-77CDD56401D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B052FBF0-F4D0-4663-9EA1-77CDD56401D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B052FBF0-F4D0-4663-9EA1-77CDD56401D3}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9CFB122F-FAEB-47A9-9616-127E69678F29}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9CFB122F-FAEB-47A9-9616-127E69678F29}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9CFB122F-FAEB-47A9-9616-127E69678F29}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -38,9 +30,5 @@ Global
 		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
