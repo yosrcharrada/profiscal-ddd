@@ -7,7 +7,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Domain", "Profisc
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Infrastructure", "Profiscal.Infrastructure\Profiscal.Infrastructure.csproj", "{9CFB122F-FAEB-47A9-9616-127E69678F29}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.API", "Profiscal.API\Profiscal.API.csproj", "{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Application", "Profiscal.Application\Profiscal.Application.csproj", "{649A719F-9E63-43EF-8EF4-0FB7C85E9CDE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -26,9 +26,9 @@ Global
 		{9CFB122F-FAEB-47A9-9616-127E69678F29}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9CFB122F-FAEB-47A9-9616-127E69678F29}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9CFB122F-FAEB-47A9-9616-127E69678F29}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6949B6C5-F5C5-468A-9EF3-2C20DF6AADDB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{649A719F-9E63-43EF-8EF4-0FB7C85E9CDE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{649A719F-9E63-43EF-8EF4-0FB7C85E9CDE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{649A719F-9E63-43EF-8EF4-0FB7C85E9CDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{649A719F-9E63-43EF-8EF4-0FB7C85E9CDE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
