@@ -119,6 +119,29 @@ OPENAI_API_KEY=sk-...
 
 ---
 
+## Offline models (EY / Zscaler network) — required on the work PC
+
+huggingface.co is blocked on the EY network, so `sentence-transformers` cannot download
+`paraphrase-multilingual-MiniLM-L12-v2` at run time. Both local backends then fail and the
+service degrades to TF-IDF — lower quality, and its width varies per batch, which used to
+crash S3 with an `inhomogeneous shape` error.
+
+**You already have the model.** The platform's embed server ships the *same* model in
+`model_cache/`. Point the chunker at it — no download, no extra copy:
+
+```powershell
+# PowerShell, before starting uvicorn
+$env:CHUNKER_MODEL_CACHE = "C:\dev\profiscal-taxmind\model_cache"
+uvicorn main:app --port 8000
+```
+
+`CHUNKER_MODEL_CACHE`, `HF_HUB_CACHE` and `SENTENCE_TRANSFORMERS_HOME` are all honoured
+(first one wins). To make it permanent, add it to `chunker/.env`.
+
+Confirm it worked: the log should NOT print `backend 'multilingual' failed`.
+
+---
+
 ## Verify
 
 1. `curl http://localhost:8000/health` → healthy.
@@ -137,7 +160,7 @@ OPENAI_API_KEY=sk-...
 |---|---|
 | Admin page iframe blank | The chunker isn't running — start its backend + frontend, confirm `REACT_APP_CHUNKER_URL` matches the Vite origin. |
 | `pip install` fails on torch | Wrong Python — use 3.10/3.11, not 3.14. |
-| First run hangs downloading a model | sentence-transformer download blocked by Zscaler — carry a `model_cache`/`HF_HOME` folder over. |
+| `couldn't connect to huggingface.co` + pipeline crash | huggingface.co is blocked on the EY network. Point the chunker at the model cache the platform already ships (same model): set `CHUNKER_MODEL_CACHE` — see **Offline models** below. |
 | Embedding calls 404 in Azure mode | EY has no `text-embedding-*` deployment — unset `OPENAI_EMBED_MODEL` to use the local backend. |
 | HTTPS cert errors to the EY endpoint | Set `ZSCALER_CERT` (or `OPENAI_CA_BUNDLE`) in `chunker/.env`. |
 | 401 from the EY endpoint | Invalid/rotated key — the platform and the chunker share the same key situation. |

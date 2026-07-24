@@ -161,11 +161,33 @@ class EmbeddingService:
         return np.asarray(vecs, dtype=np.float32)
 
     def _get_st(self, backend: str):
+        """Load a sentence-transformer, preferring a LOCAL model cache.
+
+        On a corporate network (EY/Zscaler) huggingface.co is blocked, so a plain
+        `SentenceTransformer("name")` raises "couldn't connect to huggingface.co"
+        and every local backend degrades to TF-IDF — which is both lower quality
+        and, because its dimensionality varies with the batch, a source of
+        downstream shape errors.
+
+        Setting any of the env vars below to a folder holding the HF hub layout
+        (`models--sentence-transformers--<model>`) makes the load fully offline.
+        The platform's embed_server.py already ships exactly that cache with
+        paraphrase-multilingual-MiniLM-L12-v2 — the same model as the
+        "multilingual" backend here — so pointing at it reuses what is already on
+        disk instead of downloading anything:
+
+            CHUNKER_MODEL_CACHE / HF_HUB_CACHE / SENTENCE_TRANSFORMERS_HOME
+        """
         if backend not in self._st_models:
             with self._lock:
                 if backend not in self._st_models:
                     from sentence_transformers import SentenceTransformer
-                    self._st_models[backend] = SentenceTransformer(ST_MODELS[backend])
+                    cache = (os.environ.get("CHUNKER_MODEL_CACHE")
+                             or os.environ.get("HF_HUB_CACHE")
+                             or os.environ.get("SENTENCE_TRANSFORMERS_HOME"))
+                    kwargs = {"cache_folder": cache} if cache else {}
+                    self._st_models[backend] = SentenceTransformer(
+                        ST_MODELS[backend], **kwargs)
         return self._st_models[backend]
 
     def _embed_tfidf(self, texts: List[str]) -> np.ndarray:

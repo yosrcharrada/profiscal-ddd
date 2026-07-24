@@ -293,7 +293,30 @@ def _embed_units(texts: List[str], backend: Optional[str]) -> np.ndarray:
             vecs = np.array([_hash_embed(t) for t in miss], dtype=np.float32)
         for t, v in zip(miss, vecs):
             _EMB_CACHE[t] = np.asarray(v, dtype=np.float32)
-    return np.array([_EMB_CACHE[t] for t in texts], dtype=np.float32)
+
+    out = [_EMB_CACHE[t] for t in texts]
+
+    # Guard: every vector here MUST share one dimensionality, or np.array() builds
+    # a ragged object array and the caller dies with
+    #   "setting an array element with a sequence … inhomogeneous shape".
+    #
+    # This is reachable in normal operation: the cache is module-level and persists
+    # across calls, while the TF-IDF fallback's width depends on the vocabulary of
+    # the batch it saw. So one blocked model download (huggingface unreachable on a
+    # corporate network) makes successive batches cache 300-d, then 128-d, then …
+    # vectors for the same document, and the pipeline crashes on the mix rather
+    # than on the actual failure. Re-embedding the odd ones out with the
+    # deterministic hash embedder keeps the stage running and, being derived from
+    # the text alone, stays stable across the S7 GA's repeated S3 passes.
+    dims = {v.shape[-1] for v in out if getattr(v, "ndim", 0) >= 1}
+    if len(dims) > 1:
+        target = max(dims, key=lambda d: sum(1 for v in out if v.shape[-1] == d))
+        for t in texts:
+            if _EMB_CACHE[t].shape[-1] != target:
+                _EMB_CACHE[t] = _hash_embed(t, dim=target).astype(np.float32)
+        out = [_EMB_CACHE[t] for t in texts]
+
+    return np.array(out, dtype=np.float32)
 
 
 def _hash_embed(text: str, dim: int = 256) -> np.ndarray:
