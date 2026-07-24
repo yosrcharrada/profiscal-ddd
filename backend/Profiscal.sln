@@ -13,8 +13,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.API", "Profiscal.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Profiscal.Contracts", "Profiscal.Contracts\Profiscal.Contracts.csproj", "{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiscalPlatform.Domain", "FiscalPlatform.Domain\FiscalPlatform.Domain.csproj", "{60C2BC66-7B1E-4030-B811-9FFE8F6120C4}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiscalPlatform.Application", "FiscalPlatform.Application\FiscalPlatform.Application.csproj", "{9F936AEC-2CB9-4261-9D59-D41E286C1D17}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiscalPlatform.Infrastructure", "FiscalPlatform.Infrastructure\FiscalPlatform.Infrastructure.csproj", "{667D5915-6B0F-4566-BD8B-4ACE566516F0}"
@@ -48,10 +46,6 @@ Global
 		{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B4047D27-24E3-4A84-AAE6-A7C97D29B3FF}.Release|Any CPU.Build.0 = Release|Any CPU
-		{60C2BC66-7B1E-4030-B811-9FFE8F6120C4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{60C2BC66-7B1E-4030-B811-9FFE8F6120C4}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{60C2BC66-7B1E-4030-B811-9FFE8F6120C4}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{60C2BC66-7B1E-4030-B811-9FFE8F6120C4}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9F936AEC-2CB9-4261-9D59-D41E286C1D17}.Release|Any CPU.ActiveCfg = Release|Any CPU

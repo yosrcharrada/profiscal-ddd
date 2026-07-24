@@ -14,6 +14,6 @@
     <PackageReference Include="Microsoft.SemanticKernel.Agents.Core" Version="1.45.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\FiscalPlatform.Domain\FiscalPlatform.Domain.csproj" />
+    <ProjectReference Include="..\Profiscal.Domain\Profiscal.Domain.csproj" />
   </ItemGroup>
 </Project>

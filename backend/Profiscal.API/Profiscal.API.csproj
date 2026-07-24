@@ -29,7 +29,7 @@
     <ProjectReference Include="..\Profiscal.Contracts\Profiscal.Contracts.csproj" />
     <ProjectReference Include="..\FiscalPlatform.Application\FiscalPlatform.Application.csproj" />
     <ProjectReference Include="..\FiscalPlatform.Infrastructure\FiscalPlatform.Infrastructure.csproj" />
-    <ProjectReference Include="..\FiscalPlatform.Domain\FiscalPlatform.Domain.csproj" />
+    <ProjectReference Include="..\Profiscal.Domain\Profiscal.Domain.csproj" />
   </ItemGroup>
 
 </Project>
