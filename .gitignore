@@ -50,3 +50,15 @@ todo.txt
 # migration backup dumps (large, machine-local)
 taxmindvf_cdpf_backup.json
 cdpf_bct_export.json
+
+# ── Vendored qEntropy chunker (chunker/) — build artifacts & secrets ──
+chunker/**/node_modules/
+chunker/**/venv/
+chunker/**/__pycache__/
+chunker/**/*.pyc
+chunker/.env
+chunker/**/model_cache/
+chunker/**/.vite/
+chunker/frontend/dist/
+chunker/backend/uploads/
+chunker/backend/jobs/
