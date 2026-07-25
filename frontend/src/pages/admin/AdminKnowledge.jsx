@@ -32,14 +32,29 @@ const STRATEGIES = [
   'sentence_clustering', 'paragraph_pack', 'legal_articles', 'hybrid_legal_semantic',
 ];
 
-/** Mirrors the embedding_backend whitelist in main.py (`auto` → omit the key entirely). */
+/** Mirrors the embedding_backend whitelist in main.py (`auto` → sent as null). */
 const BACKENDS = ['auto', 'openai', 'openai-large', 'multilingual', 'english', 'tfidf'];
 
-/** Defaults + validated ranges, kept in step with DEFAULT_CONFIG / _validate_user_config. */
+/** S3 entropy function. `qlog` is the q-logarithm entropy; `tsallis` the Hill number. */
+const ENTROPY_MODES = ['qlog', 'tsallis'];
+
+/** S4 similarity kernel. `qcosine` is the Fitouhi–Bouzeffour q-cosine (base = q²). */
+const SIMILARITY_MODES = ['qcosine', 'cosine'];
+
+/**
+ * Defaults + validated ranges, kept in step with DEFAULT_CONFIG / _validate_user_config.
+ *
+ * The two q values are SEPARATE genes the S7 GA tunes independently — `q_entropy_param`
+ * drives the S3 entropy, `q_s4_kernel` the S4 q-cosine. They are shown here as the run's
+ * starting point, not as fixed settings: the GA searches both over [-1, 1].
+ */
 const CFG_DEFAULTS = {
   chunking_strategy: 'auto',
-  embedding_backend: 'auto',
+  embedding_backend: 'multilingual',
+  entropy_mode: 'qlog',
+  s4_similarity: 'qcosine',
   q_entropy_param: 1.0,
+  q_s4_kernel: 1.0,
   K: 4,
   min_chunk_tokens: 20,
   max_chunk_tokens: 320,
@@ -51,6 +66,7 @@ const CFG_DEFAULTS = {
 
 const NUM_FIELDS = [
   { key: 'q_entropy_param',  label: 'q',         min: -1,  max: 1,    step: 0.1,  hint: 'qHint' },
+  { key: 'q_s4_kernel',      label: 'qS4',       min: -1,  max: 1,    step: 0.1,  hint: 'qS4Hint' },
   { key: 'K',                label: 'K',         min: 2,   max: 8,    step: 1 },
   { key: 'min_chunk_tokens', label: 'minTokens', min: 4,   max: 200,  step: 1 },
   { key: 'max_chunk_tokens', label: 'maxTokens', min: 64,  max: 2000, step: 1 },
@@ -183,7 +199,11 @@ export default function AdminKnowledge() {
             <input
               ref={inputRef}
               type="file"
-              accept=".pdf,.txt,.md,.docx,.html"
+              /* Matches what _parse_file actually handles: PDF (detected by magic bytes too,
+                 so a mis-named PDF still parses) and anything text-decodable. Office/
+                 OpenDocument files are zip archives the service rejects outright, so they are
+                 deliberately NOT offered here — listing .docx only invited a guaranteed error. */
+              accept=".pdf,text/*,.md,.markdown,.rst,.tex,.csv,.json,.xml,.yaml,.yml,.log"
               className="hidden"
               onChange={(e) => pick(e.target.files?.[0])}
             />
@@ -250,6 +270,28 @@ export default function AdminKnowledge() {
                       className="w-full text-[12px] rounded-lg border border-border bg-white px-2 py-1.5 text-dark disabled:opacity-50"
                     >
                       {BACKENDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </Field>
+
+                  <Field label={t('admin.knowledge.cfg.entropy')} hint={t('admin.knowledge.cfg.entropyHint')}>
+                    <select
+                      value={cfg.entropy_mode}
+                      disabled={busy}
+                      onChange={(e) => setField('entropy_mode')(e.target.value)}
+                      className="w-full text-[12px] rounded-lg border border-border bg-white px-2 py-1.5 text-dark disabled:opacity-50"
+                    >
+                      {ENTROPY_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </Field>
+
+                  <Field label={t('admin.knowledge.cfg.similarity')} hint={t('admin.knowledge.cfg.similarityHint')}>
+                    <select
+                      value={cfg.s4_similarity}
+                      disabled={busy}
+                      onChange={(e) => setField('s4_similarity')(e.target.value)}
+                      className="w-full text-[12px] rounded-lg border border-border bg-white px-2 py-1.5 text-dark disabled:opacity-50"
+                    >
+                      {SIMILARITY_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </Field>
                 </div>

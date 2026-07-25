@@ -83,7 +83,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "n_min": 80,
     "n_max": 500,
     # ── S3 qentropy (the only entropy engine now) ────────────────────────
-    "q_entropy_param": 1.0,        # Tsallis q ∈ [-1, 1]; 1.0 == Shannon baseline
+    # entropy_mode selects the ENTROPY FUNCTION driving the D_q boundary count:
+    #   "qlog"    — the q-logarithm entropy (qlog_entropy / qlog_diversity_number)
+    #   "tsallis" — the Tsallis Hill number
+    # Both reduce to Shannon at q = 1; q itself is a GA gene (see q_entropy_param).
+    "entropy_mode": "qlog",
+    "q_entropy_param": 1.0,        # q ∈ [-1, 1] for the S3 entropy — GA gene (gene 3)
     "K": 4,                        # tree branching factor (paper's single knob)
     "min_chunk_tokens": 20,        # qentropy feasibility floor
     "max_chunk_tokens": 320,
@@ -91,9 +96,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "overlap": 0,
     # ── S4 ───────────────────────────────────────────────────────────────
     "tau_sem": 0.75,               # similarity-merge threshold
-    "s4_similarity": "cosine",     # "cosine" (classical) | "qcosine" (Fitouhi–Bouzeffour q-cosine, base=q²)
+    "s4_similarity": "qcosine",    # "qcosine" (Fitouhi–Bouzeffour q-cosine, base=q²) | "cosine" (classical)
+    "q_s4_kernel": 1.0,            # q for the S4 q-cosine ONLY — GA gene (gene 5), decoupled from S3's
     # ── S6 / metrics embedding backend (engine.embeddings) ───────────────
-    "embedding_backend": None,     # None → openai if key else multilingual
+    # "multilingual" is the backend that is actually available offline (the model cache
+    # ships with it) — OpenAI needs a key and, on Azure, an embedding deployment that
+    # EY does not expose. None would mean "openai if key else multilingual".
+    "embedding_backend": "multilingual",
     "embedding_model": "all-MiniLM-L6-v2",  # legacy alias kept for s6_embedding
     # ── Evaluation (engine.metrics, Table I) ─────────────────────────────
     "judge_answerability": False,  # opt-in LLM judge (needs OPENAI_API_KEY)
@@ -407,7 +416,8 @@ def _validate_user_config(user_config: Dict[str, Any]) -> Dict[str, Any]:
         "n_max": (80, 1200),
         "tau_sem": (0.2, 0.99),
         "max_iterations": (1, 30),
-        "q_entropy_param": (-1.0, 1.0),   # Tsallis q (spec range) — tuned by S7 GA
+        "q_entropy_param": (-1.0, 1.0),   # S3 entropy q (spec range) — tuned by S7 GA (gene 3)
+        "q_s4_kernel": (-1.0, 1.0),       # S4 q-cosine q — tuned by S7 GA (gene 5), decoupled
         "K": (2, 8),
         "min_chunk_tokens": (4, 200),
         "max_chunk_tokens": (64, 2000),
@@ -432,6 +442,10 @@ def _validate_user_config(user_config: Dict[str, Any]) -> Dict[str, Any]:
             cfg.pop("embedding_backend", None)
     if "judge_answerability" in cfg:
         cfg["judge_answerability"] = bool(cfg["judge_answerability"])
+    # S3 entropy function: q-logarithm entropy (default) vs the Tsallis Hill number.
+    if "entropy_mode" in cfg:
+        em = str(cfg.get("entropy_mode", "qlog")).lower()
+        cfg["entropy_mode"] = em if em in {"qlog", "tsallis"} else "qlog"
     # S4 similarity mode (classical cosine vs Fitouhi–Bouzeffour q-cosine)
     if "s4_similarity" in cfg:
         sm = str(cfg.get("s4_similarity", "cosine")).lower()

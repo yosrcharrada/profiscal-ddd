@@ -1,16 +1,19 @@
 pipeline:
-  # ── S3 qEntropy (Tsallis q + diversity number D_q) ──
-  q_entropy_param: 1.0        # Tsallis q in [-1, 1]; 1.0 == Shannon baseline
+  # ── S3 qEntropy (q-logarithm entropy + diversity number D_q) ──
+  entropy_mode: qlog          # qlog_entropy / qlog_diversity_number (S3). "tsallis" = Hill number
+  q_entropy_param: 1.0        # q in [-1, 1] for the S3 entropy — GA gene 3 (reduces to Shannon at 1.0)
   K: 4                        # tree branching factor
   min_chunk_tokens: 20
   max_chunk_tokens: 320
   window: 1                   # neighbour-averaging window for the shift signal
   # ── S4 ──
   tau_sem: 0.75               # similarity-merge threshold
+  s4_similarity: qcosine      # Fitouhi–Bouzeffour q-cosine (base = q²). "cosine" = classical
+  q_s4_kernel: 1.0            # q for the S4 q-cosine ONLY — GA gene 5, decoupled from q_entropy_param
   # ── Evaluation (engine.metrics, Table I) ──
   qa_count: 12
   judge_answerability: false
-  embedding_backend: null     # null -> openai if key else multilingual
+  embedding_backend: multilingual   # the backend available offline (ships in model_cache)
   # ── S7 genetic algorithm ──
   ga_population: 6
   ga_generations: 3
