@@ -1,41 +1,47 @@
 # qEntropy Chunker — admin integration
 
-The **Knowledge base** admin page (`/admin/knowledge`) is the document-chunking module.
-It embeds the **qEntropy chunker** — an 8-stage chunking + evaluation platform (profiler →
-multi-strategy chunkers → Tsallis *q*-entropy boundary refinement → graph → embeddings →
-genetic-algorithm tuning → Table-I scoring). The chunker is vendored in this repo under
-[`chunker/`](chunker/) and runs as a **sidecar service**; the admin page shows its own UI in
-an `<iframe>`.
+The **Base de connaissances** admin page (`/admin/knowledge`) is the document-chunking module.
+An administrator uploads a legal document, the **qEntropy** pipeline runs its 8 stages
+(profiler → multi-strategy chunkers → Tsallis *q*-entropy boundary refinement → merge → graph
+→ embeddings → GA tuning → Table-I scoring), and the resulting chunks come back **in the
+Taxmind UI** for review before anything is published into the graph.
+
+The chunker itself is vendored under [`chunker/`](chunker/) and runs as a **sidecar service**.
 
 ---
 
-## Why a sidecar, not a rewrite
+## Architecture
 
-The chunker is a self-contained **FastAPI (Python) + React/Vite** application with a real ML
-core (Tsallis entropy, LSTM boundary ranking, a genetic-algorithm tuner, sentence-transformer
-embeddings). Re-implementing that in the .NET backend, or folding it into `embed_server.py`,
-would be wasteful and fragile. Instead we treat it as a black-box service with a clean HTTP
-API — the same pattern the platform already uses for the embedding server. The Taxmind admin
-simply embeds the chunker's UI; the chunker keeps its full research surface (strategy
-comparison, GA tuning, per-strategy metrics).
+The admin page is a **native Taxmind page** — not an embedded copy of the chunker's own UI.
+It calls our API, which proxies to the chunking service:
 
 ```
 Taxmind frontend (React, :3000)
-  └─ /admin/knowledge  →  <iframe src=CHUNKER_URL>
-                                │
-                                ▼
-        qEntropy chunker frontend (Vite, :5173)
-                                │  XHR
-                                ▼
-        qEntropy chunker backend (FastAPI, :8000)
-                                │  optional
-                                ▼
-        EY Azure OpenAI  (embeddings + QA + answerability judge)
-        — or local sentence-transformers when no key
+  └─ /admin/knowledge          ← native EY-styled page
+        │  api/chunker/*       (JWT, Admin role)
+        ▼
+  Taxmind API (.NET, :5131)
+  └─ ChunkerController          ← the authorisation boundary
+        │  http://127.0.0.1:8000
+        ▼
+  qEntropy chunker (FastAPI)    ← upload → run → status → results
+        │  optional
+        ▼
+  EY Azure OpenAI  — or local sentence-transformers when no key
 ```
 
-**Dependency direction stays clean:** the chunker depends on nothing in Taxmind; Taxmind only
-points an iframe at a URL. Either can run without the other.
+**Why proxy instead of calling the chunker from the browser:**
+
+* **Authorisation.** Chunking ingests documents into the legal corpus, so it is admin-only.
+  The proxy applies `[Authorize(Roles = "Admin")]`; the chunker has no concept of users, so a
+  direct browser call would bypass identity entirely.
+* **Exposure.** The chunking service never needs to be reachable from the browser — only the
+  API talks to it, over loopback.
+* **One origin.** No second CORS surface to configure per environment.
+
+The chunker's own React UI (`chunker/frontend`) is **not needed for the admin flow**. It
+remains available for research work — strategy comparison, GA fitness curves, Table-I metric
+tables — by running it standalone.
 
 ---
 
@@ -147,8 +153,9 @@ Confirm it worked: the log should NOT print `backend 'multilingual' failed`.
 1. `curl http://localhost:8000/health` → healthy.
 2. `curl http://localhost:8000/backends` → lists the embedding backends (shows `openai` when a
    key is set, always lists the local ones).
-3. Open the Taxmind admin → **Knowledge base**: the chunker UI loads in the iframe. Upload one
-   of `chunker/test_documents/*`, run it, and confirm chunks + metrics appear.
+3. Open the Taxmind admin → **Base de connaissances**: upload one of
+   `chunker/test_documents/*`, press **Lancer le découpage**, watch the stage/progress bar,
+   and confirm the chunks + summary render for review.
 4. LLM path (needs a valid key): the QA/answerability columns populate. With no key they are
    simply absent — not an error.
 
@@ -158,7 +165,8 @@ Confirm it worked: the log should NOT print `backend 'multilingual' failed`.
 
 | Symptom | Fix |
 |---|---|
-| Admin page iframe blank | The chunker isn't running — start its backend + frontend, confirm `REACT_APP_CHUNKER_URL` matches the Vite origin. |
+| Admin page says "service hors ligne" | The chunker's FastAPI isn't running — start it on :8000 (the page shows the address it tried). |
+| Chunking is slow with a bad key | Fixed: an OpenAI 401/403 now disables the OpenAI backend for the run instead of retrying every batch. Clear `OPENAI_API_KEY` from the environment to use local embeddings outright. |
 | `pip install` fails on torch | Wrong Python — use 3.10/3.11, not 3.14. |
 | `couldn't connect to huggingface.co` + pipeline crash | huggingface.co is blocked on the EY network. Point the chunker at the model cache the platform already ships (same model): set `CHUNKER_MODEL_CACHE` — see **Offline models** below. |
 | Embedding calls 404 in Azure mode | EY has no `text-embedding-*` deployment — unset `OPENAI_EMBED_MODEL` to use the local backend. |

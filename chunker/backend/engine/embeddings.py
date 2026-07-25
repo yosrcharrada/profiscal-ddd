@@ -37,6 +37,33 @@ OPENAI_MAX_TOKENS = 8000   # text-embedding-3 limit is 8191; keep margin
 OPENAI_BATCH = 256         # inputs per request (API allows up to 2048)
 OPENAI_WORKERS = 6         # parallel request batches (big docs stay fast)
 
+# ── OpenAI auth circuit breaker ──────────────────────────────────────────────
+# Set once the provider rejects our credentials. A bad/revoked/wrong-provider key
+# fails identically on every call, so after the first 401/403 we stop choosing the
+# OpenAI backend for the rest of the process and use the local embedder instead.
+# Without this, one dead key costs (batches x retries x GA passes) doomed requests.
+_OPENAI_DISABLED = False
+
+
+def _is_auth_error(exc: Exception) -> bool:
+    """True for credential failures (401/403) — permanent, never worth retrying."""
+    status = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
+    if status in (401, 403):
+        return True
+    name = type(exc).__name__.lower()
+    if "authentication" in name or "permissiondenied" in name:
+        return True
+    text = str(exc).lower()
+    return ("401" in text and "unauthor" in text) or "invalid_api_key" in text
+
+
+def _disable_openai(exc: Exception) -> None:
+    global _OPENAI_DISABLED
+    if not _OPENAI_DISABLED:
+        _OPENAI_DISABLED = True
+        print(f"[embeddings] OpenAI rejected the credentials ({exc}); "
+              f"using the local embedding backend for the rest of this run.")
+
 
 class EmbeddingService:
     def __init__(self) -> None:
@@ -98,6 +125,11 @@ class EmbeddingService:
         b = backend or self.default_backend()
         if b in OPENAI_MODELS and not os.environ.get("OPENAI_API_KEY"):
             return "multilingual"  # graceful fallback when no key
+        if b in OPENAI_MODELS and _OPENAI_DISABLED:
+            # A key is present but the provider rejected it (see _disable_openai).
+            # Route every later call straight to the local backend so one bad key
+            # cannot slow the whole run down with doomed requests.
+            return "multilingual"
         return b
 
     def embed(self, texts: List[str], backend: Optional[str] = None) -> np.ndarray:
@@ -133,6 +165,13 @@ class EmbeddingService:
             # letting them bubble up to embed()'s fallback — that fallback would
             # switch to a different-dimension local model mid-document and break
             # the cosine matmul (1536 vs 384).
+            #
+            # But do NOT retry an authentication/authorisation failure: a bad,
+            # revoked or wrong-provider key fails identically every time, so
+            # retrying only multiplies the delay. Observed with a revoked key:
+            # ~384 pointless 401s (batches x 4 retries x the S7 GA's repeated
+            # passes), turning a fast run into minutes of sleeping. Fail fast
+            # instead and let embed() degrade to the local backend.
             import time as _t
             last = None
             for attempt in range(4):
@@ -141,6 +180,9 @@ class EmbeddingService:
                     return [d.embedding for d in resp.data]
                 except Exception as exc:  # noqa: BLE001
                     last = exc
+                    if _is_auth_error(exc):
+                        _disable_openai(exc)
+                        raise
                     _t.sleep(1.5 * (attempt + 1))
             raise last
 
