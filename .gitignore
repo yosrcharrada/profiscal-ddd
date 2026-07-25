@@ -26,9 +26,15 @@ node_modules/
 # IDE
 .vscode/
 .idea/
+.vs/
+**/.vs/
+*.csproj.user
 *.swp
 *.swo
 *~
+
+# Local corporate CA bundle (path is per-machine; not needed by every clone)
+*.pem
 
 # OS
 .DS_Store
@@ -47,6 +53,7 @@ venv/
 
 # Local notes
 todo.txt
+STEPS.txt
 # migration backup dumps (large, machine-local)
 taxmindvf_cdpf_backup.json
 cdpf_bct_export.json
