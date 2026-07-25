@@ -18,7 +18,59 @@ import chunkerService, { runChunking } from '../../services/chunkerService';
  * Deliberately not shown here: the chunker's research surface (strategy comparison, GA
  * fitness curves, per-metric tables). Those belong to the standalone chunker UI; this page is
  * the governance flow — chunk, inspect, keep or discard.
+ *
+ * The configuration panel exposes the pipeline knobs an administrator plausibly needs on a
+ * legal corpus (strategy, embedding backend, q, sizing). Bounds mirror `_validate_user_config`
+ * in the chunker's main.py — it clamps out-of-range values silently, so matching them here is
+ * what makes the UI honest about what will actually be applied. Only fields the admin changes
+ * are sent; everything else stays the service's default, keeping it the owner of its contract.
  */
+
+/** Mirrors VALID_STRATEGIES in pipeline/s2_chunkers.py. */
+const STRATEGIES = [
+  'auto', 'recursive', 'sliding_window', 'structure', 'semantic_boundaries',
+  'sentence_clustering', 'paragraph_pack', 'legal_articles', 'hybrid_legal_semantic',
+];
+
+/** Mirrors the embedding_backend whitelist in main.py (`auto` → omit the key entirely). */
+const BACKENDS = ['auto', 'openai', 'openai-large', 'multilingual', 'english', 'tfidf'];
+
+/** Defaults + validated ranges, kept in step with DEFAULT_CONFIG / _validate_user_config. */
+const CFG_DEFAULTS = {
+  chunking_strategy: 'auto',
+  embedding_backend: 'auto',
+  q_entropy_param: 1.0,
+  K: 4,
+  min_chunk_tokens: 20,
+  max_chunk_tokens: 320,
+  tau_sem: 0.75,
+  window: 1,
+  overlap: 0,
+  judge_answerability: false,
+};
+
+const NUM_FIELDS = [
+  { key: 'q_entropy_param',  label: 'q',         min: -1,  max: 1,    step: 0.1,  hint: 'qHint' },
+  { key: 'K',                label: 'K',         min: 2,   max: 8,    step: 1 },
+  { key: 'min_chunk_tokens', label: 'minTokens', min: 4,   max: 200,  step: 1 },
+  { key: 'max_chunk_tokens', label: 'maxTokens', min: 64,  max: 2000, step: 1 },
+  { key: 'tau_sem',          label: 'tau',       min: 0.2, max: 0.99, step: 0.01 },
+  { key: 'window',           label: 'window',    min: 0,   max: 5,    step: 1 },
+  { key: 'overlap',          label: 'overlap',   min: 0,   max: 4,    step: 1 },
+];
+
+/**
+ * Send only what the admin actually changed. `embedding_backend: 'auto'` maps to null, which is
+ * how the service spells "pick OpenAI if a key exists, else the local model".
+ */
+function toChunkerConfig(cfg) {
+  const out = {};
+  for (const [k, v] of Object.entries(cfg)) {
+    if (v === CFG_DEFAULTS[k]) continue;
+    out[k] = k === 'embedding_backend' && v === 'auto' ? null : v;
+  }
+  return out;
+}
 export default function AdminKnowledge() {
   const { t } = useLanguage();
 
@@ -30,6 +82,8 @@ export default function AdminKnowledge() {
   const [error, setError]       = useState('');
   const [rejected, setRejected] = useState(() => new Set()); // chunk indexes the admin discards
   const [expanded, setExpanded] = useState(() => new Set());
+  const [cfg, setCfg]           = useState(CFG_DEFAULTS);
+  const [cfgOpen, setCfgOpen]   = useState(false);
   const inputRef = useRef(null);
 
   // Probe the service on mount so the UI can offer a useful message rather than letting the
@@ -58,7 +112,7 @@ export default function AdminKnowledge() {
     setResults(null);
     setProg({ stage: 'upload', progress: 0 });
     try {
-      const data = await runChunking(file, setProg);
+      const data = await runChunking(file, setProg, { config: toChunkerConfig(cfg) });
       setResults(data);
     } catch (e) {
       // 503 = our proxy could not reach the chunker; anything else is the pipeline's own error.
@@ -71,7 +125,9 @@ export default function AdminKnowledge() {
     } finally {
       setBusy(false);
     }
-  }, [file, busy, t]);
+  }, [file, busy, cfg, t]);
+
+  const setField = (key) => (value) => setCfg((p) => ({ ...p, [key]: value }));
 
   const toggle = (setFn) => (i) =>
     setFn((prev) => {
@@ -83,6 +139,7 @@ export default function AdminKnowledge() {
   const chunks   = results?.chunks || [];
   const summary  = results?.summary || {};
   const accepted = chunks.length - rejected.size;
+  const dirty    = Object.keys(CFG_DEFAULTS).some((k) => cfg[k] !== CFG_DEFAULTS[k]);
 
   return (
     <AdminLayout>
@@ -141,6 +198,111 @@ export default function AdminKnowledge() {
                 ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
                 : t('admin.knowledge.dropzoneHint')}
             </p>
+          </div>
+
+          {/* ── Configuration ─────────────────────────────────────────── */}
+          <div className="mt-4 border-t border-border/50 pt-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[12px] font-extrabold text-dark">{t('admin.knowledge.cfg.title')}</h3>
+              <div className="flex items-center gap-2">
+                {!dirty || busy ? null : (
+                  <button
+                    onClick={() => setCfg(CFG_DEFAULTS)}
+                    className="text-[11px] font-bold text-body hover:text-dark hover:underline"
+                  >
+                    {t('admin.knowledge.cfg.reset')}
+                  </button>
+                )}
+                <button
+                  onClick={() => setCfgOpen((o) => !o)}
+                  className="text-[11px] font-bold rounded-lg px-2.5 py-1 border border-border text-body hover:text-dark hover:bg-light transition"
+                >
+                  {cfgOpen ? t('admin.knowledge.cfg.hide') : t('admin.knowledge.cfg.show')}
+                </button>
+              </div>
+            </div>
+
+            {cfgOpen && (
+              <div className="mt-3 space-y-3">
+                <p className="text-[11px] text-muted leading-relaxed">{t('admin.knowledge.cfg.hint')}</p>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Field label={t('admin.knowledge.cfg.strategy')} hint={t('admin.knowledge.cfg.strategyHint')}>
+                    <select
+                      value={cfg.chunking_strategy}
+                      disabled={busy}
+                      onChange={(e) => setField('chunking_strategy')(e.target.value)}
+                      className="w-full text-[12px] rounded-lg border border-border bg-white px-2 py-1.5 text-dark disabled:opacity-50"
+                    >
+                      {STRATEGIES.map((s) => (
+                        <option key={s} value={s}>
+                          {s === 'auto' ? t('admin.knowledge.cfg.strategy.auto') : s}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label={t('admin.knowledge.cfg.backend')} hint={t('admin.knowledge.cfg.backendHint')}>
+                    <select
+                      value={cfg.embedding_backend}
+                      disabled={busy}
+                      onChange={(e) => setField('embedding_backend')(e.target.value)}
+                      className="w-full text-[12px] rounded-lg border border-border bg-white px-2 py-1.5 text-dark disabled:opacity-50"
+                    >
+                      {BACKENDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {NUM_FIELDS.map((f) => (
+                    <Field
+                      key={f.key}
+                      label={t(`admin.knowledge.cfg.${f.label}`)}
+                      hint={f.hint ? t(`admin.knowledge.cfg.${f.hint}`) : `${f.min} – ${f.max}`}
+                    >
+                      <input
+                        type="number"
+                        value={cfg[f.key]}
+                        min={f.min}
+                        max={f.max}
+                        step={f.step}
+                        disabled={busy}
+                        onChange={(e) => {
+                          // Keep the raw text while typing; clamping happens on blur so the
+                          // field doesn't fight the user mid-entry.
+                          const v = e.target.value;
+                          setField(f.key)(v === '' ? '' : Number(v));
+                        }}
+                        onBlur={(e) => {
+                          const n = Number(e.target.value);
+                          setField(f.key)(
+                            Number.isFinite(n) ? Math.max(f.min, Math.min(f.max, n)) : CFG_DEFAULTS[f.key]
+                          );
+                        }}
+                        className="w-full text-[12px] rounded-lg border border-border bg-white px-2 py-1.5 text-dark disabled:opacity-50"
+                      />
+                    </Field>
+                  ))}
+                </div>
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cfg.judge_answerability}
+                    disabled={busy}
+                    onChange={(e) => setField('judge_answerability')(e.target.checked)}
+                    className="mt-0.5 accent-dark"
+                  />
+                  <span>
+                    <span className="text-[12px] font-bold text-dark">{t('admin.knowledge.cfg.judge')}</span>
+                    <span className="block text-[10.5px] text-muted leading-relaxed">
+                      {t('admin.knowledge.cfg.judgeHint')}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
 
           <div className="mt-3 flex items-center gap-2">
@@ -263,6 +425,16 @@ export default function AdminKnowledge() {
         )}
       </div>
     </AdminLayout>
+  );
+}
+
+function Field({ label, hint, children }) {
+  return (
+    <label className="block">
+      <span className="block text-[10.5px] font-bold text-muted uppercase tracking-wider mb-1">{label}</span>
+      {children}
+      {hint && <span className="block text-[10px] text-muted mt-0.5 leading-snug">{hint}</span>}
+    </label>
   );
 }
 

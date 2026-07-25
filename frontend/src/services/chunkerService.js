@@ -25,8 +25,12 @@ const chunkerService = {
 
   /**
    * Upload a document. Sent as multipart under the field name `file`, which is what the
-   * FastAPI handler binds. Axios sets the multipart boundary itself, so we must NOT set
-   * Content-Type manually here.
+   * FastAPI handler binds.
+   *
+   * Content-Type is left unset so the browser writes `multipart/form-data` with its own
+   * boundary. Setting it — even as an axios instance default — makes axios 1.x serialise the
+   * FormData to JSON instead of sending multipart, which the API rejects with 415. See the
+   * note in api.js.
    */
   upload: (file) => {
     const form = new FormData();

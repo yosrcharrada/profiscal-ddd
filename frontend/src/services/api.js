@@ -2,10 +2,13 @@ import axios from 'axios';
 
 const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5131/api';
 
-const api = axios.create({
-  baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
-});
+/* No default Content-Type on purpose.
+   Axios already sets `application/json` for plain-object payloads, so pinning it here changes
+   nothing for JSON calls — but it BREAKS file uploads: axios 1.x's transformRequest reads
+   `hasJSONContentType` and, when it is set, serialises a FormData body to a JSON string
+   (`JSON.stringify(formDataToJSON(data))`) instead of sending multipart. The file is lost and
+   the server answers 415. Letting axios infer the type keeps both cases correct. */
+const api = axios.create({ baseURL: BASE_URL });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
