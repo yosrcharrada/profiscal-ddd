@@ -64,24 +64,20 @@ EY/Zscaler network the first run downloads the sentence-transformer model — ca
 pre-seeded `model_cache` (same trick as the platform's embed server) if the download is
 blocked, or set `HF_HOME` to a folder you copied over.
 
-### Frontend (Vite, port 5173)
+**That is all the admin page needs** — the FastAPI service on :8000. The API reaches it at
+`Chunker:BaseUrl` (default `http://127.0.0.1:8000`; override in appsettings or with the
+`Chunker__BaseUrl` environment variable). The Taxmind frontend needs no chunker setting at
+all: it calls its own API.
+
+### Optional — the chunker's own research UI (Vite, port 5173)
+
+Only for research work (strategy comparison, GA fitness curves, Table-I metric tables). The
+admin flow does **not** use it:
 
 ```powershell
 cd chunker\frontend
 npm install
-npm run dev          # serves http://localhost:5173
-```
-
-Its UI has a field to set the backend URL (defaults to `http://localhost:8000`).
-
-### The Taxmind admin iframe
-
-`AdminKnowledge.jsx` reads **`REACT_APP_CHUNKER_URL`** at build time, defaulting to
-`http://localhost:5173`. To point at a different origin, set it before building the Taxmind
-frontend:
-
-```
-REACT_APP_CHUNKER_URL=http://localhost:5173
+npm run dev          # http://localhost:5173
 ```
 
 ---
