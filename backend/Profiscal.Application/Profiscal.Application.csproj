@@ -33,4 +33,9 @@
     <ProjectReference Include="..\Profiscal.Domain\Profiscal.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- ONNX embedding model + tokenizer: copied beside the app so OnnxEmbedder finds them.
+         model.onnx is git-ignored (~450 MB); see tools/onnx/export_model.py. -->
+    <None Include="models\embedding\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

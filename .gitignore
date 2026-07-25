@@ -62,3 +62,9 @@ chunker/**/.vite/
 chunker/frontend/dist/
 chunker/backend/uploads/
 chunker/backend/jobs/
+
+# ── ONNX embedding model (carried per-machine, not versioned) ──
+# model.onnx is ~450 MB — over GitHub's file limit. Produce it with
+# tools/onnx/export_model.py, or copy it from another machine.
+backend/Profiscal.Application/models/embedding/model.onnx
+tools/onnx/*.onnx

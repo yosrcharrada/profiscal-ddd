@@ -23,6 +23,9 @@ public static class FiscalEngineServiceCollectionExtensions
     {
         // ── AI agents ─────────────────────────────────────────────────────────
         services.AddSingleton<ILlmAgent,                LlmAgent>();
+        // In-process ONNX embedder (replaces the Python embed_server sidecar). Singleton:
+        // the ~450 MB model is loaded once and InferenceSession.Run is thread-safe.
+        services.AddSingleton<Profiscal.Infrastructure.Embeddings.OnnxEmbedder>();
         services.AddSingleton<IEmbedSearchAgent,        EmbedSearchAgent>();
         services.AddSingleton<IRetrievalAgent,          RetrievalAgent>();
         services.AddSingleton<IDocumentGenerationAgent, DocumentGenerationAgent>();

@@ -107,26 +107,25 @@ public sealed class FiscalController(
     }
 
     // ───────────────────────── AGGREGATE HEALTH ─────────────────────────
-    /// <summary>One call the UI uses to show what's connected: Neo4j, the LLM, the embed server.</summary>
+    /// <summary>One call the UI uses to show what's connected: the search index, the LLM and
+    /// the embedder.</summary>
     [HttpGet("health")]
-    public async Task<IActionResult> Health([FromServices] IConfiguration config, [FromServices] IHttpClientFactory http, CancellationToken ct)
+    public async Task<IActionResult> Health(
+        [FromServices] IConfiguration config,
+        [FromServices] Profiscal.Infrastructure.Embeddings.OnnxEmbedder embedder,
+        CancellationToken ct)
     {
         var neo4j = await searchAgent.IsAliveAsync();
         var chunks = neo4j ? await searchAgent.CountAsync() : 0;
 
         var llmConfigured = !string.IsNullOrWhiteSpace(config["OpenAI:ApiKey"]);
 
-        bool embed = false;
-        try
-        {
-            var url = config["EmbedServer:Url"] ?? "http://127.0.0.1:8081/embed_search";
-            var healthUrl = url.Replace("/embed_search", "/health");
-            using var c = http.CreateClient();
-            c.Timeout = TimeSpan.FromSeconds(2);
-            var r = await c.GetAsync(healthUrl, ct);
-            embed = r.IsSuccessStatusCode;
-        }
-        catch { embed = false; }
+        // The embedder now runs IN-PROCESS (ONNX). Resolving the singleton loads the model on
+        // first use, so reaching this line at all means the model and tokenizer were found and
+        // the encoder is usable — there is no longer a sidecar to probe over HTTP.
+        bool embed;
+        try   { embed = embedder.IsAvailable && embedder.Dimension > 0; }
+        catch { embed = false; }   // model/tokenizer missing → surfaced, not thrown
 
         return Ok(ApiResponse<object>.Ok(new
         {
