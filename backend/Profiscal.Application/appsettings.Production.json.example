@@ -66,10 +66,14 @@
   // The real front-end URL served by IIS — CORS blocks every API call otherwise.
   "AllowedOrigins": "https://<your-frontend-host>",
 
-  // Relative "profiscal.db" resolves against the app folder; the IIS AppPool identity must
-  // have WRITE permission there. An absolute path on a writable folder is safer.
+  // SQL Server, not SQLite (migrated — see DependencyInjection.cs UseSqlServer). The instance
+  // name is per-machine (e.g. "localhost\\SQLEXPRESS" on a fresh client install, "localhost" or
+  // a named instance elsewhere) — set the REAL value as an environment variable instead of
+  // editing this file, so the same package works unmodified on every deployment target:
+  //   ConnectionStrings__DefaultConnection=Server=...;Database=ProfiscalDb;Trusted_Connection=True;TrustServerCertificate=True;
+  // The placeholder below only matters if you set it directly in this file instead.
   "ConnectionStrings": {
-    "DefaultConnection": "Data Source=C:\\taxmind_data\\profiscal.db"
+    "DefaultConnection": "Server=<<< instance, e.g. localhost\\SQLEXPRESS >>>;Database=ProfiscalDb;Trusted_Connection=True;TrustServerCertificate=True;"
   }
 
   // NB: leave Elasticsearch:AutoStart OFF under IIS. Run Elasticsearch as a Windows service
