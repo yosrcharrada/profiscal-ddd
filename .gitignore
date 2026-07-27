@@ -4,6 +4,11 @@ backend/*/obj/
 frontend/build/
 frontend/node_modules/
 
+# Visual Studio publish profiles — machine-specific IIS deployment target/paths,
+# created by the Publish wizard under Properties/PublishProfiles/. Not covered by the
+# bin/obj rules above since it lives outside both.
+**/Properties/PublishProfiles/
+
 # SQLite database + WAL files (runtime artifacts — never commit)
 *.db
 *.db-shm
